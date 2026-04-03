@@ -303,38 +303,30 @@ function TabHoje({
             </div>
           </div>
           {appt.client_phone && (
-            <a
-              href={`https://wa.me/55${appt.client_phone.replace(/\D/g, '')}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[10px] font-bold tracking-widest text-emerald-400 hover:text-emerald-300 transition-colors inline-flex items-center gap-1.5 uppercase"
-            >
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              WhatsApp
-            </a>
+            <span className="text-xs text-muted-foreground">{appt.client_phone}</span>
           )}
-          <div className="flex gap-2 flex-wrap pt-2 border-t border-white/5 relative z-10 mt-2">
+          <div className="flex gap-2 flex-wrap">
             <button
               disabled={loading === appt.id + 'cancelado'}
               onClick={() => handleStatus(appt.id, 'cancelado')}
-              className="text-[10px] font-extrabold tracking-widest uppercase text-white/50 hover:text-white bg-white/5 px-3 py-1.5 border border-white/5 hover:border-white/20 rounded-xl transition-all disabled:opacity-40"
+              className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 border border-border rounded-lg transition-colors disabled:opacity-40"
             >
               Cancelar
             </button>
             <button
               disabled={loading === appt.id + 'faltou'}
               onClick={() => handleStatus(appt.id, 'faltou')}
-              className="text-[10px] font-extrabold tracking-widest uppercase text-amber-500/70 hover:text-amber-400 bg-amber-500/5 px-3 py-1.5 border border-amber-500/10 hover:border-amber-500/30 rounded-xl transition-all disabled:opacity-40"
+              className="text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 border border-border rounded-lg transition-colors disabled:opacity-40"
             >
-              Faltou
+              Nao compareceu
             </button>
             {appt.client_id && (
               <button
                 disabled={loading === 'block' + appt.client_id}
                 onClick={() => handleBlock(appt.client_id, true)}
-                className="text-[10px] font-extrabold tracking-widest uppercase text-red-500 hover:text-red-400 bg-red-500/5 px-3 py-1.5 border border-red-500/20 hover:border-red-500/40 rounded-xl transition-all disabled:opacity-40"
+                className="text-xs text-destructive hover:text-destructive/80 px-3 py-1.5 border border-destructive/30 rounded-lg transition-colors disabled:opacity-40"
               >
-                Bloquear Acesso
+                Bloquear cliente
               </button>
             )}
           </div>
@@ -342,21 +334,21 @@ function TabHoje({
       ))}
 
       {others.length > 0 && (
-        <details className="mt-4 group">
-          <summary className="text-[10px] font-extrabold tracking-widest uppercase text-zinc-500 cursor-pointer hover:text-white transition-colors bg-white/5 px-4 py-3 rounded-xl border border-white/10 w-fit">
-            Ver Outros
+        <details className="mt-2">
+          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+            Ver outros status ({others.length})
           </summary>
-          <div className="flex flex-col gap-3 mt-4">
+          <div className="flex flex-col gap-2 mt-2">
             {others.map((appt) => (
               <div
                 key={appt.id}
-                className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between backdrop-blur-sm"
+                className="bg-card/50 border border-border/50 rounded-xl p-3 flex items-center justify-between"
               >
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold tracking-wide uppercase text-zinc-300">{getDisplayName(appt)}</span>
-                  <span className="text-[10px] font-extrabold tracking-widest text-zinc-500">{appt.start_time}</span>
+                <div>
+                  <span className="text-sm text-muted-foreground">{getDisplayName(appt)}</span>
+                  <span className="text-xs text-muted-foreground ml-2">— {appt.start_time}</span>
                 </div>
-                <span className="text-[9px] font-black tracking-widest uppercase px-3 py-1.5 rounded-full border border-white/10 bg-black/40 text-zinc-400">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-border text-muted-foreground">
                   {appt.status}
                 </span>
               </div>
@@ -1028,3 +1020,4 @@ function TabAdmins() {
     </div>
   )
 }
+

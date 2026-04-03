@@ -27,8 +27,19 @@ export async function GET(request: NextRequest) {
       }
     )
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    if (!error && data.session) {
+      // Verifica se o usuario é admin
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', data.session.user.id)
+        .single()
+
+      if (profile?.is_admin) {
+        return NextResponse.redirect(`${origin}/admin`)
+      }
+
       return NextResponse.redirect(`${origin}${next}`)
     }
   }

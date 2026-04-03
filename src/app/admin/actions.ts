@@ -20,13 +20,21 @@ async function requireAdmin() {
   return { supabase, user }
 }
 
-export async function togglePauseStatus(isPaused: boolean) {
+export async function togglePauseStatus(
+  isPaused: boolean,
+  message: string | null = null,
+  returnTime: string | null = null
+) {
   try {
     const { supabase } = await requireAdmin()
     
     const { error } = await supabase
       .from('business_config')
-      .update({ is_paused: isPaused })
+      .update({ 
+        is_paused: isPaused,
+        pause_message: message,
+        pause_return_time: returnTime 
+      })
       .eq('id', 1)
 
     if (error) throw error

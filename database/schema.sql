@@ -49,7 +49,14 @@ CREATE TABLE IF NOT EXISTS public.business_config (
   cancellation_window_minutes INTEGER NOT NULL DEFAULT 120,
   onboarding_complete BOOLEAN NOT NULL DEFAULT false,
   show_agency_brand BOOLEAN NOT NULL DEFAULT true,
-    is_paused BOOLEAN NOT NULL DEFAULT false,
+  is_paused BOOLEAN NOT NULL DEFAULT false,
+  pause_message TEXT,
+  pause_return_time TIMESTAMPTZ,
+  enable_gallery BOOLEAN NOT NULL DEFAULT false,
+  allow_client_uploads BOOLEAN NOT NULL DEFAULT false,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 INSERT INTO public.business_config (id)
 VALUES (1)
 ON CONFLICT (id) DO NOTHING;
@@ -70,6 +77,7 @@ CREATE TABLE IF NOT EXISTS public.services (
   name TEXT NOT NULL,
   price NUMERIC(10,2) NOT NULL,
   duration_minutes INTEGER NOT NULL,
+  icon_name TEXT,
   is_active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -133,6 +141,26 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('barbeiro-foto', 'barbeiro-foto', true)
 ON CONFLICT (id) DO NOTHING;
 
+-- === BLOCKED DEVICES ===
+CREATE TABLE IF NOT EXISTS public.blocked_devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  ip_address TEXT,
+  session_id TEXT,
+  phone TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- === GALLERY PHOTOS ===
+CREATE TABLE IF NOT EXISTS public.gallery_photos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  url TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'approved')),
+  user_name TEXT,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
@@ -144,6 +172,8 @@ ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.working_hours ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.special_schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.blocked_devices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gallery_photos ENABLE ROW LEVEL SECURITY;
 
 -- Helper: verifica se o usuario atual e admin
 CREATE OR REPLACE FUNCTION public.is_admin()
@@ -272,6 +302,24 @@ CREATE POLICY "Admin remove imagens" ON storage.objects
     bucket_id IN ('logo', 'barbeiro-foto')
     AND public.is_admin()
   );
+
+-- --- blocked_devices ---
+DROP POLICY IF EXISTS "Admin gerencia dispositivos bloqueados" ON public.blocked_devices;
+CREATE POLICY "Admin gerencia dispositivos bloqueados" ON public.blocked_devices
+  FOR ALL USING (public.is_admin());
+
+-- --- gallery_photos ---
+DROP POLICY IF EXISTS "Leitura publica de fotos aprovadas" ON public.gallery_photos;
+CREATE POLICY "Leitura publica de fotos aprovadas" ON public.gallery_photos
+  FOR SELECT USING (status = 'approved' OR public.is_admin());
+
+DROP POLICY IF EXISTS "Qualquer um pode enviar foto da galeria" ON public.gallery_photos;
+CREATE POLICY "Qualquer um pode enviar foto da galeria" ON public.gallery_photos
+  FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Admin gerencia fotos da galeria" ON public.gallery_photos;
+CREATE POLICY "Admin gerencia fotos da galeria" ON public.gallery_photos
+  FOR ALL USING (public.is_admin());
 
 -- ============================================================
 -- SEED DATA

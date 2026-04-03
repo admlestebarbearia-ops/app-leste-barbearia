@@ -8,7 +8,7 @@ import { ptBR } from 'date-fns/locale'
 import { format, isBefore, startOfDay, getDay, parseISO } from 'date-fns'
 import { toast } from 'sonner'
 import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment } from '@/app/agendar/actions'
-import { TurnstileWidget } from '@/components/booking/TurnstileWidget'
+import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,8 +46,6 @@ export function BookingForm({
   const [availableSlots, setAvailableSlots] = useState<string[]>([])
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [loadingSlots, setLoadingSlots] = useState(false)
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
-  const [showTurnstile, setShowTurnstile] = useState(false)
 
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
@@ -134,7 +132,7 @@ export function BookingForm({
     [selectedService]
   )
 
-  const handleConfirm = () => {
+const handleConfirm = async () => {
     if (!selectedService || !selectedDate || !selectedTime) return
     if (showFreeMode) {
       if (!clientName.trim()) {
@@ -147,26 +145,25 @@ export function BookingForm({
       }
       const nums = clientPhone.replace(/\D/g, '')
       if (nums.length !== 11 || nums[2] !== '9') {
-        toast.error('Telefone invalido. Use o formato (11) 99999-9999.')
+        toast.error('Telefone invalido. Use o formato (11) 99999-9999.')        
         return
       }
     }
-    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
-    if (!siteKey || siteKey === 'sua_site_key_aqui') {
-      submitBooking('')
-      return
+
+    if (!isLoggedIn) {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signInAnonymously()
+      if (error) {
+        toast.error('Erro ao iniciar sessão. Tente novamente.')
+        return
+      }
     }
-    setShowTurnstile(true)
+
+    submitBooking()
   }
 
-  const handleTurnstileSuccess = (token: string) => {
-    setTurnstileToken(token)
-    setShowTurnstile(false)
-    submitBooking(token)
-  }
-
-  const submitBooking = (token: string) => {
-    if (!selectedService || !selectedDate || !selectedTime || !barber) return
+  const submitBooking = () => {
+    if (!selectedService || !selectedDate || !selectedTime || !barber) return   
 
     startTransition(async () => {
       const result = await createAppointment({
@@ -174,7 +171,6 @@ export function BookingForm({
         barberId: barber.id,
         date: format(selectedDate, 'yyyy-MM-dd'),
         startTime: selectedTime + ':00',
-        turnstileToken: token,
         clientName: showFreeMode ? clientName : undefined,
         clientPhone: showFreeMode ? clientPhone : undefined,
       })
@@ -183,7 +179,6 @@ export function BookingForm({
         router.push(`/agendar/sucesso?id=${result.appointmentId}`)
       } else {
         toast.error(result.error ?? 'Erro ao confirmar agendamento.')
-        setTurnstileToken(null)
       }
     })
   }
@@ -458,28 +453,6 @@ export function BookingForm({
 
       </div>
 
-      {/* Turnstile (renderizado fora do fluxo visual) */}
-      {showTurnstile && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] backdrop-blur-sm transition-all px-4">
-          <div className="bg-card border border-border rounded-[2rem] p-8 w-full max-w-sm card-shadow relative overflow-hidden">
-            <div className="absolute inset-0 bg-primary/5"></div>
-            <p className="text-xs font-bold tracking-[0.2em] text-foreground mb-6 text-center uppercase relative z-10">
-              Proteção contra Spam
-            </p>
-            <div className="flex justify-center relative z-10">
-              <TurnstileWidget
-                siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''}
-                onSuccess={handleTurnstileSuccess}
-                onError={() => {
-                  setShowTurnstile(false)
-                  toast.error('Verificação de segurança falhou. Tente novamente.')
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Barra de confirmacao flutuante (CTA) */}
       <div className={`fixed bottom-[90px] left-0 right-0 px-4 z-40 transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] ${selectedTime ? 'translate-y-0 opacity-100 pointer-events-auto scale-100' : 'translate-y-full opacity-0 pointer-events-none scale-95'}`}>
          <div className="max-w-[340px] mx-auto w-full">
@@ -488,22 +461,19 @@ export function BookingForm({
               disabled={!canConfirm || isPending}
               className="w-full h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50"
             >
-              {isPending ? 'PROCESSANDO...' : 'CONFIRMAR RESERVA'}
+              {isPending ? 'Confirmando...' : 'Confirmar'}
             </Button>
          </div>
       </div>
 
-      {/* Bottom Nav Premium */}
-      <nav className="fixed bottom-0 left-0 right-0 h-[80px] bg-[#0A0A0A]/95 backdrop-blur-[20px] border-t border-white/5 z-50 flex items-center justify-between px-6 sm:px-10 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.8)]">
-         <button onClick={() => window.location.href = '/'} className="flex flex-col items-center gap-1 min-w-[50px] text-primary transition-all hover:-translate-y-1">
-            <Home size={24} strokeWidth={2} className="drop-shadow-md" />
-            <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Início</span>
-         </button>
+      {/* Bottom Nav (App-like) */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-[#09090b]/95 backdrop-blur-xl border-t border-white/5 px-6 py-2 pb-safe z-50">
+       <div className="max-w-md mx-auto flex items-center justify-between relative">
          
-         <button onClick={() => { if(isLoggedIn) { document.getElementById('meus-agendamentos')?.scrollIntoView({ behavior: 'smooth' }) } else { toast('Faça login para ver as reservas') } }} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+         <a href="/agendar/meus-agendamentos" className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
             <CalendarDays size={24} strokeWidth={2} />
             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Reservas</span>
-         </button>
+         </a>
 
          <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="relative z-10 transition-transform hover:scale-105 active:scale-95 group">
              <div className="absolute inset-0 bg-primary rounded-full blur-[20px] opacity-20 group-hover:opacity-50 transition-opacity"></div>
@@ -534,6 +504,7 @@ export function BookingForm({
              <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Opções</span>
            </button>
          )}
+       </div>
       </nav>
 
     </div>
@@ -623,3 +594,5 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
     </section>
   )
 }
+
+

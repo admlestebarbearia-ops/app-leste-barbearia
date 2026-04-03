@@ -1,5 +1,6 @@
 export type AppointmentStatus = 'confirmado' | 'cancelado' | 'faltou'
 export type DisplayNamePreference = 'name' | 'nickname'
+export type GalleryPhotoStatus = 'pending' | 'approved'
 
 export interface Profile {
   id: string
@@ -22,6 +23,10 @@ export interface BusinessConfig {
   onboarding_complete: boolean
   show_agency_brand: boolean
   is_paused: boolean
+  pause_message: string | null
+  pause_return_time: string | null
+  enable_gallery: boolean
+  allow_client_uploads: boolean
   updated_at: string
 }
 
@@ -39,6 +44,7 @@ export interface Service {
   name: string
   price: number
   duration_minutes: number
+  icon_name: string | null
   is_active: boolean
   created_at: string
 }
@@ -76,4 +82,21 @@ export interface Appointment {
   created_at: string
   services?: Pick<Service, 'name' | 'price' | 'duration_minutes'>
   profiles?: Pick<Profile, 'is_blocked'> & { display_name?: string }
+}
+
+export interface BlockedDevice {
+  id: string
+  ip_address: string | null
+  session_id: string | null
+  phone: string | null
+  created_at: string
+}
+
+export interface GalleryPhoto {
+  id: string
+  url: string
+  status: GalleryPhotoStatus
+  user_name: string | null
+  user_id: string | null
+  created_at: string
 }

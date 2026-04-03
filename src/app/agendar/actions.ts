@@ -148,30 +148,9 @@ export async function createAppointment(data: {
   barberId: string
   date: string
   startTime: string
-  turnstileToken: string
   clientName?: string
   clientPhone?: string
 }): Promise<{ success: boolean; appointmentId?: string; error?: string }> {
-  // Valida Turnstile (ignorado se a chave nao estiver configurada)
-  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY
-  if (turnstileSecret && turnstileSecret !== 'sua_secret_key_aqui') {
-    const turnstileResponse = await fetch(
-      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret: turnstileSecret,
-          response: data.turnstileToken,
-        }),
-      }
-    )
-    const turnstileResult = await turnstileResponse.json()
-    if (!turnstileResult.success) {
-      return { success: false, error: 'Verificacao de seguranca falhou. Tente novamente.' }
-    }
-  }
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -198,6 +177,27 @@ export async function createAppointment(data: {
     if (profile?.is_blocked) {
       return { success: false, error: 'Seu acesso esta suspenso. Entre em contato com a barbearia.' }
     }
+  }
+
+  // Verifica na tabela blocked_devices por session_id ou telefone
+  const checkPhone = data.clientPhone ? data.clientPhone.replace(/\D/g, '') : null;
+  const blockedQuery = supabase
+    .from('blocked_devices')
+    .select('id')
+    .limit(1);
+
+  if (user && checkPhone) {
+    blockedQuery.or(`session_id.eq.${user.id},phone.eq.${checkPhone}`);
+  } else if (user) {
+    blockedQuery.eq('session_id', user.id);
+  } else if (checkPhone) {
+    // Modo anônimo forçado com telefone apenas (tecnicamente não acontece se signInAnonymously foi chamado)
+    blockedQuery.eq('phone', checkPhone);
+  }
+
+  const { data: blockedMatch } = await blockedQuery.maybeSingle();
+  if (blockedMatch) {
+    return { success: false, error: 'Dispositivo bloqueado temporariamente por spam. Tente mais tarde.' }
   }
 
   // Verifica disponibilidade do slot (dupla checagem no servidor)
