@@ -59,6 +59,7 @@ interface Props {
   workingHours: WorkingHours[]
   specialSchedules: SpecialSchedule[]
   services: Service[]
+  appointmentsError?: string | null
 }
 
 export function AdminDashboard({
@@ -67,6 +68,7 @@ export function AdminDashboard({
   workingHours,
   specialSchedules,
   services,
+  appointmentsError,
 }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('hoje')
@@ -261,6 +263,7 @@ export function AdminDashboard({
             appointments={appointments}
             displayPref={config.display_name_preference}
             onRefresh={() => router.refresh()}
+            queryError={appointmentsError}
           />
         )}
         {tab === 'configuracoes' && (
@@ -345,15 +348,42 @@ function TabHoje({
   appointments,
   displayPref,
   onRefresh,
+  queryError,
 }: {
   appointments: Appointment[]
   displayPref: string
   onRefresh: () => void
+  queryError?: string | null
 }) {
   const [loading, setLoading] = useState<string | null>(null)
-  const [filter, setFilter] = useState<'hoje' | 'proximos' | 'todos'>('proximos')
+  const [filter, setFilter] = useState<'hoje' | 'proximos' | 'todos'>('todos')
   const [newBadge, setNewBadge] = useState(0)
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   const todayStr = new Date().toISOString().split('T')[0]
+
+  // Pede permissão de notificação do navegador na montagem
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setNotifPermission(Notification.permission)
+    }
+  }, [])
+
+  const requestNotifPermission = async () => {
+    if (!('Notification' in window)) return
+    const result = await Notification.requestPermission()
+    setNotifPermission(result)
+    if (result === 'granted') toast.success('Notificações do navegador ativadas!')
+  }
+
+  const sendBrowserNotif = (dateStr: string, time: string) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return
+    if (Notification.permission !== 'granted') return
+    const d = dateStr ? dateStr.split('-').reverse().join('/') : ''
+    new Notification('📅 Novo agendamento — Barbearia Leste', {
+      body: `${d} às ${time}`,
+      icon: '/logo-barbearialeste.png',
+    })
+  }
 
   // Notificação em tempo real de novos agendamentos
   useEffect(() => {
@@ -372,6 +402,7 @@ function TabHoje({
           duration: 8000,
           icon: '📅',
         })
+        sendBrowserNotif(d, t)
         setNewBadge((prev) => prev + 1)
         onRefresh()
       })
@@ -447,6 +478,26 @@ function TabHoje({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Erro de configuração — visível para o admin diagnosticar */}
+      {queryError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 flex flex-col gap-1">
+          <span className="text-xs font-black text-red-400 uppercase tracking-widest">Erro ao carregar agendamentos</span>
+          <span className="text-[11px] text-red-300/70">{queryError}</span>
+          <span className="text-[10px] text-zinc-500 mt-1">Verifique se a variável SUPABASE_SERVICE_ROLE_KEY está configurada no Vercel e faça um novo deploy.</span>
+        </div>
+      )}
+
+      {/* Botão de notificações do navegador */}
+      {notifPermission !== 'granted' && (
+        <button
+          onClick={requestNotifPermission}
+          className="flex items-center gap-2 w-full bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-400 font-semibold"
+        >
+          <span className="text-base">🔔</span>
+          Ativar notificações do navegador para novos agendamentos
+        </button>
+      )}
+
       {/* Cabeçalho com badge de novos */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

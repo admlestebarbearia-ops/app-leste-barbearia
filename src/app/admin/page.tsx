@@ -81,6 +81,7 @@ export default async function AdminPage() {
         services={(services as Service[]) ?? []}
         specialSchedules={(specialSchedules as SpecialSchedule[]) ?? []}
         appointments={(allAppointments as Appointment[]) ?? []}
+        appointmentsError={apptError?.message ?? null}
       />
     </main>
   )
