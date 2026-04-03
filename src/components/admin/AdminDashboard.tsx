@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { Scissors, Smile, Crown, Sparkles, Zap, Star, Flame, Droplets, Camera, LogOut, Pause, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -69,6 +70,35 @@ export function AdminDashboard({
   const [pauseMessage, setPauseMessage] = useState(config.pause_message || '')
   const [pauseReturnTime, setPauseReturnTime] = useState(config.pause_return_time || '')
 
+  // Admin header logo
+  const adminLogoRef = useRef<HTMLInputElement>(null)
+  const [adminLogoPreview, setAdminLogoPreview] = useState<string | null>(null)
+  const [savingAdminLogo, setSavingAdminLogo] = useState(false)
+
+  const handleAdminLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target?.result as string
+      setAdminLogoPreview(dataUrl)
+      setSavingAdminLogo(true)
+      try {
+        const compressed = await compressImageToWebP(file)
+        const { url, error } = await uploadImage('logo', compressed, 'image/webp')
+        if (error) { toast.error('Erro ao enviar logo: ' + error); setSavingAdminLogo(false); return }
+        const result = await saveBusinessConfig({ logo_url: url })
+        setSavingAdminLogo(false)
+        if (result.success) { toast.success('Logo atualizado!'); router.refresh() }
+        else { toast.error(result.error ?? 'Erro ao salvar.') }
+      } catch {
+        toast.error('Erro ao processar imagem.')
+        setSavingAdminLogo(false)
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
   const handlePauseConfirm = async (val: boolean) => {
     const id = toast.loading(val ? 'Pausando expediente...' : 'Retornando expediente...')
     const res = await togglePauseStatus(val, val ? pauseMessage : null, val ? pauseReturnTime : null)
@@ -91,55 +121,75 @@ export function AdminDashboard({
 
   return (
     <div className="min-h-screen flex flex-col bg-[#09090b] text-[#f4f4f5] font-sans selection:bg-white/20">
-      {/* Header Premium (Glassmorphism) */}
-      <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-2xl border-b border-white/10 px-6 py-4 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-        <div className="flex items-center gap-4">
-          <div className="relative p-[1px] bg-gradient-to-b from-white/20 to-white/5 rounded-xl">
-            <div className="bg-black/50 p-1.5 rounded-xl backdrop-blur-xl">
-              <Image
-                src={config.logo_url ?? '/logo-barbearialeste.png'}
-                alt="Logo"
-                width={32}
-                height={32}
-                className="w-8 h-8 object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
-              />
-            </div>
-          </div>
-          <span className="font-extrabold text-sm tracking-widest text-white uppercase opacity-90">Painel Executivo</span>
-        </div>
-
-          <div className="flex items-center gap-5">
+      {/* Header Mobile-First */}
+      <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+        {/* Linha 1: Logo + Título + Ações */}
+        <div className="flex items-center justify-between px-4 py-3 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Logo clicável para upload */}
             <button
-              onClick={() => setIsPauseDialogOpen(true)}
-              className={`flex items-center gap-3 text-xs uppercase tracking-wider font-bold cursor-pointer bg-white/[0.03] backdrop-blur-md px-4 py-2 rounded-xl border transition-all duration-300 hover:bg-white/[0.05] ${config.is_paused ? 'border-red-500/50 shadow-[0_0_20px_rgba(239,68,68,0.15)]' : 'border-white/10 hover:border-white/20'}`}
+              onClick={() => adminLogoRef.current?.click()}
+              className="relative group shrink-0"
+              title="Clique para trocar o logo"
             >
-              <span className={config.is_paused ? "text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" : "text-zinc-400"}>
-                {config.is_paused ? 'PAUSADO' : 'SISTEMA ATIVO'}
-              </span>
-              <div
-                className={`w-10 h-5 flex items-center rounded-full transition-colors duration-500 ease-in-out ${config.is_paused ? 'bg-red-500/20' : 'bg-white/10'}`}
-              >
-                <div className={`w-4 h-4 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.3)] transition-transform duration-500 ease-out ${config.is_paused ? 'translate-x-5 bg-red-400' : 'translate-x-1'}`} />
+              <div className="relative p-[1px] bg-gradient-to-b from-white/20 to-white/5 rounded-xl">
+                <div className="bg-black/50 p-1.5 rounded-xl backdrop-blur-xl">
+                  <Image
+                    src={adminLogoPreview ?? config.logo_url ?? '/logo-barbearialeste.png'}
+                    alt="Logo"
+                    width={32}
+                    height={32}
+                    className="w-8 h-8 object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+                  />
+                </div>
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera size={14} className="text-white" />
               </div>
             </button>
+            <input ref={adminLogoRef} type="file" accept="image/*" className="hidden" onChange={handleAdminLogoChange} />
 
+            <div className="min-w-0">
+              <span className="block font-extrabold text-xs tracking-widest text-white uppercase opacity-90 truncate">Painel</span>
+              {savingAdminLogo && <span className="block text-[9px] text-zinc-400 animate-pulse">Salvando...</span>}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Pausa/Retomar — ícone + texto em telas maiores */}
+            <button
+              onClick={() => setIsPauseDialogOpen(true)}
+              className={`flex items-center gap-1.5 cursor-pointer px-2.5 py-1.5 rounded-xl border font-bold transition-all duration-300 ${
+                config.is_paused
+                  ? 'border-red-500/50 bg-red-500/10 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)]'
+                  : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:border-white/20'
+              }`}
+            >
+              {config.is_paused
+                ? <><Pause size={14} /><span className="hidden sm:inline text-[10px] uppercase tracking-widest">Pausado</span></>
+                : <><Play  size={14} /><span className="hidden sm:inline text-[10px] uppercase tracking-widest">Ativo</span></>
+              }
+            </button>
+
+            {/* Sair — ícone */}
             <a
               href="/api/auth/signout"
-              className="text-xs font-bold tracking-widest uppercase text-zinc-500 hover:text-white transition-colors"
+              className="p-2 rounded-xl border border-white/10 bg-white/[0.03] text-zinc-500 hover:text-white hover:border-white/20 transition-all"
+              title="Sair"
             >
-              SAIR
+              <LogOut size={16} />
             </a>
           </div>
-        </header>
+        </div>
 
-        {/* Tabs Premium */}
-        <div className="flex border-b border-white/5 px-6 gap-6 bg-black/20 backdrop-blur-md overflow-x-auto hide-scrollbar">
+        {/* Linha 2: Tabs */}
+        <div className="flex border-t border-white/[0.05] overflow-x-auto hide-scrollbar">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               className={[
-                'py-4 text-[10px] uppercase tracking-[0.15em] font-extrabold border-b-2 transition-all duration-300 whitespace-nowrap',
+                'py-3 px-4 text-[9px] uppercase tracking-[0.12em] font-extrabold border-b-2 transition-all duration-300 whitespace-nowrap flex-1',
                 tab === t.key
                   ? 'border-white text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]'
                   : 'border-transparent text-zinc-600 hover:text-zinc-300',
@@ -149,6 +199,7 @@ export function AdminDashboard({
             </button>
           ))}
         </div>
+      </header>
 
       {/* Content Area com background mais limpo */}
       <main className="flex-1 px-4 py-8 max-w-2xl mx-auto w-full">
@@ -787,15 +838,15 @@ function TabConfiguracoes({
 // ------------------------------------------------------------------
 // Tab: Servicos
 // ------------------------------------------------------------------
-const ADMIN_ICON_OPTIONS = [
-  { key: 'scissors',  label: '✂ Tesoura'     },
-  { key: 'smile',     label: '😊 Relaxamento' },
-  { key: 'crown',     label: '👑 Premium'    },
-  { key: 'sparkles',  label: '✨ Tratamento' },
-  { key: 'zap',       label: '⚡ Express'    },
-  { key: 'star',      label: '⭐ Especial'   },
-  { key: 'flame',     label: '🔥 Hot'        },
-  { key: 'droplets',  label: '💧 Hidratação' },
+const ADMIN_ICON_OPTIONS: { key: string; icon: React.ReactNode; label: string }[] = [
+  { key: 'scissors',  icon: <Scissors  size={18} strokeWidth={1.5} />, label: 'Tesoura'     },
+  { key: 'smile',     icon: <Smile     size={18} strokeWidth={1.5} />, label: 'Barba'       },
+  { key: 'crown',     icon: <Crown     size={18} strokeWidth={1.5} />, label: 'Premium'     },
+  { key: 'sparkles',  icon: <Sparkles  size={18} strokeWidth={1.5} />, label: 'Tratamento'  },
+  { key: 'zap',       icon: <Zap       size={18} strokeWidth={1.5} />, label: 'Express'     },
+  { key: 'star',      icon: <Star      size={18} strokeWidth={1.5} />, label: 'Especial'    },
+  { key: 'flame',     icon: <Flame     size={18} strokeWidth={1.5} />, label: 'Hot'         },
+  { key: 'droplets',  icon: <Droplets  size={18} strokeWidth={1.5} />, label: 'Hidratação'  },
 ]
 
 function TabServicos({
@@ -907,9 +958,10 @@ function TabServicos({
                   key={opt.key}
                   type="button"
                   onClick={() => setNewIcon(opt.key)}
-                  className={`text-[11px] px-2.5 py-1.5 rounded-lg border transition-all ${newIcon === opt.key ? 'bg-primary/20 border-primary text-primary' : 'border-border text-muted-foreground hover:border-foreground/30'}`}
+                  className={`flex flex-col items-center gap-0.5 px-2.5 py-2 rounded-lg border transition-all ${newIcon === opt.key ? 'bg-primary/20 border-primary text-primary' : 'border-border text-muted-foreground hover:border-foreground/30'}`}
                 >
-                  {opt.label}
+                  {opt.icon}
+                  <span className="text-[9px] leading-tight">{opt.label}</span>
                 </button>
               ))}
             </div>
@@ -952,9 +1004,10 @@ function TabServicos({
                         key={opt.key}
                         type="button"
                         onClick={() => setEditIcon(opt.key)}
-                        className={`text-[11px] px-2.5 py-1.5 rounded-lg border transition-all ${editIcon === opt.key ? 'bg-primary/20 border-primary text-primary' : 'border-border text-muted-foreground hover:border-foreground/30'}`}
+                        className={`flex flex-col items-center gap-0.5 px-2.5 py-2 rounded-lg border transition-all ${editIcon === opt.key ? 'bg-primary/20 border-primary text-primary' : 'border-border text-muted-foreground hover:border-foreground/30'}`}
                       >
-                        {opt.label}
+                        {opt.icon}
+                        <span className="text-[9px] leading-tight">{opt.label}</span>
                       </button>
                     ))}
                   </div>
