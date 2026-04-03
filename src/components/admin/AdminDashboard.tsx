@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Scissors, Smile, Crown, Sparkles, Zap, Star, Flame, Droplets, Camera, LogOut, Pause, Play } from 'lucide-react'
+import { Camera, LogOut, Pause, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -808,14 +808,16 @@ function TabConfiguracoes({
 // Tab: Servicos
 // ------------------------------------------------------------------
 const ADMIN_ICON_OPTIONS: { key: string; icon: React.ReactNode; label: string }[] = [
-  { key: 'scissors',  icon: <Scissors  size={18} strokeWidth={1.5} />, label: 'Tesoura'     },
-  { key: 'smile',     icon: <Smile     size={18} strokeWidth={1.5} />, label: 'Barba'       },
-  { key: 'crown',     icon: <Crown     size={18} strokeWidth={1.5} />, label: 'Premium'     },
-  { key: 'sparkles',  icon: <Sparkles  size={18} strokeWidth={1.5} />, label: 'Tratamento'  },
-  { key: 'zap',       icon: <Zap       size={18} strokeWidth={1.5} />, label: 'Express'     },
-  { key: 'star',      icon: <Star      size={18} strokeWidth={1.5} />, label: 'Especial'    },
-  { key: 'flame',     icon: <Flame     size={18} strokeWidth={1.5} />, label: 'Hot'         },
-  { key: 'droplets',  icon: <Droplets  size={18} strokeWidth={1.5} />, label: 'Hidratação'  },
+  { key: 'scissors', icon: <img src="/barber-icon/scissor-icon.svg"                   alt="" className="w-5 h-5 invert opacity-80" />, label: 'Tesoura'    },
+  { key: 'smile',    icon: <img src="/barber-icon/beard-icon.svg"                     alt="" className="w-5 h-5 invert opacity-80" />, label: 'Barba'      },
+  { key: 'crown',    icon: <img src="/barber-icon/barber-svgrepo-com.svg"             alt="" className="w-5 h-5 invert opacity-80" />, label: 'Premium'    },
+  { key: 'sparkles', icon: <img src="/barber-icon/hair-salon-icon.svg"                alt="" className="w-5 h-5 invert opacity-80" />, label: 'Tratamento' },
+  { key: 'zap',      icon: <img src="/barber-icon/electric-trimmer-icon.svg"          alt="" className="w-5 h-5 invert opacity-80" />, label: 'Express'    },
+  { key: 'star',     icon: <img src="/barber-icon/man-hair-icon.svg"                  alt="" className="w-5 h-5 invert opacity-80" />, label: 'Corte'      },
+  { key: 'flame',    icon: <img src="/barber-icon/straight-barber-razor-icon.svg"     alt="" className="w-5 h-5 invert opacity-80" />, label: 'Navalha'    },
+  { key: 'droplets', icon: <img src="/barber-icon/hairdryer-icon.svg"                 alt="" className="w-5 h-5 invert opacity-80" />, label: 'Secagem'    },
+  { key: 'knife',    icon: <img src="/barber-icon/barber-knife-svgrepo-com.svg"       alt="" className="w-5 h-5 invert opacity-80" />, label: 'Faca'       },
+  { key: 'man',      icon: <img src="/barber-icon/bearded-man-icon.svg"               alt="" className="w-5 h-5 invert opacity-80" />, label: 'Barbudo'    },
 ]
 
 function TabServicos({

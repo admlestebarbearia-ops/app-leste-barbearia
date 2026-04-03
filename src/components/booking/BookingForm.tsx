@@ -14,17 +14,20 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
-import { Scissors, Smile, Crown, Sparkles, Zap, Star, Flame, Droplets, CalendarDays, User, Menu, Home, Check } from 'lucide-react'
+import { Scissors, Star, CalendarDays, User, Menu, Home, Check } from 'lucide-react'
 
-const SERVICE_ICONS: Record<string, React.ReactNode> = {
-  scissors:  <Scissors  size={32} strokeWidth={1.3} />,
-  smile:     <Smile     size={32} strokeWidth={1.3} />,
-  crown:     <Crown     size={32} strokeWidth={1.3} />,
-  sparkles:  <Sparkles  size={32} strokeWidth={1.3} />,
-  zap:       <Zap       size={32} strokeWidth={1.3} />,
-  star:      <Star      size={32} strokeWidth={1.3} />,
-  flame:     <Flame     size={32} strokeWidth={1.3} />,
-  droplets:  <Droplets  size={32} strokeWidth={1.3} />,
+// Ícones SVG customizados da pasta public/barber-icon
+const SERVICE_ICON_PATHS: Record<string, string> = {
+  scissors:  '/barber-icon/scissor-icon.svg',
+  smile:     '/barber-icon/beard-icon.svg',
+  crown:     '/barber-icon/barber-svgrepo-com.svg',
+  sparkles:  '/barber-icon/hair-salon-icon.svg',
+  zap:       '/barber-icon/electric-trimmer-icon.svg',
+  star:      '/barber-icon/man-hair-icon.svg',
+  flame:     '/barber-icon/straight-barber-razor-icon.svg',
+  droplets:  '/barber-icon/hairdryer-icon.svg',
+  knife:     '/barber-icon/barber-knife-svgrepo-com.svg',
+  man:       '/barber-icon/bearded-man-icon.svg',
 }
 
 
@@ -231,42 +234,34 @@ const handleConfirm = async () => {
 
       <div className="px-4 pt-2 flex flex-col gap-10 max-w-lg mx-auto w-full">
 
-        {/* Secao 1: Servico */}
-        <section>
-          <div className="flex flex-col gap-2">
+        {/* Secao 1: Servico — Carrossel Horizontal */}
+        <section className="-mx-4">
+          <div className="flex flex-row overflow-x-auto flex-nowrap gap-3 px-4 pb-3 snap-x snap-mandatory">
             {services.map((service) => {
               const isSelected = selectedService?.id === service.id;
-              const icon = SERVICE_ICONS[service.icon_name ?? ''] ?? SERVICE_ICONS.scissors;
+              const iconPath = SERVICE_ICON_PATHS[service.icon_name ?? ''] ?? SERVICE_ICON_PATHS.scissors;
               return (
               <button
                 key={service.id}
                 onClick={() => handleServiceSelect(service)}
                 className={[
-                  'flex items-center gap-4 p-3.5 rounded-2xl border transition-all duration-200 w-full text-left relative',
+                  'flex-none w-[110px] h-[110px] flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all duration-200 snap-start',
                   isSelected
-                    ? 'border-primary bg-primary/15 ring-1 ring-primary card-shadow'
-                    : 'border-border bg-card hover:border-foreground/20 card-shadow',
+                    ? 'border-white/30 bg-[#252525] shadow-[0_0_20px_rgba(255,255,255,0.05)]'
+                    : 'border-white/[0.06] bg-[#1a1a1a] active:bg-[#222]',
                 ].join(' ')}
               >
-                <div className={[
-                  'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors',
-                  isSelected ? 'bg-primary/20 text-primary' : 'bg-white/5 text-muted-foreground',
-                ].join(' ')}>
-                  {icon}
-                </div>
-                <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                  <span className="text-sm font-bold uppercase tracking-wide text-foreground leading-tight">{service.name}</span>
-                  <span className="text-xs text-muted-foreground">{service.duration_minutes} min</span>
-                </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className={['text-sm font-extrabold tracking-wide', isSelected ? 'text-primary' : 'text-foreground'].join(' ')}>
-                    R$ {service.price.toFixed(2).replace('.', ',')}
-                  </span>
-                  {isSelected && <Check size={14} strokeWidth={3} className="text-primary" />}
-                </div>
+                <img
+                  src={iconPath}
+                  alt={service.name}
+                  className={['w-8 h-8 object-contain select-none', isSelected ? 'invert opacity-95' : 'invert opacity-40'].join(' ')}
+                  draggable={false}
+                />
+                <span className="text-[10px] uppercase tracking-wider text-center leading-tight px-2 text-white/75 font-medium">
+                  {service.name}
+                </span>
               </button>
-            )})}
-          </div>
+            )})}</div>
         </section>
 
         {/* Secao 2: Barbeiro */}
