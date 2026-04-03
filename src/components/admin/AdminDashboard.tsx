@@ -36,6 +36,9 @@ import {
   deleteGalleryPhoto,
   approveGalleryPhoto,
   uploadAdminGalleryPhoto,
+  listBarbers,
+  upsertBarber,
+  toggleBarberActive,
 } from '@/app/admin/actions'
 import type {
   BusinessConfig,
@@ -43,11 +46,12 @@ import type {
   SpecialSchedule,
   Service,
   Appointment,
+  Barber,
 } from '@/lib/supabase/types'
 
 const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab']
 
-type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'admins' | 'galeria'
+type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'barbeiros' | 'admins' | 'galeria'
 
 interface Props {
   config: BusinessConfig
@@ -106,6 +110,7 @@ export function AdminDashboard({
     { key: 'hoje', label: 'AGENDA' },
     { key: 'configuracoes', label: 'PREFERÊNCIAS' },
     { key: 'servicos', label: 'CATÁLOGO' },
+    { key: 'barbeiros', label: 'BARBEIROS' },
     { key: 'galeria', label: 'GALERIA' },
     { key: 'admins', label: 'SEGURANÇA' },
   ]
@@ -214,6 +219,9 @@ export function AdminDashboard({
         )}
         {tab === 'servicos' && (
           <TabServicos services={services} onRefresh={() => router.refresh()} />
+        )}
+        {tab === 'barbeiros' && (
+          <TabBarbeiros />
         )}
         {tab === 'galeria' && (
           <TabGaleria />
@@ -668,16 +676,16 @@ function TabConfiguracoes({
         <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-col gap-0.5 flex-1">
-              <span className="text-sm text-foreground">Exigir login com Google</span>
-              <span className="text-xs text-muted-foreground">Desativado = qualquer um agenda</span>
+              <span className="text-sm text-foreground">Exigir login com Google para agendar</span>
+              <span className="text-xs text-muted-foreground">Ativado: apenas clientes logados com conta Google podem fazer agendamentos. Desativado: qualquer pessoa agenda informando nome e telefone, sem criar conta.</span>
             </div>
             <Switch checked={requireGoogle} onCheckedChange={setRequireGoogle} />
           </div>
 
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-col gap-0.5 flex-1">
-              <span className="text-sm text-foreground">Ativar Galeria</span>
-              <span className="text-xs text-muted-foreground">Exibe a aba de fotos para clientes</span>
+              <span className="text-sm text-foreground">Exibir aba Galeria de Fotos</span>
+              <span className="text-xs text-muted-foreground">Ativado: aparece uma aba "Galeria" no app dos clientes com fotos de cortes realizados. Desativado: a aba fica oculta.</span>
             </div>
             <Switch checked={enableGallery} onCheckedChange={setEnableGallery} />
           </div>
@@ -691,8 +699,9 @@ function TabConfiguracoes({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Cancelamento até (minutos antes)</Label>
-            <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground">Prazo mínimo para cancelamento</Label>
+            <p className="text-[11px] text-muted-foreground/70 leading-snug">Define até quantos minutos antes do horário o cliente pode cancelar pelo app. Ex: 60 = pode cancelar até 1h antes. 0 = pode cancelar a qualquer momento.</p>
+            <div className="flex items-center gap-2 mt-1">
               <Input
                 type="number"
                 min="0"
@@ -700,7 +709,7 @@ function TabConfiguracoes({
                 onChange={(e) => setCancelWindow(e.target.value)}
                 className="h-9 w-24"
               />
-              <span className="text-xs text-muted-foreground">minutos</span>
+              <span className="text-xs text-muted-foreground">minutos antes</span>
             </div>
           </div>
           <Button onClick={handleSaveConfig} disabled={savingConfig} size="sm">
@@ -726,25 +735,54 @@ function TabConfiguracoes({
                 </div>
               </div>
               {h.is_open && (
-                <div className="flex gap-2">
-                  <div className="flex flex-col gap-1 flex-1">
-                    <Label className="text-xs text-muted-foreground">Abertura</Label>
-                    <input
-                      type="time"
-                      value={h.open_time ?? '09:00'}
-                      onChange={(e) => updateHour(h.day_of_week, 'open_time', e.target.value || null)}
-                      className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
-                    />
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <div className="flex flex-col gap-1 flex-1">
+                      <Label className="text-xs text-muted-foreground">Abertura</Label>
+                      <input
+                        type="time"
+                        value={h.open_time ?? '09:00'}
+                        onChange={(e) => updateHour(h.day_of_week, 'open_time', e.target.value || null)}
+                        className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 flex-1">
+                      <Label className="text-xs text-muted-foreground">Fechamento</Label>
+                      <input
+                        type="time"
+                        value={h.close_time ?? '19:00'}
+                        onChange={(e) => updateHour(h.day_of_week, 'close_time', e.target.value || null)}
+                        className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                      />
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-1 flex-1">
-                    <Label className="text-xs text-muted-foreground">Fechamento</Label>
-                    <input
-                      type="time"
-                      value={h.close_time ?? '19:00'}
-                      onChange={(e) => updateHour(h.day_of_week, 'close_time', e.target.value || null)}
-                      className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
-                    />
-                  </div>
+                  {/* Almoço opcional */}
+                  <details className="group">
+                    <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none list-none flex items-center gap-1">
+                      <span className="group-open:hidden">+ Configurar horário de almoço</span>
+                      <span className="hidden group-open:inline">− Ocultar almoço</span>
+                    </summary>
+                    <div className="flex gap-2 mt-2">
+                      <div className="flex flex-col gap-1 flex-1">
+                        <Label className="text-xs text-muted-foreground">Início almoço</Label>
+                        <input
+                          type="time"
+                          value={h.lunch_start ?? ''}
+                          onChange={(e) => updateHour(h.day_of_week, 'lunch_start', e.target.value || null)}
+                          className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 flex-1">
+                        <Label className="text-xs text-muted-foreground">Fim almoço</Label>
+                        <input
+                          type="time"
+                          value={h.lunch_end ?? ''}
+                          onChange={(e) => updateHour(h.day_of_week, 'lunch_end', e.target.value || null)}
+                          className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
+                        />
+                      </div>
+                    </div>
+                  </details>
                 </div>
               )}
             </div>
@@ -1253,6 +1291,198 @@ function TabGaleria() {
                     X
                   </button>
                 </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─────────────────────────── TabBarbeiros ─────────────────────────── */
+function TabBarbeiros() {
+  const router = useRouter()
+  const [barbers, setBarbers] = useState<Barber[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<Barber | null>(null)
+  const [isNew, setIsNew] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const [fName, setFName] = useState('')
+  const [fNickname, setFNickname] = useState('')
+  const [fPhotoUrl, setFPhotoUrl] = useState('')
+  const [fActive, setFActive] = useState(true)
+  const photoRef = useRef<HTMLInputElement>(null)
+
+  const load = async () => {
+    setLoading(true)
+    const res = await listBarbers()
+    if (res.data) setBarbers(res.data as Barber[])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  const openNew = () => {
+    setEditing(null)
+    setFName(''); setFNickname(''); setFPhotoUrl(''); setFActive(true)
+    setIsNew(true)
+  }
+
+  const openEdit = (b: Barber) => {
+    setIsNew(false)
+    setEditing(b)
+    setFName(b.name)
+    setFNickname(b.nickname ?? '')
+    setFPhotoUrl(b.photo_url ?? '')
+    setFActive(b.is_active)
+  }
+
+  const closeForm = () => { setEditing(null); setIsNew(false) }
+
+  const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const compressed = await compressImageToWebP(file)
+      const { url, error } = await uploadImage('barbeiro-foto', compressed, 'image/webp')
+      if (error) { toast.error('Erro ao enviar foto: ' + error); return }
+      setFPhotoUrl(url!)
+      toast.success('Foto enviada!')
+    } catch { toast.error('Erro ao processar imagem.') }
+  }
+
+  const handleSave = async () => {
+    if (!fName.trim()) { toast.error('Nome é obrigatório.'); return }
+    setSaving(true)
+    const res = await upsertBarber({
+      id: editing?.id,
+      name: fName.trim(),
+      nickname: fNickname.trim() || null,
+      photo_url: fPhotoUrl || null,
+      is_active: fActive,
+    })
+    if (res.success) {
+      toast.success(isNew ? 'Barbeiro cadastrado!' : 'Barbeiro atualizado!')
+      closeForm()
+      await load()
+      router.refresh()
+    } else {
+      toast.error(res.error ?? 'Erro ao salvar.')
+    }
+    setSaving(false)
+  }
+
+  const handleToggle = async (b: Barber) => {
+    const res = await toggleBarberActive(b.id, !b.is_active)
+    if (res.success) { await load(); router.refresh() }
+    else toast.error(res.error ?? 'Erro ao alterar status.')
+  }
+
+  const showForm = isNew || editing !== null
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Profissionais</h2>
+        {!showForm && (
+          <button
+            onClick={openNew}
+            className="text-[10px] font-black uppercase tracking-widest text-emerald-400 border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 rounded-lg"
+          >
+            + Novo barbeiro
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3">
+          <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+            {isNew ? 'Novo barbeiro' : 'Editar barbeiro'}
+          </p>
+
+          <div className="flex flex-col items-center gap-2">
+            <div
+              className="w-20 h-20 rounded-full overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center cursor-pointer"
+              onClick={() => photoRef.current?.click()}
+            >
+              {fPhotoUrl
+                ? <img src={fPhotoUrl} alt="Foto" className="w-full h-full object-cover" />
+                : <span className="text-[10px] text-muted-foreground text-center px-1">Toque para foto</span>
+              }
+            </div>
+            <input ref={photoRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
+            <button
+              onClick={() => photoRef.current?.click()}
+              className="text-[10px] uppercase font-extrabold tracking-widest text-muted-foreground border border-white/10 px-2 py-1 rounded-lg"
+            >
+              {fPhotoUrl ? 'Trocar foto' : 'Adicionar foto'}
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Nome completo *</Label>
+            <Input value={fName} onChange={(e) => setFName(e.target.value)} placeholder="Ex: João Silva" className="h-9" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Apelido (opcional)</Label>
+            <Input value={fNickname} onChange={(e) => setFNickname(e.target.value)} placeholder="Ex: Joãozinho" className="h-9" />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-foreground">Ativo</span>
+            <Switch checked={fActive} onCheckedChange={setFActive} />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 h-9 rounded-lg bg-white text-black text-xs font-black uppercase tracking-widest disabled:opacity-50"
+            >
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+            <button
+              onClick={closeForm}
+              className="px-4 h-9 rounded-lg border border-white/10 text-xs font-black uppercase tracking-widest text-muted-foreground"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-xs text-muted-foreground text-center py-6">Carregando...</p>
+      ) : barbers.length === 0 ? (
+        <div className="text-center py-10 text-muted-foreground">
+          <p className="text-xs">Nenhum barbeiro cadastrado.</p>
+          <p className="text-[10px] mt-1">Clique em &quot;+ Novo barbeiro&quot; para começar.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {barbers.map((b) => (
+            <div key={b.id} className="bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full overflow-hidden bg-white/5 border border-white/10 flex-shrink-0">
+                {b.photo_url
+                  ? <img src={b.photo_url} alt={b.name} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground font-black">
+                      {b.name.charAt(0).toUpperCase()}
+                    </div>
+                }
+              </div>
+              <div className="flex flex-col flex-1 min-w-0">
+                <span className="text-sm font-semibold text-foreground truncate">{b.name}</span>
+                {b.nickname && <span className="text-[11px] text-muted-foreground">{b.nickname}</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={b.is_active} onCheckedChange={() => handleToggle(b)} />
+                <button
+                  onClick={() => openEdit(b)}
+                  className="text-[10px] uppercase font-extrabold tracking-widest text-muted-foreground border border-white/10 px-2 py-1 rounded-lg"
+                >
+                  Editar
+                </button>
               </div>
             </div>
           ))}

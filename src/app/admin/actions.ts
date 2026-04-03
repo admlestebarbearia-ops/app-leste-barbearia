@@ -353,3 +353,55 @@ export async function uploadAdminGalleryPhoto(base64: string, mimeType: string) 
   if (!dbError) revalidatePath('/admin')
   return { success: !dbError, error: dbError?.message }
 }
+
+// ─── BARBEIROS ────────────────────────────────────────────────────────────
+export async function listBarbers() {
+  const { supabase } = await requireAdmin()
+  const { data, error } = await supabase
+    .from('barbers')
+    .select('*')
+    .order('created_at', { ascending: true })
+  return { success: !error, data: data ?? [], error: error?.message }
+}
+
+export async function upsertBarber(data: {
+  id?: string
+  name: string
+  nickname?: string | null
+  photo_url?: string | null
+  is_active?: boolean
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    if (data.id) {
+      const { error } = await supabase
+        .from('barbers')
+        .update({ name: data.name, nickname: data.nickname ?? null, photo_url: data.photo_url ?? null })
+        .eq('id', data.id)
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('barbers')
+        .insert({ name: data.name, nickname: data.nickname ?? null, photo_url: data.photo_url ?? null, is_active: true })
+      if (error) throw error
+    }
+    revalidatePath('/admin')
+    revalidatePath('/agendar')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function toggleBarberActive(id: string, is_active: boolean): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    const { error } = await supabase.from('barbers').update({ is_active }).eq('id', id)
+    if (error) throw error
+    revalidatePath('/admin')
+    revalidatePath('/agendar')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
