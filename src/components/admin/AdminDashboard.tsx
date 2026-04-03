@@ -101,12 +101,25 @@ export function AdminDashboard({
               Sair
             </a>
           </div>
-            ].join(' ')}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        </header>
+
+        {/* Tabs */}
+        <div className="flex border-b border-border px-4 gap-4 bg-background overflow-x-auto">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={[
+                'py-3 text-sm border-b-2 transition-colors whitespace-nowrap',
+                tab === t.key
+                  ? 'border-primary text-foreground font-medium'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              ].join(' ')}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
       {/* Content */}
       <main className="flex-1 px-4 py-5 max-w-lg mx-auto w-full">

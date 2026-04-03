@@ -49,74 +49,63 @@
 }
 
 :root {
-  /* Leste Barbearia — tema escuro forcado (cinza neutro) */
-  --background: oklch(0.14 0 0);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.16 0 0);
+  /* Leste Barbearia — tema guiado pelas novas especificações */
+  --background: oklch(0.20 0 0); /* Fallback escuro sólido */
+  --foreground: oklch(0.98 0 0); /* Texto Branco */
+  --card: oklch(0.25 0 0); /* Cinza grafite pros cards */
   --card-foreground: oklch(0.98 0 0);
   --popover: oklch(0.20 0 0);
   --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.56 0.194 27.3); /* Laranja/dourado mantido p/ destaque */
+  --primary: oklch(0.40 0.15 260); /* Azul Marinho (Acento) */
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.22 0 0);
+  --secondary: oklch(0.30 0 0); /* Cinza mais claro pros itens secundários */
   --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.22 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.22 0 0);
+  --muted: oklch(0.28 0 0);
+  --muted-foreground: oklch(0.70 0 0); /* Cinza Transparente */
+  --accent: oklch(0.40 0.15 260);
   --accent-foreground: oklch(0.98 0 0);
   --destructive: oklch(0.6 0.2 25);
-  --border: oklch(0.27 0 0);
-  --input: oklch(0.27 0 0);
-  --ring: oklch(0.56 0.194 27.3);
-  --chart-1: oklch(0.56 0.194 27.3);
-  --chart-2: oklch(0.65 0.21 27.3);
-  --chart-3: oklch(0.70 0 0);
-  --chart-4: oklch(0.52 0 0);
-  --chart-5: oklch(0.32 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.16 0 0);
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.56 0.194 27.3);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.22 0 0);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.27 0 0);
-  --sidebar-ring: oklch(0.56 0.194 27.3);
+  --border: oklch(0.30 0 0);
+  --input: oklch(0.30 0 0);
+  --ring: oklch(0.40 0.15 260); /* Azul Marinho */
+  --radius: 14px; /* Entre 12px e 16px como solicitado */
 }
 
 .dark {
-  /* Identico ao :root — dark mode e sempre forcado */
-  --background: oklch(0.14 0 0);
+  /* Forçando sempre o mesmo visual */
+  --background: oklch(0.20 0 0);
   --foreground: oklch(0.98 0 0);
-  --card: oklch(0.16 0 0);
+  --card: oklch(0.25 0 0);
   --card-foreground: oklch(0.98 0 0);
   --popover: oklch(0.20 0 0);
   --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.56 0.194 27.3);
+  --primary: oklch(0.40 0.15 260);
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.22 0 0);
+  --secondary: oklch(0.30 0 0);
   --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.22 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.22 0 0);
+  --muted: oklch(0.28 0 0);
+  --muted-foreground: oklch(0.70 0 0);
+  --accent: oklch(0.40 0.15 260);
   --accent-foreground: oklch(0.98 0 0);
   --destructive: oklch(0.6 0.2 25);
-  --border: oklch(0.27 0 0);
-  --input: oklch(0.27 0 0);
-  --ring: oklch(0.56 0.194 27.3);
-  --chart-1: oklch(0.56 0.194 27.3);
-  --chart-2: oklch(0.65 0.21 27.3);
-  --chart-3: oklch(0.70 0 0);
-  --chart-4: oklch(0.52 0 0);
-  --chart-5: oklch(0.32 0 0);
-  --sidebar: oklch(0.16 0 0);
-  --sidebar-foreground: oklch(0.98 0 0);
-  --sidebar-primary: oklch(0.56 0.194 27.3);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.22 0 0);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.27 0 0);
-  --sidebar-ring: oklch(0.56 0.194 27.3);
+  --border: oklch(0.30 0 0);
+  --input: oklch(0.30 0 0);
+  --ring: oklch(0.40 0.15 260);
+  --radius: 14px;
+}
+
+body {
+  background-color: #121212;
+  background-image: url('/fundo.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-blend-mode: overlay; /* Permite ler os textos caso a imagem seja mt clara */
+}
+
+/* Sombreamento sutil para dar profundidade aos cards */
+.card-shadow {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 }
 
 @layer base {
