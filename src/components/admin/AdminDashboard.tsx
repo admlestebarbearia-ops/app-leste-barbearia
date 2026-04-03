@@ -21,6 +21,7 @@ import {
 import { DomainModal } from '@/components/admin/DomainModal'
 import {
   updateAppointmentStatus,
+  deleteAppointment,
   toggleBlockClient,
   saveBusinessConfig,
   saveWorkingHours,
@@ -357,6 +358,7 @@ function TabHoje({
 }) {
   const todayStr = new Date().toISOString().split('T')[0]
   const [loading, setLoading] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [newBadge, setNewBadge] = useState(0)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   // Calendário
@@ -467,6 +469,19 @@ function TabHoje({
     setLoading(null)
   }
 
+  const handleDelete = async (id: string) => {
+    setLoading('del' + id)
+    const result = await deleteAppointment(id)
+    if (result.success) {
+      toast.success('Agendamento excluído.')
+      setDeleteConfirm(null)
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao excluir.')
+    }
+    setLoading(null)
+  }
+
   const formatSelectedDay = (dateStr: string) => {
     const d = new Date(dateStr + 'T12:00:00')
     if (dateStr === todayStr) return 'Hoje — ' + d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })
@@ -522,35 +537,38 @@ function TabHoje({
       </div>
 
       {/* ────────── CALENDÁRIO ────────── */}
-      <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-4 flex flex-col gap-3">
+      <div className="bg-white/[0.03] border border-white/[0.08] rounded-3xl overflow-hidden">
         {/* Navegação de mês */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <button
             onClick={prevMonth}
-            className="w-8 h-8 flex items-center justify-center rounded-xl border border-white/10 text-zinc-400 hover:text-white hover:border-white/30 transition-all text-sm font-bold"
+            className="w-9 h-9 flex items-center justify-center rounded-2xl border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-lg font-bold"
           >
             ‹
           </button>
-          <span className="text-sm font-extrabold text-white capitalize">{calMonthLabel}</span>
+          <span className="text-base font-extrabold text-white capitalize tracking-wide">{calMonthLabel}</span>
           <button
             onClick={nextMonth}
-            className="w-8 h-8 flex items-center justify-center rounded-xl border border-white/10 text-zinc-400 hover:text-white hover:border-white/30 transition-all text-sm font-bold"
+            className="w-9 h-9 flex items-center justify-center rounded-2xl border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-lg font-bold"
           >
             ›
           </button>
         </div>
 
         {/* Cabeçalho dias da semana */}
-        <div className="grid grid-cols-7">
-          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d) => (
-            <div key={d} className="text-center text-[9px] font-black uppercase tracking-widest text-zinc-600 py-1">
+        <div className="grid grid-cols-7 px-3 pb-1">
+          {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+            <div key={i} className="text-center text-[10px] font-black uppercase tracking-widest text-zinc-600 py-1">
               {d}
             </div>
           ))}
         </div>
 
+        {/* Separador */}
+        <div className="h-px bg-white/5 mx-3 mb-2" />
+
         {/* Grade de dias */}
-        <div className="grid grid-cols-7 gap-y-1">
+        <div className="grid grid-cols-7 gap-1 px-3 pb-4">
           {gridCells.map((dayNum, i) => {
             if (!dayNum) return <div key={i} />
             const dateStr = `${calMonth}-${String(dayNum).padStart(2, '0')}`
@@ -559,34 +577,32 @@ function TabHoje({
             const hasAppts = appts.length > 0
             const isToday = dateStr === todayStr
             const isSelected = dateStr === selectedDay
-            const isPast = dateStr < todayStr
 
             return (
               <button
                 key={i}
                 onClick={() => setSelectedDay(isSelected ? null : dateStr)}
                 className={[
-                  'relative flex flex-col items-center justify-start pt-1.5 pb-2 rounded-xl transition-all min-h-[44px]',
+                  'relative flex flex-col items-center justify-center rounded-2xl transition-all duration-150 aspect-square',
                   isSelected
-                    ? 'bg-white text-black'
+                    ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30'
                     : isToday
-                      ? 'bg-white/10 text-white border border-white/20'
-                      : isPast
-                        ? 'text-zinc-600 hover:bg-white/5'
-                        : 'text-zinc-300 hover:bg-white/5',
+                      ? 'ring-2 ring-white/30 bg-white/10'
+                      : 'hover:bg-white/8',
                 ].join(' ')}
               >
-                <span className={`text-[13px] font-black leading-none ${isSelected ? 'text-black' : ''}`}>
+                <span className={[
+                  'text-[13px] font-black leading-none',
+                  isSelected ? 'text-black' : isToday ? 'text-white' : hasAppts ? 'text-white' : 'text-zinc-600',
+                ].join(' ')}>
                   {dayNum}
                 </span>
                 {hasAppts && (
                   <span className={[
-                    'absolute bottom-1 text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none',
+                    'absolute bottom-[5px] text-[9px] font-black min-w-[16px] h-[14px] flex items-center justify-center rounded-full px-1',
                     isSelected
-                      ? 'bg-black text-white'
-                      : confirmedCount > 0
-                        ? 'bg-emerald-500 text-black'
-                        : 'bg-zinc-600 text-zinc-300',
+                      ? 'bg-black/30 text-white'
+                      : 'bg-emerald-500 text-black',
                   ].join(' ')}>
                     {appts.length}
                   </span>
@@ -596,15 +612,11 @@ function TabHoje({
           })}
         </div>
 
-        {/* Legenda */}
-        <div className="flex items-center gap-4 pt-1 border-t border-white/5">
+        {/* Rodapé legenda */}
+        <div className="flex items-center gap-4 px-5 py-3 border-t border-white/5 bg-white/[0.02]">
           <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <span className="text-[10px] text-zinc-500">Confirmado</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-zinc-600" />
-            <span className="text-[10px] text-zinc-500">Outros</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            <span className="text-[10px] text-zinc-500">Tem agendamentos</span>
           </div>
           <span className="ml-auto text-[10px] text-zinc-600">
             {Object.keys(apptByDate).length} dia(s) com agendamentos
@@ -635,7 +647,14 @@ function TabHoje({
             dayAppts.map((appt) => (
               <div
                 key={appt.id}
-                className={`bg-white/[0.03] border rounded-2xl p-4 flex flex-col gap-3 ${appt.status !== 'confirmado' ? 'opacity-60 border-white/5' : 'border-white/10'}`}
+                className={[
+                  'border rounded-2xl p-4 flex flex-col gap-3 transition-all',
+                  appt.status === 'confirmado'
+                    ? 'bg-white/[0.04] border-white/10'
+                    : appt.status === 'cancelado'
+                      ? 'bg-red-500/[0.04] border-red-500/10 opacity-70'
+                      : 'bg-amber-500/[0.03] border-amber-500/10 opacity-70',
+                ].join(' ')}
               >
                 {/* Linha 1: nome + horário */}
                 <div className="flex items-start justify-between gap-3">
@@ -692,52 +711,83 @@ function TabHoje({
                     {appt.status}
                   </span>
 
-                  {appt.status === 'confirmado' && (
-                    <div className="flex gap-2 flex-wrap">
-                      {appt.client_phone && (
-                        <a
-                          href={`https://wa.me/55${appt.client_phone.replace(/\D/g, '')}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 rounded-lg"
-                        >
-                          WhatsApp
-                        </a>
-                      )}
-                      <button
-                        disabled={loading === appt.id + 'faltou'}
-                        onClick={() => handleStatus(appt.id, 'faltou')}
-                        className="text-[10px] font-bold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
-                      >
-                        Faltou
-                      </button>
-                      <button
-                        disabled={loading === appt.id + 'cancelado'}
-                        onClick={() => handleStatus(appt.id, 'cancelado')}
-                        className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2 py-1 rounded-lg disabled:opacity-40"
-                      >
-                        Cancelar
-                      </button>
-                      {appt.client_id && !appt.profiles?.is_blocked && (
+                  <div className="flex gap-2 flex-wrap">
+                    {appt.status === 'confirmado' && (
+                      <>
+                        {appt.client_phone && (
+                          <a
+                            href={`https://wa.me/55${appt.client_phone.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 rounded-lg"
+                          >
+                            WhatsApp
+                          </a>
+                        )}
                         <button
-                          disabled={loading === 'block' + appt.client_id}
-                          onClick={() => handleBlock(appt.client_id, true)}
-                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                          disabled={loading === appt.id + 'faltou'}
+                          onClick={() => handleStatus(appt.id, 'faltou')}
+                          className="text-[10px] font-bold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
                         >
-                          Bloquear
+                          Faltou
                         </button>
-                      )}
-                      {appt.client_id && appt.profiles?.is_blocked && (
                         <button
-                          disabled={loading === 'block' + appt.client_id}
-                          onClick={() => handleBlock(appt.client_id, false)}
-                          className="text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                          disabled={loading === appt.id + 'cancelado'}
+                          onClick={() => handleStatus(appt.id, 'cancelado')}
+                          className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2 py-1 rounded-lg disabled:opacity-40"
                         >
-                          Desbloquear
+                          Cancelar
                         </button>
-                      )}
-                    </div>
-                  )}
+                        {appt.client_id && !appt.profiles?.is_blocked && (
+                          <button
+                            disabled={loading === 'block' + appt.client_id}
+                            onClick={() => handleBlock(appt.client_id, true)}
+                            className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                          >
+                            Bloquear
+                          </button>
+                        )}
+                        {appt.client_id && appt.profiles?.is_blocked && (
+                          <button
+                            disabled={loading === 'block' + appt.client_id}
+                            onClick={() => handleBlock(appt.client_id, false)}
+                            className="text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                          >
+                            Desbloquear
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    {/* Excluir — disponível para cancelado e faltou */}
+                    {(appt.status === 'cancelado' || appt.status === 'faltou') && (
+                      deleteConfirm === appt.id ? (
+                        <>
+                          <span className="text-[10px] text-zinc-400 self-center">Confirmar exclusão?</span>
+                          <button
+                            disabled={loading === 'del' + appt.id}
+                            onClick={() => handleDelete(appt.id)}
+                            className="text-[10px] font-black text-white bg-red-600 border border-red-500 px-2 py-1 rounded-lg disabled:opacity-40"
+                          >
+                            {loading === 'del' + appt.id ? '...' : 'Sim, excluir'}
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(null)}
+                            className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2 py-1 rounded-lg"
+                          >
+                            Não
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirm(appt.id)}
+                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded-lg"
+                        >
+                          Excluir
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
               </div>
             ))

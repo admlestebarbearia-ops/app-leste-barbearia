@@ -67,6 +67,24 @@ export async function updateAppointmentStatus(
   }
 }
 
+// ─── Excluir agendamento (apenas admin) ─────────────────────────────────
+export async function deleteAppointment(
+  appointmentId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    const { error } = await supabase
+      .from('appointments')
+      .delete()
+      .eq('id', appointmentId)
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
 // ─── Bloquear / desbloquear cliente ─────────────────────────────────────
 export async function toggleBlockClient(
   clientId: string,
