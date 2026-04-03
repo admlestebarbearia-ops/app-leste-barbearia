@@ -14,6 +14,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
+import { Scissors, CalendarDays, User, Menu, Star, Home, Check } from 'lucide-react'
+
 
 interface Props {
   services: Service[]
@@ -203,76 +205,113 @@ export function BookingForm({
       : config?.barber_name
 
   return (
-    <div className="flex flex-col gap-0">
-
-      {/* Header */}
-      <header className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <Image
-              src={config?.logo_url ?? '/logo-barbearialeste.png'}
-              alt="Leste Barbearia"
-              width={36}
-              height={36}
-              className="object-contain rounded"
-            />
-          <span className="text-sm font-medium text-foreground">Leste Barbearia</span>
-        </div>
-        {isLoggedIn && (
-          <div className="flex items-center gap-3">
-            {isAdmin && (
-              <a
-                href="/admin"
-                className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-              >
-                Painel Admin
-              </a>
-            )}
-            <a
-              href="/api/auth/signout"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Sair
-            </a>
-          </div>
+    <div className="flex flex-col gap-0 pb-32 min-h-screen">
+      {/* Header Premium */}
+      <header className="flex flex-col items-center justify-center pt-10 pb-6 px-4">
+        <Image
+            src={config?.logo_url ?? '/logo-barbearialeste.png'}
+            alt="Leste Barbearia"
+            width={72}
+            height={72}
+            className="object-contain rounded-2xl mb-4 card-shadow"
+          />
+        <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">
+          SELECIONE O SERVIÇO
+        </h1>
+        {isLoggedIn && isAdmin && (
+          <a href="/admin" className="text-[10px] text-primary font-bold mt-3 tracking-widest uppercase py-1 px-3 bg-primary/10 rounded-full">Painel Admin</a>
         )}
       </header>
 
-      <div className="px-5 pt-6 flex flex-col gap-8 max-w-lg mx-auto w-full">
+      <div className="px-4 pt-2 flex flex-col gap-10 max-w-lg mx-auto w-full">
 
-        {/* Secao 1: Servico */}
+        {/* Secao 1: Servico (Horizontal Scroll) */}
         <section>
-          <h2 className="text-base font-medium text-foreground mb-4">
-            1. O que vamos fazer hoje?
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            {services.map((service) => (
+          <div className="flex overflow-x-auto gap-4 pb-6 snap-x snap-mandatory hide-scrollbars -mx-4 px-4 items-center">
+            {services.map((service) => {
+              const isSelected = selectedService?.id === service.id;
+              return (
               <button
                 key={service.id}
                 onClick={() => handleServiceSelect(service)}
                 className={[
-                  'flex flex-col gap-1 p-4 rounded-xl border text-left transition-all',
-                  selectedService?.id === service.id
-                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                    : 'border-border bg-card hover:border-foreground/20',
+                  'flex-none w-[130px] h-[130px] flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border transition-all snap-start',
+                  isSelected
+                    ? 'border-primary bg-primary/20 ring-1 ring-primary card-shadow relative'
+                    : 'border-border bg-card hover:border-foreground/20 card-shadow',
                 ].join(' ')}
               >
-                <span className="text-sm font-medium text-foreground">{service.name}</span>
-                <span className="text-sm font-semibold text-primary">
-                  R$ {service.price.toFixed(2).replace('.', ',')}
-                </span>
-                <span className="text-xs text-muted-foreground">{service.duration_minutes} min</span>
+                {isSelected && <div className="absolute top-2 right-2 text-primary shadow-sm bg-background/50 rounded-full p-0.5"><Check size={14} strokeWidth={4} /></div>}
+                <div className={isSelected ? 'text-primary' : 'text-muted-foreground'}>
+                  <Scissors size={28} strokeWidth={1.5} />
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-foreground text-center leading-tight">{service.name}</span>
+                  <span className="text-[10px] font-bold text-muted-foreground tracking-widest">
+                    R$ {service.price.toFixed(2).replace('.', ',')}
+                  </span>
+                </div>
               </button>
-            ))}
+            )})}
           </div>
         </section>
 
-        {/* Secao 2: Data */}
+        {/* Secao 2: Barbeiro */}
         {selectedService && (
-          <section>
-            <h2 className="text-base font-medium text-foreground mb-4">
-              2. Escolha o melhor momento:
+          <section className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center gap-4 w-full mb-6 max-w-[250px] mx-auto opacity-70">
+               <div className="h-[1px] flex-1 bg-border"></div>
+               <Scissors size={18} className="text-muted-foreground rotate-90" />
+               <div className="h-[1px] flex-1 bg-border"></div>
+            </div>
+            
+            <h2 className="text-xs tracking-[0.2em] font-bold uppercase text-foreground mb-6 text-center">
+              ESCOLHA O BARBEIRO
             </h2>
-            <div className="flex justify-center">
+            
+            <div className="w-full flex justify-center">
+              <div className="flex items-center gap-5 bg-card py-4 px-6 rounded-2xl border border-primary/30 card-shadow ring-1 ring-primary/20 w-fit cursor-default">
+                <div className="relative">
+                  <div className="absolute inset-0 rounded-full bg-primary/30 blur-md"></div>
+                  <Image
+                    src={config?.barber_photo_url ?? '/barbearialeste.png'}
+                    alt={displayName ?? 'Barbeiro'}
+                    width={56}
+                    height={56}
+                    className="w-14 h-14 rounded-full object-cover border-[3px] border-primary relative z-10"
+                    unoptimized
+                  />
+                  <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-1 border border-border z-20 shadow-md">
+                    <Check size={12} className="text-primary" strokeWidth={4} />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-0.5 pr-2">
+                  <span className="font-extrabold text-sm uppercase tracking-wide text-foreground string-capitalize">{displayName}</span>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mb-1">Mestre</span>
+                  <div className="flex items-center gap-1">
+                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
+                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
+                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
+                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
+                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
+                     <span className="text-[10px] font-bold text-foreground ml-1">5.0</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Secao 3: Data */}
+        {selectedService && (
+          <section className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="flex items-center gap-4 w-full mb-8 max-w-[250px] mx-auto opacity-70">
+               <div className="h-[1px] flex-1 bg-border"></div>
+               <CalendarDays size={18} className="text-muted-foreground" />
+               <div className="h-[1px] flex-1 bg-border"></div>
+            </div>
+            
+            <div className="flex justify-center bg-card rounded-[2rem] p-5 card-shadow border border-border w-full max-w-[340px] mx-auto">
               <DayPicker
                 mode="single"
                 selected={selectedDate}
@@ -280,27 +319,27 @@ export function BookingForm({
                 locale={ptBR}
                 disabled={isDateDisabled}
                 classNames={{
-                  root: 'w-full max-w-xs',
+                  root: 'w-full',
                   months: 'w-full',
                   month: 'w-full',
-                  month_caption: 'flex justify-between items-center px-1 pb-3',
-                  caption_label: 'text-sm font-medium text-foreground capitalize',
-                  nav: 'flex gap-1',
-                  button_previous: 'h-7 w-7 flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
-                  button_next: 'h-7 w-7 flex items-center justify-center rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
+                  month_caption: 'flex justify-between items-center px-2 pb-5',
+                  caption_label: 'text-sm font-bold tracking-widest text-foreground uppercase',
+                  nav: 'flex gap-2',
+                  button_previous: 'h-9 w-9 flex items-center justify-center rounded-xl border-2 border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
+                  button_next: 'h-9 w-9 flex items-center justify-center rounded-xl border-2 border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
                   month_grid: 'w-full border-collapse',
-                  weekdays: 'flex mb-1',
-                  weekday: 'flex-1 text-center text-xs text-muted-foreground font-normal pb-1',
-                  weeks: 'flex flex-col gap-1',
+                  weekdays: 'flex mb-4',
+                  weekday: 'flex-1 text-center text-[10px] uppercase tracking-widest text-muted-foreground font-bold',
+                  weeks: 'flex flex-col gap-3',
                   week: 'flex',
-                  day: 'flex-1 relative',
+                  day: 'flex-1 relative p-0 m-0',
                   day_button: [
-                    'mx-auto h-8 w-8 flex items-center justify-center rounded-lg text-sm transition-colors',
+                    'mx-auto h-10 w-10 flex items-center justify-center rounded-full text-xs font-bold transition-all',
                     'hover:bg-muted hover:text-foreground',
                   ].join(' '),
-                  today: 'font-semibold text-primary',
-                  selected: '[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary',
-                  disabled: 'opacity-25 pointer-events-none',
+                  today: 'text-primary border-b-2 border-primary',
+                  selected: '[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary [&>button]:scale-110 shadow-lg',
+                  disabled: 'opacity-20 pointer-events-none text-muted-foreground font-normal',
                   outside: 'opacity-0 pointer-events-none',
                   hidden: 'invisible',
                 }}
@@ -309,43 +348,45 @@ export function BookingForm({
           </section>
         )}
 
-        {/* Secao 3: Horarios */}
+        {/* Secao 4: Horarios */}
         {selectedDate && (
-          <section>
-            <h2 className="text-base font-medium text-foreground mb-4">
-              Horarios disponiveis ({format(selectedDate, 'dd/MM')}):
+          <section className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <h2 className="text-[10px] tracking-[0.2em] font-bold uppercase text-foreground mb-5 text-center mt-6">
+               Horários disponíveis em {format(selectedDate, 'dd/MM')}
             </h2>
 
             {loadingSlots && (
-              <div className="flex gap-2 flex-wrap">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="h-9 w-20 rounded-lg bg-muted animate-pulse" />
+              <div className="grid grid-cols-4 gap-3 max-w-[340px] mx-auto">
+                {[...Array(8)].map((_, i) => (
+                  <div key={i} className="h-12 rounded-xl bg-card border border-border animate-pulse card-shadow" />
                 ))}
               </div>
             )}
 
             {!loadingSlots && availableSlots.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                Nenhum horario disponivel neste dia.
+              <p className="text-xs tracking-widest text-muted-foreground text-center bg-card p-6 rounded-2xl border border-border uppercase font-semibold max-w-[340px] mx-auto">
+                Nenhum horário disponível.
               </p>
             )}
 
             {!loadingSlots && availableSlots.length > 0 && (
-              <div className="flex gap-2 flex-wrap">
-                {availableSlots.map((slot) => (
+              <div className="grid grid-cols-4 gap-3 max-w-[340px] mx-auto">
+                {availableSlots.map((slot) => {
+                   const isSel = selectedTime === slot;
+                   return (
                   <button
                     key={slot}
                     onClick={() => setSelectedTime(slot)}
                     className={[
-                      'h-9 px-4 rounded-lg border text-sm font-medium transition-all',
-                      selectedTime === slot
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border text-foreground hover:border-foreground/30',
+                      'h-12 rounded-xl border text-sm font-extrabold transition-all card-shadow',
+                      isSel
+                        ? 'border-primary bg-primary text-primary-foreground scale-[1.03] shadow-primary/30 shadow-lg relative'
+                        : 'border-border bg-card text-foreground hover:border-foreground/30',
                     ].join(' ')}
                   >
                     {slot}
                   </button>
-                ))}
+                )})}
               </div>
             )}
           </section>
@@ -353,29 +394,29 @@ export function BookingForm({
 
         {/* Modo livre: nome e telefone */}
         {showFreeMode && selectedTime && (
-          <section className="flex flex-col gap-3">
-            <h2 className="text-base font-medium text-foreground">Seus dados:</h2>
+          <section className="flex flex-col gap-5 mt-6 bg-card p-6 rounded-[2rem] border border-border card-shadow max-w-[340px] mx-auto w-full animate-in zoom-in duration-300">
+            <h2 className="text-xs uppercase tracking-[0.2em] font-bold text-foreground text-center">Seus dados</h2>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="clientName" className="text-sm text-muted-foreground">
+              <Label htmlFor="clientName" className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest px-1">
                 Nome completo
               </Label>
               <Input
                 id="clientName"
                 value={clientName}
                 onChange={handleNameChange}
-                placeholder="Ex: Joao da Silva"
-                className={`h-10 ${nameError ? 'border-destructive' : ''}`}
+                placeholder="Ex: João da Silva"
+                className={`h-12 bg-background border-border rounded-xl px-4 text-sm font-medium ${nameError ? 'border-destructive' : ''}`}
                 maxLength={80}
                 inputMode="text"
                 autoComplete="name"
               />
               {nameError && (
-                <p className="text-xs text-destructive">{nameError}</p>
+                <p className="text-[10px] text-destructive font-bold px-1 uppercase tracking-wider">{nameError}</p>
               )}
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="clientPhone" className="text-sm text-muted-foreground">
-                Telefone com DDD
+            <div className="flex flex-col gap-2 mt-2">
+              <Label htmlFor="clientPhone" className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest px-1">
+                WhatsApp com DDD
               </Label>
               <Input
                 id="clientPhone"
@@ -385,11 +426,11 @@ export function BookingForm({
                 type="tel"
                 inputMode="numeric"
                 autoComplete="tel"
-                className={`h-10 ${phoneError ? 'border-destructive' : ''}`}
+                className={`h-12 bg-background border-border rounded-xl px-4 font-bold tracking-wider ${phoneError ? 'border-destructive' : ''}`}
                 maxLength={16}
               />
               {phoneError && (
-                <p className="text-xs text-destructive">{phoneError}</p>
+                <p className="text-[10px] text-destructive font-bold px-1 uppercase tracking-wider">{phoneError}</p>
               )}
             </div>
           </section>
@@ -397,70 +438,97 @@ export function BookingForm({
 
         {/* Meus agendamentos (logado) */}
         {isLoggedIn && (
-          <MyAppointments
-            cancellationWindowMinutes={config?.cancellation_window_minutes ?? 120}
-          />
+          <div className="mt-8 mb-4 max-w-[340px] mx-auto w-full">
+            <MyAppointments
+              cancellationWindowMinutes={config?.cancellation_window_minutes ?? 120}
+            />
+          </div>
         )}
 
       </div>
 
       {/* Turnstile (renderizado fora do fluxo visual) */}
       {showTurnstile && (
-        <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
-          <div className="bg-card border border-border rounded-t-2xl p-6 w-full max-w-sm">
-            <p className="text-sm text-muted-foreground mb-4 text-center">
-              Verificando seguranca...
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] backdrop-blur-sm transition-all px-4">
+          <div className="bg-card border border-border rounded-[2rem] p-8 w-full max-w-sm card-shadow relative overflow-hidden">
+            <div className="absolute inset-0 bg-primary/5"></div>
+            <p className="text-xs font-bold tracking-[0.2em] text-foreground mb-6 text-center uppercase relative z-10">
+              Proteção contra Spam
             </p>
-            <TurnstileWidget
-              siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''}
-              onSuccess={handleTurnstileSuccess}
-              onError={() => {
-                setShowTurnstile(false)
-                toast.error('Verificacao de seguranca falhou. Tente novamente.')
-              }}
-            />
+            <div className="flex justify-center relative z-10">
+              <TurnstileWidget
+                siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''}
+                onSuccess={handleTurnstileSuccess}
+                onError={() => {
+                  setShowTurnstile(false)
+                  toast.error('Verificação de segurança falhou. Tente novamente.')
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
 
-      {/* Barra de confirmacao fixa */}
-      {selectedService && (
-        <div className="fixed bottom-0 left-0 right-0 bg-card/95 backdrop-blur border-t border-border px-5 py-4 z-40">
-          <div className="max-w-lg mx-auto">
-            {selectedTime && selectedDate ? (
-              <div className="flex flex-col gap-1 mb-3">
-                <span className="text-xs text-muted-foreground">Resumo</span>
-                <span className="text-sm text-foreground">
-                  {selectedService.name} — {format(selectedDate, 'dd/MM')} as {selectedTime}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Profissional: {displayName}
-                </span>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground mb-3">
-                {!selectedDate ? 'Selecione uma data' : 'Selecione um horario'}
-              </p>
-            )}
+      {/* Barra de confirmacao flutuante (CTA) */}
+      <div className={`fixed bottom-[90px] left-0 right-0 px-4 z-40 transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] ${selectedTime ? 'translate-y-0 opacity-100 pointer-events-auto scale-100' : 'translate-y-full opacity-0 pointer-events-none scale-95'}`}>
+         <div className="max-w-[340px] mx-auto w-full">
             <Button
               onClick={handleConfirm}
               disabled={!canConfirm || isPending}
-              className="w-full h-11 text-sm font-semibold tracking-wide bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-30"
+              className="w-full h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50"
             >
-              {isPending ? 'Confirmando...' : 'Confirmar Agendamento'}
+              {isPending ? 'PROCESSANDO...' : 'CONFIRMAR RESERVA'}
             </Button>
-          </div>
-        </div>
-      )}
+         </div>
+      </div>
 
-      {config?.show_agency_brand && (
-        <p className="text-center text-xs text-muted-foreground/30 py-4 mt-4 select-none">
-          Sistema desenvolvido por Agencia JN
-        </p>
-      )}
+      {/* Bottom Nav Premium */}
+      <nav className="fixed bottom-0 left-0 right-0 h-[80px] bg-[#0A0A0A]/95 backdrop-blur-[20px] border-t border-white/5 z-50 flex items-center justify-between px-6 sm:px-10 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.8)]">
+         <button onClick={() => window.location.href = '/'} className="flex flex-col items-center gap-1 min-w-[50px] text-primary transition-all hover:-translate-y-1">
+            <Home size={24} strokeWidth={2} className="drop-shadow-md" />
+            <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Início</span>
+         </button>
+         
+         <button onClick={() => { if(isLoggedIn) { window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'}) } else { toast('Faça login para ver as reservas') } }} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+            <CalendarDays size={24} strokeWidth={2} />
+            <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Reservas</span>
+         </button>
+
+         <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="relative z-10 transition-transform hover:scale-105 active:scale-95 group">
+             <div className="absolute inset-0 bg-primary rounded-full blur-[20px] opacity-20 group-hover:opacity-50 transition-opacity"></div>
+             <div className="bg-[#18181b] border-2 border-white/10 p-3 h-16 w-16 rounded-full card-shadow shadow-[0_10px_30px_rgba(0,0,0,0.8)] flex items-center justify-center relative translate-y-[-20px]">
+                 <Image
+                    src={config?.logo_url ?? '/logo-barbearialeste.png'}
+                    alt="Logo"
+                    width={34}
+                    height={34}
+                    className="object-contain"
+                 />
+             </div>
+         </button>
+
+         <a href={isLoggedIn ? '/api/auth/signout' : '/login'} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+            <User size={24} strokeWidth={2} />
+            <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">{isLoggedIn ? 'Sair' : 'Perfil'}</span>
+         </a>
+
+         {isAdmin ? (
+           <a href="/admin" className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+             <Menu size={24} strokeWidth={2} />
+             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Menu</span>
+           </a>
+         ) : (
+           <button onClick={() => toast.info('Em Breve: Mais opções')} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+             <Menu size={24} strokeWidth={2} />
+             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Opções</span>
+           </button>
+         )}
+      </nav>
+
     </div>
   )
 }
+
 
 // ─── Sub-componente: Meus Agendamentos ────────────────────────────────────
 function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinutes: number }) {

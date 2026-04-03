@@ -103,6 +103,15 @@ body {
   background-blend-mode: overlay; /* Permite ler os textos caso a imagem seja mt clara */
 }
 
+/* Ocultar barra de rolagem */
+.hide-scrollbars::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbars {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
 /* Sombreamento sutil para dar profundidade aos cards */
 .card-shadow {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
