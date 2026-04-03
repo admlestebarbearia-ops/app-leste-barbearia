@@ -114,6 +114,16 @@ CREATE INDEX idx_appointments_date ON public.appointments(date);
 CREATE INDEX idx_appointments_client_id ON public.appointments(client_id);
 CREATE INDEX idx_appointments_status ON public.appointments(status);
 
+-- === STORAGE ===
+-- Buckets publicos para exibir logo e foto do barbeiro
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('logo', 'logo', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('barbeiro-foto', 'barbeiro-foto', true)
+ON CONFLICT (id) DO NOTHING;
+
 -- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
@@ -196,6 +206,36 @@ CREATE POLICY "Usuario cancela proprio agendamento" ON public.appointments
 
 CREATE POLICY "Admin atualiza todos agendamentos" ON public.appointments
   FOR UPDATE USING (public.is_admin());
+
+-- --- storage.objects ---
+CREATE POLICY "Leitura publica de imagens" ON storage.objects
+  FOR SELECT TO public
+  USING (bucket_id IN ('logo', 'barbeiro-foto'));
+
+CREATE POLICY "Admin envia imagens" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    bucket_id IN ('logo', 'barbeiro-foto')
+    AND public.is_admin()
+  );
+
+CREATE POLICY "Admin atualiza imagens" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (
+    bucket_id IN ('logo', 'barbeiro-foto')
+    AND public.is_admin()
+  )
+  WITH CHECK (
+    bucket_id IN ('logo', 'barbeiro-foto')
+    AND public.is_admin()
+  );
+
+CREATE POLICY "Admin remove imagens" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (
+    bucket_id IN ('logo', 'barbeiro-foto')
+    AND public.is_admin()
+  );
 
 -- ============================================================
 -- SEED DATA
