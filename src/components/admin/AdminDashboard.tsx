@@ -77,7 +77,7 @@ export function AdminDashboard({
 
   // Upload de logo direto do header
   const headerLogoRef = useRef<HTMLInputElement>(null)
-  const [headerLogoSrc, setHeaderLogoSrc] = useState(config.admin_logo_url ?? config.logo_url ?? '/logo-barbearialeste.png')
+  const [headerLogoSrc, setHeaderLogoSrc] = useState(config.admin_logo_url ?? '/logo-barbearialeste.png')
   const [savingHeaderLogo, setSavingHeaderLogo] = useState(false)
 
   const handleHeaderLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
