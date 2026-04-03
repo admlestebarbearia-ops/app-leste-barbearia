@@ -138,21 +138,24 @@ export async function createAppointment(data: {
   clientName?: string
   clientPhone?: string
 }): Promise<{ success: boolean; appointmentId?: string; error?: string }> {
-  // Valida Turnstile
-  const turnstileResponse = await fetch(
-    'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        secret: process.env.TURNSTILE_SECRET_KEY,
-        response: data.turnstileToken,
-      }),
+  // Valida Turnstile (ignorado se a chave nao estiver configurada)
+  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY
+  if (turnstileSecret && turnstileSecret !== 'sua_secret_key_aqui') {
+    const turnstileResponse = await fetch(
+      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret: turnstileSecret,
+          response: data.turnstileToken,
+        }),
+      }
+    )
+    const turnstileResult = await turnstileResponse.json()
+    if (!turnstileResult.success) {
+      return { success: false, error: 'Verificacao de seguranca falhou. Tente novamente.' }
     }
-  )
-  const turnstileResult = await turnstileResponse.json()
-  if (!turnstileResult.success) {
-    return { success: false, error: 'Verificacao de seguranca falhou. Tente novamente.' }
   }
 
   const supabase = await createClient()

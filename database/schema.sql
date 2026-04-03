@@ -233,7 +233,7 @@ CREATE POLICY "Admin atualiza todos agendamentos" ON public.appointments
 -- --- storage.objects ---
 DROP POLICY IF EXISTS "Leitura publica de imagens" ON storage.objects;
 CREATE POLICY "Leitura publica de imagens" ON storage.objects
-  FOR SELECT TO public
+  FOR SELECT
   USING (bucket_id IN ('logo', 'barbeiro-foto'));
 
 DROP POLICY IF EXISTS "Admin envia imagens" ON storage.objects;
@@ -299,13 +299,13 @@ WHERE NOT EXISTS (
 -- Horarios de funcionamento padrao (Seg-Sab, 9h-19h)
 -- O admin pode alterar via painel no primeiro acesso (onboarding)
 INSERT INTO public.working_hours (day_of_week, is_open, open_time, close_time) VALUES
-  (0, false, NULL,    NULL),     -- Domingo: fechado
-  (1, true,  '09:00', '19:00'), -- Segunda
-  (2, true,  '09:00', '19:00'), -- Terca
-  (3, true,  '09:00', '19:00'), -- Quarta
-  (4, true,  '09:00', '19:00'), -- Quinta
-  (5, true,  '09:00', '19:00'), -- Sexta
-  (6, true,  '09:00', '18:00') -- Sabado
+  (0, false, NULL,    NULL),
+  (1, true,  '09:00', '19:00'),
+  (2, true,  '09:00', '19:00'),
+  (3, true,  '09:00', '19:00'),
+  (4, true,  '09:00', '19:00'),
+  (5, true,  '09:00', '19:00'),
+  (6, true,  '09:00', '18:00')
 ON CONFLICT (day_of_week) DO NOTHING;
 
 -- ============================================================

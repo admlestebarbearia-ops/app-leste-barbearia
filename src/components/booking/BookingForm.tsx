@@ -104,6 +104,11 @@ export function BookingForm({
       toast.error('Informe seu nome e telefone.')
       return
     }
+    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+    if (!siteKey || siteKey === 'sua_site_key_aqui') {
+      submitBooking('')
+      return
+    }
     setShowTurnstile(true)
   }
 
