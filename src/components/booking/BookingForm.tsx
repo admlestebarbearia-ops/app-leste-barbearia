@@ -211,9 +211,9 @@ export function BookingForm({
         <Image
             src={config?.logo_url ?? '/logo-barbearialeste.png'}
             alt="Leste Barbearia"
-            width={72}
-            height={72}
-            className="object-contain rounded-2xl mb-4 card-shadow"
+            width={112}
+            height={112}
+            className="object-contain mb-6"
           />
         <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">
           SELECIONE O SERVIÇO
