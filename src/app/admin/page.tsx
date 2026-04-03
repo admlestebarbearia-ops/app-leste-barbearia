@@ -58,16 +58,34 @@ export default async function AdminPage() {
   // Inclui os últimos 30 dias para não perder histórico recente
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-  const { data: allAppointments, error: apptError } = await adminClient
+  const { data: rawAppointments, error: apptError } = await adminClient
     .from('appointments')
     .select(`
       *,
-      services(name, price, duration_minutes),
-      profiles(is_blocked, display_name)
+      services(name, price, duration_minutes)
     `)
     .gte('date', thirtyDaysAgo)
     .order('date', { ascending: true })
     .order('start_time', { ascending: true })
+
+  // Busca profiles separadamente para evitar erro de FK inexistente no schema cache
+  let allAppointments = rawAppointments as Appointment[] | null
+  if (rawAppointments && rawAppointments.length > 0) {
+    const clientIds = [...new Set(rawAppointments.map((a) => a.client_id).filter(Boolean))] as string[]
+    if (clientIds.length > 0) {
+      const { data: profilesData } = await adminClient
+        .from('profiles')
+        .select('id, is_blocked, display_name')
+        .in('id', clientIds)
+      if (profilesData) {
+        const profilesMap = Object.fromEntries(profilesData.map((p) => [p.id, p]))
+        allAppointments = rawAppointments.map((a) => ({
+          ...a,
+          profiles: a.client_id ? profilesMap[a.client_id] ?? null : null,
+        })) as Appointment[]
+      }
+    }
+  }
 
   if (apptError) {
     console.error('[admin] Erro ao buscar agendamentos:', apptError.message)
