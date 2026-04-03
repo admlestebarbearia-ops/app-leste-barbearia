@@ -211,9 +211,9 @@ export function BookingForm({
         <Image
             src={config?.logo_url ?? '/logo-barbearialeste.png'}
             alt="Leste Barbearia"
-            width={112}
-            height={112}
-            className="object-contain mb-6"
+            width={124}
+            height={124}
+            className="object-contain mb-6 animate-shine drop-shadow-xl"
           />
         <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">
           SELECIONE O SERVIÇO
@@ -227,7 +227,7 @@ export function BookingForm({
 
         {/* Secao 1: Servico (Horizontal Scroll) */}
         <section>
-          <div className="flex overflow-x-auto gap-4 pb-6 snap-x snap-mandatory hide-scrollbars -mx-4 px-4 items-center">
+          <div className="flex flex-wrap justify-center gap-3 pb-6">
             {services.map((service) => {
               const isSelected = selectedService?.id === service.id;
               return (
@@ -235,7 +235,7 @@ export function BookingForm({
                 key={service.id}
                 onClick={() => handleServiceSelect(service)}
                 className={[
-                  'flex-none w-[130px] h-[130px] flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border transition-all snap-start',
+                  'w-[105px] h-[110px] sm:w-[120px] sm:h-[120px] flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border transition-all',
                   isSelected
                     ? 'border-primary bg-primary/20 ring-1 ring-primary card-shadow relative'
                     : 'border-border bg-card hover:border-foreground/20 card-shadow',
@@ -438,7 +438,7 @@ export function BookingForm({
 
         {/* Meus agendamentos (logado) */}
         {isLoggedIn && (
-          <div className="mt-8 mb-4 max-w-[340px] mx-auto w-full">
+          <div id="meus-agendamentos" className="mt-8 mb-[100px] max-w-[340px] mx-auto w-full scroll-mt-24">
             <MyAppointments
               cancellationWindowMinutes={config?.cancellation_window_minutes ?? 120}
             />
@@ -489,7 +489,7 @@ export function BookingForm({
             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Início</span>
          </button>
          
-         <button onClick={() => { if(isLoggedIn) { window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'}) } else { toast('Faça login para ver as reservas') } }} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+         <button onClick={() => { if(isLoggedIn) { document.getElementById('meus-agendamentos')?.scrollIntoView({ behavior: 'smooth' }) } else { toast('Faça login para ver as reservas') } }} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
             <CalendarDays size={24} strokeWidth={2} />
             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Reservas</span>
          </button>
@@ -502,12 +502,12 @@ export function BookingForm({
                     alt="Logo"
                     width={34}
                     height={34}
-                    className="object-contain"
+                    className="object-contain animate-shine"
                  />
              </div>
          </button>
 
-         <a href={isLoggedIn ? '/api/auth/signout' : '/login'} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+         <a href={isLoggedIn ? '/api/auth/signout' : '/'} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
             <User size={24} strokeWidth={2} />
             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">{isLoggedIn ? 'Sair' : 'Perfil'}</span>
          </a>
