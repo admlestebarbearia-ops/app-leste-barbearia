@@ -82,7 +82,7 @@ export interface Appointment {
   status: AppointmentStatus
   created_at: string
   services?: Pick<Service, 'name' | 'price' | 'duration_minutes'>
-  profiles?: Pick<Profile, 'is_blocked'> & { display_name?: string }
+  profiles?: Pick<Profile, 'is_blocked'> & { display_name?: string; email?: string | null }
 }
 
 export interface BlockedDevice {

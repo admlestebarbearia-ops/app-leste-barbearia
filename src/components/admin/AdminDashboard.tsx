@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useMemo } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -342,7 +342,7 @@ export function AdminDashboard({
 }
 
 // ------------------------------------------------------------------
-// Tab: Agenda (todos os agendamentos agrupados por data)
+// Tab: Agenda — Calendário mensal com agendamentos por dia
 // ------------------------------------------------------------------
 function TabHoje({
   appointments,
@@ -355,13 +355,14 @@ function TabHoje({
   onRefresh: () => void
   queryError?: string | null
 }) {
+  const todayStr = new Date().toISOString().split('T')[0]
   const [loading, setLoading] = useState<string | null>(null)
-  const [filter, setFilter] = useState<'hoje' | 'proximos' | 'todos'>('todos')
   const [newBadge, setNewBadge] = useState(0)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
-  const todayStr = new Date().toISOString().split('T')[0]
+  // Calendário
+  const [calMonth, setCalMonth] = useState(() => todayStr.slice(0, 7)) // "yyyy-mm"
+  const [selectedDay, setSelectedDay] = useState<string | null>(todayStr)
 
-  // Pede permissão de notificação do navegador na montagem
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setNotifPermission(Notification.permission)
@@ -385,35 +386,61 @@ function TabHoje({
     })
   }
 
-  // Notificação em tempo real de novos agendamentos
   useEffect(() => {
     const { createClient: createBrowser } = require('@/lib/supabase/client')
     const supabase = createBrowser()
     const channel = supabase
       .channel('admin-appointments')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'appointments',
-      }, (payload: { new: { date?: string; start_time?: string } }) => {
-        const d = payload.new?.date ?? ''
-        const t = payload.new?.start_time?.slice(0, 5) ?? ''
-        toast.success(`Novo agendamento! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, {
-          duration: 8000,
-          icon: '📅',
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'appointments' },
+        (payload: { new: { date?: string; start_time?: string } }) => {
+          const d = payload.new?.date ?? ''
+          const t = payload.new?.start_time?.slice(0, 5) ?? ''
+          toast.success(`Novo agendamento! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '📅' })
+          sendBrowserNotif(d, t)
+          setNewBadge((prev) => prev + 1)
+          onRefresh()
         })
-        sendBrowserNotif(d, t)
-        setNewBadge((prev) => prev + 1)
-        onRefresh()
-      })
       .subscribe()
-
     return () => { supabase.removeChannel(channel) }
   }, [onRefresh])
 
-  const getDisplayName = (appt: Appointment) => {
-    return appt.profiles?.display_name ?? appt.client_name ?? 'Cliente'
+  // Mapa de data → agendamentos
+  const apptByDate = useMemo(() => {
+    return appointments.reduce<Record<string, Appointment[]>>((acc, a) => {
+      if (!a.date) return acc
+      if (!acc[a.date]) acc[a.date] = []
+      acc[a.date].push(a)
+      return acc
+    }, {})
+  }, [appointments])
+
+  // Dados do calendário
+  const [calYear, calMonthNum] = calMonth.split('-').map(Number)
+  const firstDayOfWeek = new Date(calYear, calMonthNum - 1, 1).getDay() // 0=Dom
+  const daysInMonth = new Date(calYear, calMonthNum, 0).getDate()
+  const calMonthLabel = new Date(calYear, calMonthNum - 1, 1)
+    .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+
+  const prevMonth = () => {
+    const d = new Date(calYear, calMonthNum - 2, 1)
+    setCalMonth(d.toISOString().slice(0, 7))
   }
+  const nextMonth = () => {
+    const d = new Date(calYear, calMonthNum, 1)
+    setCalMonth(d.toISOString().slice(0, 7))
+  }
+
+  // 42 células = 6 linhas × 7 colunas
+  const gridCells = Array.from({ length: 42 }, (_, i) => {
+    const dayNum = i - firstDayOfWeek + 1
+    if (dayNum < 1 || dayNum > daysInMonth) return null
+    return dayNum
+  })
+
+  const dayAppts = selectedDay ? (apptByDate[selectedDay] ?? []).slice().sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? '')) : []
+
+  const getDisplayName = (appt: Appointment) =>
+    appt.profiles?.display_name ?? appt.client_name ?? 'Cliente'
 
   const handleStatus = async (id: string, status: 'cancelado' | 'faltou') => {
     setLoading(id + status)
@@ -440,32 +467,10 @@ function TabHoje({
     setLoading(null)
   }
 
-  // Filtro de data
-  const sevenDaysAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  const filteredAppointments = appointments.filter((a) => {
-    const d = a.date ?? ''
-    if (filter === 'hoje') return d === todayStr
-    if (filter === 'proximos') return d >= todayStr && d <= sevenDaysAhead
-    return true // 'todos'
-  })
-
-  // Agrupa por data
-  const byDate = filteredAppointments.reduce<Record<string, Appointment[]>>((acc, appt) => {
-    const d = appt.date ?? 'sem-data'
-    if (!acc[d]) acc[d] = []
-    acc[d].push(appt)
-    return acc
-  }, {})
-
-  const sortedDates = Object.keys(byDate).sort()
-
-  const formatDateLabel = (dateStr: string) => {
-    if (dateStr === todayStr) return 'Hoje'
+  const formatSelectedDay = (dateStr: string) => {
     const d = new Date(dateStr + 'T12:00:00')
-    const diff = Math.round((d.getTime() - new Date().setHours(12, 0, 0, 0)) / 86400000)
-    if (diff === 1) return 'Amanhã'
-    if (diff < 0) return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }) + ' (passado)'
-    return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+    if (dateStr === todayStr) return 'Hoje — ' + d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })
+    return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   }
 
   const statusColor: Record<string, string> = {
@@ -474,20 +479,20 @@ function TabHoje({
     faltou:     'text-amber-400  border-amber-500/20  bg-amber-500/10',
   }
 
-  const confirmedCount = filteredAppointments.filter(a => a.status === 'confirmado').length
+  const totalConfirmed = appointments.filter(a => a.status === 'confirmado').length
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Erro de configuração — visível para o admin diagnosticar */}
+    <div className="flex flex-col gap-5">
+      {/* Erro de configuração */}
       {queryError && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 flex flex-col gap-1">
           <span className="text-xs font-black text-red-400 uppercase tracking-widest">Erro ao carregar agendamentos</span>
           <span className="text-[11px] text-red-300/70">{queryError}</span>
-          <span className="text-[10px] text-zinc-500 mt-1">Verifique se a variável SUPABASE_SERVICE_ROLE_KEY está configurada no Vercel e faça um novo deploy.</span>
+          <span className="text-[10px] text-zinc-500 mt-1">Verifique se SUPABASE_SERVICE_ROLE_KEY está configurada no Vercel e faça um novo deploy.</span>
         </div>
       )}
 
-      {/* Botão de notificações do navegador */}
+      {/* Notificações do navegador */}
       {notifPermission !== 'granted' && (
         <button
           onClick={requestNotifPermission}
@@ -498,7 +503,7 @@ function TabHoje({
         </button>
       )}
 
-      {/* Cabeçalho com badge de novos */}
+      {/* Cabeçalho */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">Agenda</h2>
@@ -512,115 +517,233 @@ function TabHoje({
           )}
         </div>
         <span className="text-[10px] font-bold text-zinc-500 bg-white/5 py-1 px-3 rounded-full border border-white/5">
-          {confirmedCount} confirmado(s)
+          {totalConfirmed} confirmado(s)
         </span>
       </div>
 
-      {/* Filtros de data */}
-      <div className="flex gap-2">
-        {([
-          { key: 'hoje',    label: 'Hoje' },
-          { key: 'proximos', label: 'Próximos 7 dias' },
-          { key: 'todos',   label: 'Todos' },
-        ] as const).map(({ key, label }) => (
+      {/* ────────── CALENDÁRIO ────────── */}
+      <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-4 flex flex-col gap-3">
+        {/* Navegação de mês */}
+        <div className="flex items-center justify-between">
           <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={[
-              'text-[10px] font-bold px-3 py-1.5 rounded-full border transition-all',
-              filter === key
-                ? 'bg-white text-black border-white'
-                : 'text-zinc-400 border-white/10 hover:border-white/30',
-            ].join(' ')}
+            onClick={prevMonth}
+            className="w-8 h-8 flex items-center justify-center rounded-xl border border-white/10 text-zinc-400 hover:text-white hover:border-white/30 transition-all text-sm font-bold"
           >
-            {label}
+            ‹
           </button>
-        ))}
-      </div>
-
-      {sortedDates.length === 0 && (
-        <div className="text-center py-16 bg-white/[0.02] border border-white/5 rounded-3xl">
-          <p className="text-zinc-500 text-xs uppercase tracking-wide">Nenhum agendamento neste período.</p>
+          <span className="text-sm font-extrabold text-white capitalize">{calMonthLabel}</span>
+          <button
+            onClick={nextMonth}
+            className="w-8 h-8 flex items-center justify-center rounded-xl border border-white/10 text-zinc-400 hover:text-white hover:border-white/30 transition-all text-sm font-bold"
+          >
+            ›
+          </button>
         </div>
-      )}
 
-      {sortedDates.map((dateStr) => (
-        <div key={dateStr} className="flex flex-col gap-3">
-          {/* Cabeçalho do grupo de data */}
-          <div className="flex items-center gap-3">
-            <span className={`text-xs font-extrabold uppercase tracking-widest ${dateStr === todayStr ? 'text-white' : 'text-zinc-400'}`}>
-              {formatDateLabel(dateStr)}
-            </span>
-            <span className="text-[10px] text-zinc-600">{new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
-            <div className="flex-1 h-px bg-white/5" />
-            <span className="text-[10px] text-zinc-600">{byDate[dateStr].filter(a => a.status === 'confirmado').length} confirmado(s)</span>
-          </div>
-
-          {byDate[dateStr].map((appt) => (
-            <div
-              key={appt.id}
-              className={`relative bg-white/[0.03] border rounded-2xl p-4 flex flex-col gap-3 ${appt.status !== 'confirmado' ? 'opacity-50' : 'border-white/10'}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="font-bold text-sm text-white">{getDisplayName(appt)}</span>
-                  <span className="text-[11px] text-zinc-400">{appt.services?.name}</span>
-                </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className="text-sm font-black text-white">{appt.start_time?.slice(0, 5)}</span>
-                  {appt.services?.price != null && (
-                    <span className="text-[10px] text-zinc-500">R$ {appt.services.price.toFixed(2).replace('.', ',')}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border ${statusColor[appt.status] ?? statusColor['cancelado']}`}>
-                  {appt.status}
-                </span>
-
-                {appt.status === 'confirmado' && (
-                  <div className="flex gap-2 flex-wrap">
-                    {appt.client_phone && (
-                      <a
-                        href={`https://wa.me/55${appt.client_phone.replace(/\D/g, '')}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 rounded-lg"
-                      >
-                        WhatsApp
-                      </a>
-                    )}
-                    <button
-                      disabled={loading === appt.id + 'faltou'}
-                      onClick={() => handleStatus(appt.id, 'faltou')}
-                      className="text-[10px] font-bold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
-                    >
-                      Faltou
-                    </button>
-                    <button
-                      disabled={loading === appt.id + 'cancelado'}
-                      onClick={() => handleStatus(appt.id, 'cancelado')}
-                      className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2 py-1 rounded-lg disabled:opacity-40"
-                    >
-                      Cancelar
-                    </button>
-                    {appt.client_id && (
-                      <button
-                        disabled={loading === 'block' + appt.client_id}
-                        onClick={() => handleBlock(appt.client_id, true)}
-                        className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
-                      >
-                        Bloquear
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+        {/* Cabeçalho dias da semana */}
+        <div className="grid grid-cols-7">
+          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d) => (
+            <div key={d} className="text-center text-[9px] font-black uppercase tracking-widest text-zinc-600 py-1">
+              {d}
             </div>
           ))}
         </div>
-      ))}
+
+        {/* Grade de dias */}
+        <div className="grid grid-cols-7 gap-y-1">
+          {gridCells.map((dayNum, i) => {
+            if (!dayNum) return <div key={i} />
+            const dateStr = `${calMonth}-${String(dayNum).padStart(2, '0')}`
+            const appts = apptByDate[dateStr] ?? []
+            const confirmedCount = appts.filter(a => a.status === 'confirmado').length
+            const hasAppts = appts.length > 0
+            const isToday = dateStr === todayStr
+            const isSelected = dateStr === selectedDay
+            const isPast = dateStr < todayStr
+
+            return (
+              <button
+                key={i}
+                onClick={() => setSelectedDay(isSelected ? null : dateStr)}
+                className={[
+                  'relative flex flex-col items-center justify-start pt-1.5 pb-2 rounded-xl transition-all min-h-[44px]',
+                  isSelected
+                    ? 'bg-white text-black'
+                    : isToday
+                      ? 'bg-white/10 text-white border border-white/20'
+                      : isPast
+                        ? 'text-zinc-600 hover:bg-white/5'
+                        : 'text-zinc-300 hover:bg-white/5',
+                ].join(' ')}
+              >
+                <span className={`text-[13px] font-black leading-none ${isSelected ? 'text-black' : ''}`}>
+                  {dayNum}
+                </span>
+                {hasAppts && (
+                  <span className={[
+                    'absolute bottom-1 text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none',
+                    isSelected
+                      ? 'bg-black text-white'
+                      : confirmedCount > 0
+                        ? 'bg-emerald-500 text-black'
+                        : 'bg-zinc-600 text-zinc-300',
+                  ].join(' ')}>
+                    {appts.length}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Legenda */}
+        <div className="flex items-center gap-4 pt-1 border-t border-white/5">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span className="text-[10px] text-zinc-500">Confirmado</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-zinc-600" />
+            <span className="text-[10px] text-zinc-500">Outros</span>
+          </div>
+          <span className="ml-auto text-[10px] text-zinc-600">
+            {Object.keys(apptByDate).length} dia(s) com agendamentos
+          </span>
+        </div>
+      </div>
+
+      {/* ────────── LISTA DO DIA SELECIONADO ────────── */}
+      {selectedDay && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-extrabold uppercase tracking-widest text-white capitalize">
+              {formatSelectedDay(selectedDay)}
+            </span>
+            <div className="flex-1 h-px bg-white/5" />
+            {dayAppts.length > 0 && (
+              <span className="text-[10px] text-zinc-600">
+                {dayAppts.filter(a => a.status === 'confirmado').length} confirmado(s)
+              </span>
+            )}
+          </div>
+
+          {dayAppts.length === 0 ? (
+            <div className="text-center py-10 bg-white/[0.02] border border-white/5 rounded-2xl">
+              <p className="text-zinc-600 text-xs">Nenhum agendamento neste dia.</p>
+            </div>
+          ) : (
+            dayAppts.map((appt) => (
+              <div
+                key={appt.id}
+                className={`bg-white/[0.03] border rounded-2xl p-4 flex flex-col gap-3 ${appt.status !== 'confirmado' ? 'opacity-60 border-white/5' : 'border-white/10'}`}
+              >
+                {/* Linha 1: nome + horário */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-white">{getDisplayName(appt)}</span>
+                      {appt.client_id && (
+                        <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded-full tracking-wide">
+                          Google
+                        </span>
+                      )}
+                      {appt.profiles?.is_blocked && (
+                        <span className="text-[9px] font-black bg-red-500/20 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded-full tracking-wide">
+                          Bloqueado
+                        </span>
+                      )}
+                    </div>
+                    {/* Email (apenas clientes Google) */}
+                    {appt.profiles?.email && (
+                      <span className="text-[10px] text-zinc-500">{appt.profiles.email}</span>
+                    )}
+                    {/* Telefone */}
+                    {appt.client_phone && (
+                      <span className="text-[10px] text-zinc-500">{appt.client_phone}</span>
+                    )}
+                  </div>
+                  {/* Horário e preço */}
+                  <div className="flex flex-col items-end gap-0.5 shrink-0">
+                    <span className="text-lg font-black text-white leading-none">{appt.start_time?.slice(0, 5)}</span>
+                    {appt.services?.price != null && (
+                      <span className="text-[10px] text-zinc-400 font-semibold">
+                        R$ {appt.services.price.toFixed(2).replace('.', ',')}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Linha 2: serviço + duração */}
+                {appt.services && (
+                  <div className="flex items-center gap-2 text-[11px] text-zinc-400">
+                    <span className="font-semibold">{appt.services.name}</span>
+                    {appt.services.duration_minutes && (
+                      <>
+                        <span className="text-zinc-700">·</span>
+                        <span>{appt.services.duration_minutes} min</span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Linha 3: status + ações */}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border ${statusColor[appt.status] ?? statusColor['cancelado']}`}>
+                    {appt.status}
+                  </span>
+
+                  {appt.status === 'confirmado' && (
+                    <div className="flex gap-2 flex-wrap">
+                      {appt.client_phone && (
+                        <a
+                          href={`https://wa.me/55${appt.client_phone.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 rounded-lg"
+                        >
+                          WhatsApp
+                        </a>
+                      )}
+                      <button
+                        disabled={loading === appt.id + 'faltou'}
+                        onClick={() => handleStatus(appt.id, 'faltou')}
+                        className="text-[10px] font-bold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                      >
+                        Faltou
+                      </button>
+                      <button
+                        disabled={loading === appt.id + 'cancelado'}
+                        onClick={() => handleStatus(appt.id, 'cancelado')}
+                        className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2 py-1 rounded-lg disabled:opacity-40"
+                      >
+                        Cancelar
+                      </button>
+                      {appt.client_id && !appt.profiles?.is_blocked && (
+                        <button
+                          disabled={loading === 'block' + appt.client_id}
+                          onClick={() => handleBlock(appt.client_id, true)}
+                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                        >
+                          Bloquear
+                        </button>
+                      )}
+                      {appt.client_id && appt.profiles?.is_blocked && (
+                        <button
+                          disabled={loading === 'block' + appt.client_id}
+                          onClick={() => handleBlock(appt.client_id, false)}
+                          className="text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                        >
+                          Desbloquear
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }

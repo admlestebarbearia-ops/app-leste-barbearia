@@ -75,7 +75,7 @@ export default async function AdminPage() {
     if (clientIds.length > 0) {
       const { data: profilesData } = await adminClient
         .from('profiles')
-        .select('id, is_blocked, display_name')
+        .select('id, is_blocked, display_name, email')
         .in('id', clientIds)
       if (profilesData) {
         const profilesMap = Object.fromEntries(profilesData.map((p) => [p.id, p]))
