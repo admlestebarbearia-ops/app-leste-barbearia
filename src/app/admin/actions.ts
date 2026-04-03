@@ -212,7 +212,7 @@ export async function toggleServiceActive(
 
 // ─── Upload de imagem para Storage ──────────────────────────────────────
 export async function uploadImage(
-  bucket: 'logo' | 'barbeiro-foto',
+  bucket: 'logo' | 'barbeiro-foto' | 'galeria',
   base64: string,
   mimeType: string
 ): Promise<{ url: string | null; error?: string }> {
@@ -319,4 +319,36 @@ export async function completeOnboarding(data: {
   } catch (e) {
     return { success: false, error: (e as Error).message }
   }
+}
+
+
+
+// ─── ADMIN GALERIA ──────────────────────────────────────────────────
+export async function fetchAdminGalleryPhotos() {
+  const { supabase } = await requireAdmin()
+  const { data, error } = await supabase.from('gallery_photos').select('*').order('created_at', { ascending: false })
+  return { success: !error, data: data || [], error: error?.message }
+}
+
+export async function deleteGalleryPhoto(id: string) {
+  const { supabase } = await requireAdmin()
+  const { error } = await supabase.from('gallery_photos').delete().eq('id', id)
+  if (!error) revalidatePath('/admin')
+  return { success: !error, error: error?.message }
+}
+
+export async function approveGalleryPhoto(id: string) {
+  const { supabase } = await requireAdmin()
+  const { error } = await supabase.from('gallery_photos').update({ status: 'approved' }).eq('id', id)
+  if (!error) revalidatePath('/admin')
+  return { success: !error, error: error?.message }
+}
+
+export async function uploadAdminGalleryPhoto(base64: string, mimeType: string) {
+  const { supabase } = await requireAdmin()
+  const { url, error } = await uploadImage('galeria', base64, mimeType)
+  if (error || !url) return { success: false, error: error || 'Failed to upload' }
+  const { error: dbError } = await supabase.from('gallery_photos').insert({ url, status: 'approved' })
+  if (!dbError) revalidatePath('/admin')
+  return { success: !dbError, error: dbError?.message }
 }

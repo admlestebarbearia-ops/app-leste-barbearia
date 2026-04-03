@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -31,6 +31,10 @@ import {
   listUsers,
   setAdminRole,
   togglePauseStatus,
+  fetchAdminGalleryPhotos,
+  deleteGalleryPhoto,
+  approveGalleryPhoto,
+  uploadAdminGalleryPhoto,
 } from '@/app/admin/actions'
 import type {
   BusinessConfig,
@@ -42,7 +46,7 @@ import type {
 
 const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab']
 
-type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'admins'
+type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'admins' | 'galeria'
 
 interface Props {
   config: BusinessConfig
@@ -81,6 +85,7 @@ export function AdminDashboard({
     { key: 'hoje', label: 'AGENDA' },
     { key: 'configuracoes', label: 'PREFERÊNCIAS' },
     { key: 'servicos', label: 'CATÁLOGO' },
+    { key: 'galeria', label: 'GALERIA' },
     { key: 'admins', label: 'SEGURANÇA' },
   ]
 
@@ -165,6 +170,9 @@ export function AdminDashboard({
         )}
         {tab === 'servicos' && (
           <TabServicos services={services} onRefresh={() => router.refresh()} />
+        )}
+        {tab === 'galeria' && (
+          <TabGaleria />
         )}
         {tab === 'admins' && (
           <TabAdmins />
@@ -388,6 +396,8 @@ function TabConfiguracoes({
   // Config geral
   const [requireGoogle, setRequireGoogle] = useState(config.require_google_login)
   const [cancelWindow, setCancelWindow] = useState(String(config.cancellation_window_minutes))
+  const [enableGallery, setEnableGallery] = useState(config.enable_gallery)
+  const [allowClientUploads, setAllowClientUploads] = useState(config.allow_client_uploads)
   const [savingConfig, setSavingConfig] = useState(false)
 
   // Logo
@@ -444,6 +454,8 @@ function TabConfiguracoes({
     const result = await saveBusinessConfig({
       require_google_login: requireGoogle,
       cancellation_window_minutes: window_minutes,
+      enable_gallery: enableGallery,
+      allow_client_uploads: allowClientUploads,
     })
     setSavingConfig(false)
     if (result.success) {
@@ -606,19 +618,36 @@ function TabConfiguracoes({
         </div>
       </section>
 
-      {/* Regras */}
+      {/* Regras e Galeria */}
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Regras de agendamento</h3>
+        <h3 className="text-sm font-medium text-foreground">Configurações Gerais</h3>
         <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex flex-col gap-0.5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-0.5 flex-1">
               <span className="text-sm text-foreground">Exigir login com Google</span>
               <span className="text-xs text-muted-foreground">Desativado = qualquer um agenda</span>
             </div>
             <Switch checked={requireGoogle} onCheckedChange={setRequireGoogle} />
           </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-0.5 flex-1">
+              <span className="text-sm text-foreground">Ativar Galeria</span>
+              <span className="text-xs text-muted-foreground">Exibe a aba de fotos para clientes</span>
+            </div>
+            <Switch checked={enableGallery} onCheckedChange={setEnableGallery} />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-0.5 flex-1">
+              <span className="text-sm text-foreground">Clientes enviam fotos</span>
+              <span className="text-xs text-muted-foreground">Clientes podem enviar fotos para aprovação</span>
+            </div>
+            <Switch checked={allowClientUploads} onCheckedChange={setAllowClientUploads} />
+          </div>
+
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Cancelamento ate (minutos antes)</Label>
+            <Label className="text-xs text-muted-foreground">Cancelamento até (minutos antes)</Label>
             <div className="flex items-center gap-2">
               <Input
                 type="number"
@@ -1021,6 +1050,115 @@ function TabAdmins() {
                 onCheckedChange={() => handleToggleAdmin(u.id, false)}
                 disabled={togglingId === u.id}
               />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ─── Tab: Galeria ───────────────────────────────────────────────────
+function TabGaleria() {
+  const [loading, setLoading] = useState(true)
+  const [photos, setPhotos] = useState<any[]>([])
+  const [uploading, setUploading] = useState(false)
+  
+  const loadPhotos = async () => {
+    setLoading(true)
+    const { data } = await fetchAdminGalleryPhotos()
+    setPhotos(data || [])
+    setLoading(false)
+  }
+  
+  useEffect(() => {
+    loadPhotos()
+  }, [])
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      setUploading(true)
+      const webpDataUrl = await compressImageToWebP(file)
+      const res = await uploadAdminGalleryPhoto(webpDataUrl, 'image/webp')
+      if (res.success) {
+        toast.success('Foto enviada com sucesso!')
+        loadPhotos()
+      } else {
+        toast.error('Erro: ' + res.error)
+      }
+    } catch (err) {
+      toast.error('Erro ao processar imagem')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Deletar foto da galeria?')) return
+    const res = await deleteGalleryPhoto(id)
+    if (res.success) {
+      toast.success('Foto removida')
+      loadPhotos()
+    } else {
+      toast.error('Erro: ' + res.error)
+    }
+  }
+
+  const handleApprove = async (id: string) => {
+    const res = await approveGalleryPhoto(id)
+    if (res.success) {
+      toast.success('Foto aprovada!')
+      loadPhotos()
+    } else {
+      toast.error('Erro: ' + res.error)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-extrabold uppercase tracking-widest text-white drop-shadow-[0_2px_10px_rgba(255,255,255,0.2)]">
+          Sua Galeria
+        </h2>
+        <Label className="cursor-pointer text-[10px] uppercase font-bold tracking-widest text-emerald-400 bg-emerald-400/10 hover:bg-emerald-400/20 py-2 px-4 rounded-full border border-emerald-400/20 transition-all">
+          {uploading ? 'Enviando...' : 'Nova Foto'}
+          <Input 
+            type="file" 
+            accept="image/*" 
+            className="hidden"
+            onChange={handleUpload}
+            disabled={uploading}
+          />
+        </Label>
+      </div>
+
+      {loading ? (
+        <p className="text-center text-zinc-500 uppercase tracking-widest text-xs py-10">Carregando...</p>
+      ) : photos.length === 0 ? (
+        <p className="text-center text-zinc-500 uppercase tracking-widest text-xs py-10">Nenhuma foto na galeria.</p>
+      ) : (
+        <div className="grid justify-items-center sm:grid-cols-2 gap-4">
+          {photos.map(p => (
+            <div key={p.id} className="relative group bg-white/[0.03] backdrop-blur-md rounded-2xl p-2 border border-white/10 w-full">
+              <img src={p.url} alt="Galeria" className="w-full h-48 object-cover rounded-xl" />
+              <div className="flex justify-between items-center mt-3 px-1">
+                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full ${p.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                  {p.status === 'approved' ? 'Pública' : 'Pendente'}
+                </span>
+                <div className="flex gap-2">
+                  {p.status === 'pending' && (
+                    <button onClick={() => handleApprove(p.id)} className="text-[10px] uppercase font-extrabold tracking-widest text-emerald-400 border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 flex items-center rounded-lg">
+                      Aprovar
+                    </button>
+                  )}
+                  <button onClick={() => handleDelete(p.id)} className="text-[10px] uppercase font-extrabold tracking-widest text-red-500 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded-lg">
+                    X
+                  </button>
+                </div>
+              </div>
             </div>
           ))}
         </div>

@@ -222,7 +222,7 @@ const handleConfirm = async () => {
 
         {/* Secao 1: Servico (Horizontal Scroll) */}
         <section>
-          <div className="flex flex-wrap justify-center gap-3 pb-6">
+          <div className="flex overflow-x-auto gap-4 pb-6 snap-x snap-mandatory hide-scrollbars -mx-4 px-4 items-center">
             {services.map((service) => {
               const isSelected = selectedService?.id === service.id;
               return (
@@ -230,7 +230,7 @@ const handleConfirm = async () => {
                 key={service.id}
                 onClick={() => handleServiceSelect(service)}
                 className={[
-                  'w-[105px] h-[110px] sm:w-[120px] sm:h-[120px] flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border transition-all',
+                  'flex-none w-[130px] h-[130px] flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border transition-all snap-start',
                   isSelected
                     ? 'border-primary bg-primary/20 ring-1 ring-primary card-shadow relative'
                     : 'border-border bg-card hover:border-foreground/20 card-shadow',
@@ -469,11 +469,16 @@ const handleConfirm = async () => {
       {/* Bottom Nav (App-like) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-[#09090b]/95 backdrop-blur-xl border-t border-white/5 px-6 py-2 pb-safe z-50">
        <div className="max-w-md mx-auto flex items-center justify-between relative">
-         
-         <a href="/agendar/meus-agendamentos" className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+
+         <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+            <Home size={24} strokeWidth={2} />
+            <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Início</span>
+         </button>
+
+         <button onClick={() => { if(isLoggedIn) { document.getElementById('meus-agendamentos')?.scrollIntoView({ behavior: 'smooth' }) } else { toast('Faça login para ver as reservas') } }} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
             <CalendarDays size={24} strokeWidth={2} />
             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Reservas</span>
-         </a>
+         </button>
 
          <button onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})} className="relative z-10 transition-transform hover:scale-105 active:scale-95 group">
              <div className="absolute inset-0 bg-primary rounded-full blur-[20px] opacity-20 group-hover:opacity-50 transition-opacity"></div>
