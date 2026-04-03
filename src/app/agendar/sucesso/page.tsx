@@ -1,0 +1,118 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import Image from 'next/image'
+import { format, parseISO } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import type { BusinessConfig } from '@/lib/supabase/types'
+
+interface Props {
+  searchParams: Promise<{ id?: string }>
+}
+
+export default async function SucessoPage({ searchParams }: Props) {
+  const { id } = await searchParams
+
+  if (!id) redirect('/agendar')
+
+  const supabase = await createClient()
+
+  const { data: appt } = await supabase
+    .from('appointments')
+    .select('*, services(name, price, duration_minutes)')
+    .eq('id', id)
+    .single()
+
+  if (!appt) redirect('/agendar')
+
+  const { data: config } = await supabase
+    .from('business_config')
+    .select('logo_url, barber_name, barber_nickname, display_name_preference, show_agency_brand')
+    .single()
+
+  const typedConfig = config as Pick<
+    BusinessConfig,
+    'logo_url' | 'barber_name' | 'barber_nickname' | 'display_name_preference' | 'show_agency_brand'
+  > | null
+
+  const service = appt.services as { name: string; price: number; duration_minutes: number } | null
+  const apptDate = parseISO(appt.date)
+  const displayDate = format(apptDate, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })
+  const displayTime = appt.start_time?.slice(0, 5)
+
+  const barbeiroChamado =
+    typedConfig?.display_name_preference === 'nickname'
+      ? typedConfig?.barber_nickname
+      : typedConfig?.barber_name
+
+  return (
+    <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-background">
+      <div className="w-full max-w-sm flex flex-col items-center gap-8">
+
+        {typedConfig?.logo_url && (
+          <Image
+            src={typedConfig.logo_url}
+            alt="Leste Barbearia"
+            width={80}
+            height={80}
+            className="object-contain"
+          />
+        )}
+
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center mx-auto mb-4">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+          </div>
+          <h1 className="text-2xl font-semibold text-foreground">Agendado!</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Seu horario esta confirmado.
+          </p>
+        </div>
+
+        <div className="w-full bg-card border border-border rounded-xl p-5 flex flex-col gap-3">
+          <div className="flex justify-between items-start">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Servico</span>
+            <span className="text-sm font-medium text-right">{service?.name}</span>
+          </div>
+          <div className="h-px bg-border" />
+          <div className="flex justify-between items-start">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Data</span>
+            <span className="text-sm text-right capitalize">{displayDate}</span>
+          </div>
+          <div className="h-px bg-border" />
+          <div className="flex justify-between items-start">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Horario</span>
+            <span className="text-sm font-medium">{displayTime}</span>
+          </div>
+          <div className="h-px bg-border" />
+          <div className="flex justify-between items-start">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Profissional</span>
+            <span className="text-sm">{barbeiroChamado}</span>
+          </div>
+          <div className="h-px bg-border" />
+          <div className="flex justify-between items-start">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Valor</span>
+            <span className="text-sm font-semibold text-primary">
+              R$ {service?.price.toFixed(2).replace('.', ',')}
+            </span>
+          </div>
+        </div>
+
+        <a
+          href="/agendar"
+          className="w-full h-10 flex items-center justify-center rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Fazer novo agendamento
+        </a>
+
+      </div>
+
+      {typedConfig?.show_agency_brand && (
+        <p className="fixed bottom-4 text-xs text-muted-foreground/40 select-none">
+          Sistema desenvolvido por Agencia JN
+        </p>
+      )}
+    </main>
+  )
+}

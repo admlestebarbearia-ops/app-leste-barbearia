@@ -1,0 +1,76 @@
+export type AppointmentStatus = 'confirmado' | 'cancelado' | 'faltou'
+export type DisplayNamePreference = 'name' | 'nickname'
+
+export interface Profile {
+  id: string
+  is_admin: boolean
+  is_blocked: boolean
+  created_at: string
+}
+
+export interface BusinessConfig {
+  id: number
+  barber_name: string
+  barber_nickname: string
+  display_name_preference: DisplayNamePreference
+  barber_photo_url: string | null
+  logo_url: string | null
+  require_google_login: boolean
+  cancellation_window_minutes: number
+  onboarding_complete: boolean
+  show_agency_brand: boolean
+  updated_at: string
+}
+
+export interface Barber {
+  id: string
+  name: string
+  nickname: string | null
+  photo_url: string | null
+  is_active: boolean
+  created_at: string
+}
+
+export interface Service {
+  id: string
+  name: string
+  price: number
+  duration_minutes: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface WorkingHours {
+  id: string
+  day_of_week: number
+  is_open: boolean
+  open_time: string | null
+  close_time: string | null
+  lunch_start: string | null
+  lunch_end: string | null
+}
+
+export interface SpecialSchedule {
+  id: string
+  date: string
+  is_closed: boolean
+  open_time: string | null
+  close_time: string | null
+  reason: string | null
+  created_at: string
+}
+
+export interface Appointment {
+  id: string
+  client_id: string | null
+  client_name: string | null
+  client_phone: string | null
+  barber_id: string
+  service_id: string
+  date: string
+  start_time: string
+  status: AppointmentStatus
+  created_at: string
+  services?: Pick<Service, 'name' | 'price' | 'duration_minutes'>
+  profiles?: Pick<Profile, 'is_blocked'> & { display_name?: string }
+}
