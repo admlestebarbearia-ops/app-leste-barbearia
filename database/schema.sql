@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.business_config (
     CHECK (display_name_preference IN ('name', 'nickname')),
   barber_photo_url TEXT,
   logo_url TEXT,
+  bottom_logo_url TEXT,
   require_google_login BOOLEAN NOT NULL DEFAULT true,
   cancellation_window_minutes INTEGER NOT NULL DEFAULT 120,
   onboarding_complete BOOLEAN NOT NULL DEFAULT false,

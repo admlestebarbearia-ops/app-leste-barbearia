@@ -309,6 +309,12 @@ function TabConfiguracoes({
   const [savingLogo, setSavingLogo] = useState(false)
   const logoRef = useRef<HTMLInputElement>(null)
 
+  // Bottom Logo
+  const [bottomLogoPreview, setBottomLogoPreview] = useState<string | null>(config.bottom_logo_url)
+  const [bottomLogoFile, setBottomLogoFile] = useState<File | null>(null)
+  const [savingBottomLogo, setSavingBottomLogo] = useState(false)
+  const bottomLogoRef = useRef<HTMLInputElement>(null)
+
   // Folga
   const [folgaDate, setFolgaDate] = useState('')
   const [folgaMotivo, setFolgaMotivo] = useState('')
@@ -370,6 +376,15 @@ function TabConfiguracoes({
     reader.readAsDataURL(file)
   }
 
+  const handleBottomLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBottomLogoFile(file)
+    const reader = new FileReader()
+    reader.onload = (ev) => setBottomLogoPreview(ev.target?.result as string)
+    reader.readAsDataURL(file)
+  }
+
   const handleSaveLogo = async () => {
     if (!logoFile || !logoPreview) return
     setSavingLogo(true)
@@ -380,6 +395,22 @@ function TabConfiguracoes({
     if (result.success) {
       toast.success('Logo atualizada.')
       setLogoFile(null)
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao salvar.')
+    }
+  }
+
+  const handleSaveBottomLogo = async () => {
+    if (!bottomLogoFile || !bottomLogoPreview) return
+    setSavingBottomLogo(true)
+    const { url, error } = await uploadImage('logo', bottomLogoPreview, bottomLogoFile.type)
+    if (error) { toast.error('Erro ao enviar logo do painel inferior: ' + error); setSavingBottomLogo(false); return }
+    const result = await saveBusinessConfig({ bottom_logo_url: url })
+    setSavingBottomLogo(false)
+    if (result.success) {
+      toast.success('Logo do menu inferior atualizada.')
+      setBottomLogoFile(null)
       onRefresh()
     } else {
       toast.error(result.error ?? 'Erro ao salvar.')
@@ -417,7 +448,7 @@ function TabConfiguracoes({
     <div className="flex flex-col gap-6">
       {/* Logo */}
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Logo</h3>
+        <h3 className="text-sm font-medium text-foreground">Logo Principal</h3>
         <div className="flex items-center gap-4">
           <button
             onClick={() => logoRef.current?.click()}
@@ -441,6 +472,38 @@ function TabConfiguracoes({
             {logoFile && (
               <Button size="sm" onClick={handleSaveLogo} disabled={savingLogo}>
                 {savingLogo ? 'Enviando...' : 'Salvar logo'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Logo Menu Inferior */}
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium text-foreground">Logo Menu Inferior (Separado)</h3>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => bottomLogoRef.current?.click()}
+            className="w-20 h-20 rounded-xl bg-card border border-border overflow-hidden flex items-center justify-center hover:border-primary/50 transition-colors shrink-0"
+          >
+            {bottomLogoPreview ? (
+              <Image src={bottomLogoPreview} alt="Logo Bottom" width={80} height={80} className="object-contain w-full h-full" />
+            ) : (
+              <span className="text-xs text-muted-foreground text-center px-2">Sem logo</span>
+            )}
+          </button>
+          <input ref={bottomLogoRef} type="file" accept="image/*" className="hidden" onChange={handleBottomLogoChange} />
+          <div className="flex flex-col gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => bottomLogoRef.current?.click()}
+            >
+              Trocar menu logo
+            </Button>
+            {bottomLogoFile && (
+              <Button size="sm" onClick={handleSaveBottomLogo} disabled={savingBottomLogo}>
+                {savingBottomLogo ? 'Enviando...' : 'Salvar logo inferior'}
               </Button>
             )}
           </div>

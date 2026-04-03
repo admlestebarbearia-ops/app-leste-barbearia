@@ -444,6 +444,17 @@ export function BookingForm({
             />
           </div>
         )}
+        
+        {/* Footer JN */}
+        {config?.show_agency_brand !== false && (
+          <div className="mt-auto pt-10 pb-10 text-center opacity-30 hover:opacity-100 transition-opacity">
+            <a href="https://agenciajn.com.br" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[9px] uppercase tracking-widest font-extrabold text-foreground">
+              <span>Desenvolvido por</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+              <span className="text-primary">Agência JN</span>
+            </a>
+          </div>
+        )}
 
       </div>
 
@@ -498,7 +509,7 @@ export function BookingForm({
              <div className="absolute inset-0 bg-primary rounded-full blur-[20px] opacity-20 group-hover:opacity-50 transition-opacity"></div>
              <div className="bg-[#18181b] border-2 border-white/10 p-3 h-16 w-16 rounded-full card-shadow shadow-[0_10px_30px_rgba(0,0,0,0.8)] flex items-center justify-center relative translate-y-[-20px]">
                  <Image
-                    src={config?.logo_url ?? '/logo-barbearialeste.png'}
+                    src={config?.bottom_logo_url ?? config?.logo_url ?? '/logo-barbearialeste.png'}
                     alt="Logo"
                     width={34}
                     height={34}

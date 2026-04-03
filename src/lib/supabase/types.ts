@@ -16,6 +16,7 @@ export interface BusinessConfig {
   display_name_preference: DisplayNamePreference
   barber_photo_url: string | null
   logo_url: string | null
+  bottom_logo_url: string | null
   require_google_login: boolean
   cancellation_window_minutes: number
   onboarding_complete: boolean
