@@ -34,14 +34,9 @@ export default async function LoginPage() {
             />
         </div>
 
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold text-foreground tracking-tight">
-            Leste Barbearia
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Agende seu horario de forma rapida e facil
-          </p>
-        </div>
+        <p className="text-sm text-muted-foreground text-center">
+          Agende seu horario de forma rapida e facil
+        </p>
 
         <div className="w-full flex flex-col gap-3">
           <LoginButton />
