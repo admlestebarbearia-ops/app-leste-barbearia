@@ -20,6 +20,26 @@ async function requireAdmin() {
   return { supabase, user }
 }
 
+export async function togglePauseStatus(isPaused: boolean) {
+  try {
+    const { supabase } = await requireAdmin()
+    
+    const { error } = await supabase
+      .from('business_config')
+      .update({ is_paused: isPaused })
+      .eq('id', 1)
+
+    if (error) throw error
+    revalidatePath('/admin')
+    revalidatePath('/agendar')
+    return { success: true }
+  } catch (error: any) {
+    console.error('Erro ao alternar pausa:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+
 // ─── Atualizar status de agendamento ────────────────────────────────────
 export async function updateAppointmentStatus(
   appointmentId: string,

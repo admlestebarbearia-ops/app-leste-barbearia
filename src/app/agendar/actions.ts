@@ -21,6 +21,14 @@ export async function getAvailableSlots(
 
   if (!service) return { slots: [], error: 'Servico nao encontrado.' }
 
+  // Verifica se a barbearia está em modo "Pausa Temporária"
+  const { data: configData } = await supabase
+    .from('business_config')
+    .select('is_paused')
+    .single()
+
+  const isPaused = configData?.is_paused ?? false
+
   const duration = service.duration_minutes
 
   // Verifica se há agenda especial para o dia
@@ -54,6 +62,12 @@ export async function getAvailableSlots(
 
   if (!isOpen || !openTime || !closeTime) {
     return { slots: [], error: 'Barbearia fechada neste dia.' }
+  }
+
+  // Verifica se está pausado temporariamente HOJE e se o dia da pesquisa é hoje
+  const isToday = format(new Date(), 'yyyy-MM-dd') === date
+  if (isPaused && isToday) {
+    return { slots: [], error: 'A barbearia está em pausa (horário de almoço). Tente novamente em instantes ou escolha outro dia.' }
   }
 
   const lunchStart = typedWH?.lunch_start ?? null

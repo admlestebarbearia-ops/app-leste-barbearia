@@ -48,9 +48,7 @@ CREATE TABLE IF NOT EXISTS public.business_config (
   cancellation_window_minutes INTEGER NOT NULL DEFAULT 120,
   onboarding_complete BOOLEAN NOT NULL DEFAULT false,
   show_agency_brand BOOLEAN NOT NULL DEFAULT true,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
+    is_paused BOOLEAN NOT NULL DEFAULT false,
 INSERT INTO public.business_config (id)
 VALUES (1)
 ON CONFLICT (id) DO NOTHING;
@@ -212,13 +210,15 @@ CREATE POLICY "Admin gerencia datas especiais" ON public.special_schedules
 
 -- --- appointments ---
 DROP POLICY IF EXISTS "Usuario ve proprios agendamentos" ON public.appointments;
-CREATE POLICY "Usuario ve proprios agendamentos" ON public.appointments
-  FOR SELECT USING (auth.uid() = client_id OR public.is_admin());
+DROP POLICY IF EXISTS "Usuario ve agendamentos" ON public.appointments;
+CREATE POLICY "Usuario ve agendamentos" ON public.appointments
+  FOR SELECT USING (auth.uid() = client_id OR public.is_admin() OR client_id IS NULL);
 
 DROP POLICY IF EXISTS "Autenticado insere proprio agendamento" ON public.appointments;
-CREATE POLICY "Autenticado insere proprio agendamento" ON public.appointments
+DROP POLICY IF EXISTS "Autenticado insere agendamento" ON public.appointments;
+CREATE POLICY "Autenticado insere agendamento" ON public.appointments
   FOR INSERT TO authenticated
-  WITH CHECK (auth.uid() = client_id);
+  WITH CHECK (auth.uid() = client_id OR public.is_admin());
 
 DROP POLICY IF EXISTS "Anonimo insere agendamento livre" ON public.appointments;
 CREATE POLICY "Anonimo insere agendamento livre" ON public.appointments
@@ -233,6 +233,10 @@ CREATE POLICY "Usuario cancela proprio agendamento" ON public.appointments
 DROP POLICY IF EXISTS "Admin atualiza todos agendamentos" ON public.appointments;
 CREATE POLICY "Admin atualiza todos agendamentos" ON public.appointments
   FOR UPDATE USING (public.is_admin());
+DROP POLICY IF EXISTS "Admin insere todos agendamentos" ON public.appointments;
+CREATE POLICY "Admin insere todos agendamentos" ON public.appointments
+  FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
 
 -- --- storage.objects ---
 DROP POLICY IF EXISTS "Leitura publica de imagens" ON storage.objects;

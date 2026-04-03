@@ -20,17 +20,7 @@ export interface BusinessConfig {
   cancellation_window_minutes: number
   onboarding_complete: boolean
   show_agency_brand: boolean
-  updated_at: string
-}
-
-export interface Barber {
-  id: string
-  name: string
-  nickname: string | null
-  photo_url: string | null
-  is_active: boolean
-  created_at: string
-}
+    is_paused: boolean
 
 export interface Service {
   id: string

@@ -21,6 +21,7 @@ import {
   uploadImage,
   listUsers,
   setAdminRole,
+  togglePauseStatus,
 } from '@/app/admin/actions'
 import type {
   BusinessConfig,
@@ -73,25 +74,33 @@ export function AdminDashboard({
             />
           <span className="font-semibold text-sm text-foreground">Painel Admin</span>
         </div>
-        <a
-          href="/api/auth/signout"
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Sair
-        </a>
-      </header>
 
-      {/* Tabs */}
-      <div className="flex border-b border-border px-4 gap-4 bg-background">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={[
-              'py-3 text-sm border-b-2 transition-colors',
-              tab === t.key
-                ? 'border-primary text-foreground font-medium'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-xs md:text-sm cursor-pointer bg-card px-3 py-1.5 rounded-full border border-border">
+              <span className={config.is_paused ? "text-destructive font-medium" : "text-muted-foreground hidden sm:inline"}>
+                {config.is_paused ? 'Pausado (Almoço)' : 'Expediente'}
+              </span>
+              <Switch
+                checked={config.is_paused ?? false}
+                onCheckedChange={async (val) => {
+                  const id = toast.loading(val ? 'Pausando expediente...' : 'Retornando expediente...')
+                  const res = await togglePauseStatus(val)
+                  if (res.success) {
+                    toast.success(val ? 'Sistema pausado para almoço.' : 'Sistema liberado.', { id })
+                  } else {
+                    toast.error('Erro ao alterar status.', { id })
+                  }
+                }}
+              />
+            </label>
+
+            <a
+              href="/api/auth/signout"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Sair
+            </a>
+          </div>
             ].join(' ')}
           >
             {t.label}
