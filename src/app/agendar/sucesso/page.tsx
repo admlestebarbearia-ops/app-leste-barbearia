@@ -48,15 +48,13 @@ export default async function SucessoPage({ searchParams }: Props) {
     <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-background">
       <div className="w-full max-w-sm flex flex-col items-center gap-8">
 
-        {typedConfig?.logo_url && (
-          <Image
-            src={typedConfig.logo_url}
+        <Image
+            src={typedConfig?.logo_url ?? '/logo-barbearialeste.png'}
             alt="Leste Barbearia"
             width={80}
             height={80}
             className="object-contain"
           />
-        )}
 
         <div className="text-center">
           <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/30 flex items-center justify-center mx-auto mb-4">

@@ -24,20 +24,14 @@ export default async function LoginPage() {
       <div className="w-full max-w-sm flex flex-col items-center gap-10">
 
         <div className="flex flex-col items-center gap-3">
-          {typedConfig?.logo_url ? (
-            <Image
-              src={typedConfig.logo_url}
+          <Image
+              src={typedConfig?.logo_url ?? '/logo-barbearialeste.png'}
               alt="Leste Barbearia"
               width={160}
               height={160}
               className="object-contain"
               priority
             />
-          ) : (
-            <div className="w-40 h-40 bg-card rounded-xl flex items-center justify-center border border-border">
-              <span className="text-5xl font-bold text-primary">L</span>
-            </div>
-          )}
         </div>
 
         <div className="text-center">

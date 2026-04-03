@@ -261,9 +261,7 @@ export function OnboardingWizard({ initialConfig, workingHours }: Props) {
               {logoPreview ? (
                 <Image src={logoPreview} alt="Logo" width={160} height={160} className="object-contain w-full h-full" />
               ) : (
-                <span className="text-xs text-muted-foreground text-center px-4 leading-snug">
-                  Clique para selecionar a logo
-                </span>
+                <Image src="/logo-barbearialeste.png" alt="Logo" width={160} height={160} className="object-contain w-full h-full" />
               )}
             </button>
             <input

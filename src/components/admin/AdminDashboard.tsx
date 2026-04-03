@@ -61,15 +61,13 @@ export function AdminDashboard({
       {/* Header */}
       <header className="sticky top-0 z-30 bg-background border-b border-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          {config.logo_url && (
-            <Image
-              src={config.logo_url}
+          <Image
+              src={config.logo_url ?? '/logo-barbearialeste.png'}
               alt="Logo"
               width={32}
               height={32}
               className="w-8 h-8 rounded-lg object-contain"
             />
-          )}
           <span className="font-semibold text-sm text-foreground">Painel Admin</span>
         </div>
         <a
