@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
-import { format } from 'date-fns'
 import { AdminDashboard } from '@/components/admin/AdminDashboard'
 import { OnboardingWizard } from '@/components/admin/OnboardingWizard'
 import type { BusinessConfig, WorkingHours, Service, SpecialSchedule, Appointment } from '@/lib/supabase/types'
@@ -51,18 +51,27 @@ export default async function AdminPage() {
     )
   }
 
-  // Todos os agendamentos a partir de hoje
-  const today = format(new Date(), 'yyyy-MM-dd')
-  const { data: allAppointments } = await supabase
+  // Todos os agendamentos — usa cliente admin (service role) para bypassar RLS
+  // e ver agendamentos de TODOS os clientes, não só do admin logado
+  const adminClient = createAdminClient()
+  const today = new Date().toISOString().split('T')[0]
+  // Inclui os últimos 30 dias para não perder histórico recente
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+  const { data: allAppointments, error: apptError } = await adminClient
     .from('appointments')
     .select(`
       *,
       services(name, price, duration_minutes),
       profiles(is_blocked, display_name)
     `)
-    .gte('date', today)
+    .gte('date', thirtyDaysAgo)
     .order('date', { ascending: true })
     .order('start_time', { ascending: true })
+
+  if (apptError) {
+    console.error('[admin] Erro ao buscar agendamentos:', apptError.message)
+  }
 
   return (
     <main className="min-h-screen bg-background">

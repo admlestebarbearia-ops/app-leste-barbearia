@@ -351,7 +351,34 @@ function TabHoje({
   onRefresh: () => void
 }) {
   const [loading, setLoading] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'hoje' | 'proximos' | 'todos'>('proximos')
+  const [newBadge, setNewBadge] = useState(0)
   const todayStr = new Date().toISOString().split('T')[0]
+
+  // Notificação em tempo real de novos agendamentos
+  useEffect(() => {
+    const { createClient: createBrowser } = require('@/lib/supabase/client')
+    const supabase = createBrowser()
+    const channel = supabase
+      .channel('admin-appointments')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'appointments',
+      }, (payload: { new: { date?: string; start_time?: string } }) => {
+        const d = payload.new?.date ?? ''
+        const t = payload.new?.start_time?.slice(0, 5) ?? ''
+        toast.success(`Novo agendamento! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, {
+          duration: 8000,
+          icon: '📅',
+        })
+        setNewBadge((prev) => prev + 1)
+        onRefresh()
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [onRefresh])
 
   const getDisplayName = (appt: Appointment) => {
     return appt.profiles?.display_name ?? appt.client_name ?? 'Cliente'
@@ -382,8 +409,17 @@ function TabHoje({
     setLoading(null)
   }
 
+  // Filtro de data
+  const sevenDaysAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const filteredAppointments = appointments.filter((a) => {
+    const d = a.date ?? ''
+    if (filter === 'hoje') return d === todayStr
+    if (filter === 'proximos') return d >= todayStr && d <= sevenDaysAhead
+    return true // 'todos'
+  })
+
   // Agrupa por data
-  const byDate = appointments.reduce<Record<string, Appointment[]>>((acc, appt) => {
+  const byDate = filteredAppointments.reduce<Record<string, Appointment[]>>((acc, appt) => {
     const d = appt.date ?? 'sem-data'
     if (!acc[d]) acc[d] = []
     acc[d].push(appt)
@@ -395,8 +431,9 @@ function TabHoje({
   const formatDateLabel = (dateStr: string) => {
     if (dateStr === todayStr) return 'Hoje'
     const d = new Date(dateStr + 'T12:00:00')
-    const diff = Math.round((d.getTime() - new Date().setHours(12,0,0,0)) / 86400000)
+    const diff = Math.round((d.getTime() - new Date().setHours(12, 0, 0, 0)) / 86400000)
     if (diff === 1) return 'Amanhã'
+    if (diff < 0) return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' }) + ' (passado)'
     return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
   }
 
@@ -406,18 +443,53 @@ function TabHoje({
     faltou:     'text-amber-400  border-amber-500/20  bg-amber-500/10',
   }
 
+  const confirmedCount = filteredAppointments.filter(a => a.status === 'confirmado').length
+
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
+      {/* Cabeçalho com badge de novos */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">Agenda</h2>
-        <span className="text-[10px] font-bold tracking-widest text-zinc-500 bg-white/5 py-1 px-3 rounded-full border border-white/5">
-          {appointments.filter(a => a.status === 'confirmado').length} confirmado(s)
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">Agenda</h2>
+          {newBadge > 0 && (
+            <button
+              onClick={() => { setNewBadge(0); onRefresh() }}
+              className="text-[10px] font-black bg-emerald-500 text-black px-2 py-0.5 rounded-full animate-pulse"
+            >
+              +{newBadge} novo{newBadge > 1 ? 's' : ''}
+            </button>
+          )}
+        </div>
+        <span className="text-[10px] font-bold text-zinc-500 bg-white/5 py-1 px-3 rounded-full border border-white/5">
+          {confirmedCount} confirmado(s)
         </span>
+      </div>
+
+      {/* Filtros de data */}
+      <div className="flex gap-2">
+        {([
+          { key: 'hoje',    label: 'Hoje' },
+          { key: 'proximos', label: 'Próximos 7 dias' },
+          { key: 'todos',   label: 'Todos' },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={[
+              'text-[10px] font-bold px-3 py-1.5 rounded-full border transition-all',
+              filter === key
+                ? 'bg-white text-black border-white'
+                : 'text-zinc-400 border-white/10 hover:border-white/30',
+            ].join(' ')}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {sortedDates.length === 0 && (
         <div className="text-center py-16 bg-white/[0.02] border border-white/5 rounded-3xl">
-          <p className="text-zinc-500 text-xs uppercase tracking-wide">Nenhum agendamento.</p>
+          <p className="text-zinc-500 text-xs uppercase tracking-wide">Nenhum agendamento neste período.</p>
         </div>
       )}
 
