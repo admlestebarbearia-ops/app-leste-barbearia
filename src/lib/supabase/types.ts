@@ -3,6 +3,7 @@ export type DisplayNamePreference = 'name' | 'nickname'
 
 export interface Profile {
   id: string
+  email: string | null
   is_admin: boolean
   is_blocked: boolean
   created_at: string

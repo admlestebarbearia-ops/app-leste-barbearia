@@ -19,6 +19,8 @@ import {
   upsertService,
   toggleServiceActive,
   uploadImage,
+  listUsers,
+  setAdminRole,
 } from '@/app/admin/actions'
 import type {
   BusinessConfig,
@@ -30,7 +32,7 @@ import type {
 
 const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab']
 
-type Tab = 'hoje' | 'configuracoes' | 'servicos'
+type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'admins'
 
 interface Props {
   config: BusinessConfig
@@ -54,6 +56,7 @@ export function AdminDashboard({
     { key: 'hoje', label: 'Hoje' },
     { key: 'configuracoes', label: 'Configuracoes' },
     { key: 'servicos', label: 'Servicos' },
+    { key: 'admins', label: 'Admins' },
   ]
 
   return (
@@ -115,6 +118,9 @@ export function AdminDashboard({
         )}
         {tab === 'servicos' && (
           <TabServicos services={services} onRefresh={() => router.refresh()} />
+        )}
+        {tab === 'admins' && (
+          <TabAdmins />
         )}
       </main>
     </div>
@@ -730,6 +736,114 @@ function TabServicos({
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ─── Tab: Admins ─────────────────────────────────────────────────────────
+function TabAdmins() {
+  const [users, setUsers] = useState<
+    { id: string; email: string | null; is_admin: boolean; is_blocked: boolean; created_at: string }[]
+  >([])
+  const [loading, setLoading] = useState(true)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  const load = async () => {
+    setLoading(true)
+    const { users: data } = await listUsers()
+    setUsers(data)
+    setLoading(false)
+  }
+
+  useState(() => { load() })
+
+  const handleToggleAdmin = async (userId: string, currentIsAdmin: boolean) => {
+    setTogglingId(userId)
+    const result = await setAdminRole(userId, !currentIsAdmin)
+    if (result.success) {
+      toast.success(currentIsAdmin ? 'Admin removido.' : 'Admin adicionado.')
+      await load()
+    } else {
+      toast.error(result.error ?? 'Erro ao alterar permissao.')
+    }
+    setTogglingId(null)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-3 pt-2">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="h-16 rounded-xl bg-card animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  const admins = users.filter((u) => u.is_admin)
+  const others = users.filter((u) => !u.is_admin)
+
+  return (
+    <div className="flex flex-col gap-6 pt-2">
+      <div>
+        <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider">Como funciona</p>
+        <p className="text-sm text-muted-foreground leading-snug">
+          Aqui voce ve todos os usuarios que ja fizeram login no sistema. Ative o toggle para dar ou remover acesso de Admin.
+        </p>
+      </div>
+
+      {users.length === 0 && (
+        <p className="text-sm text-muted-foreground text-center py-8">
+          Nenhum usuario cadastrado ainda.
+        </p>
+      )}
+
+      {admins.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Admins atuais</p>
+          {admins.map((u) => (
+            <div
+              key={u.id}
+              className="flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-xl p-4"
+            >
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="text-sm font-medium text-foreground truncate">
+                  {u.email ?? 'Email nao disponivel'}
+                </span>
+                <span className="text-xs text-primary">Admin</span>
+              </div>
+              <Switch
+                checked={true}
+                onCheckedChange={() => handleToggleAdmin(u.id, true)}
+                disabled={togglingId === u.id}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {others.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Outros usuarios</p>
+          {others.map((u) => (
+            <div
+              key={u.id}
+              className="flex items-center justify-between gap-3 bg-card border border-border rounded-xl p-4"
+            >
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="text-sm text-foreground truncate">
+                  {u.email ?? 'Email nao disponivel'}
+                </span>
+                <span className="text-xs text-muted-foreground">Cliente</span>
+              </div>
+              <Switch
+                checked={false}
+                onCheckedChange={() => handleToggleAdmin(u.id, false)}
+                disabled={togglingId === u.id}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

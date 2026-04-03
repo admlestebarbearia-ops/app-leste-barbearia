@@ -47,9 +47,41 @@ export function BookingForm({
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [showTurnstile, setShowTurnstile] = useState(false)
 
-  // Modo livre (sem Google)
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
+  const [nameError, setNameError] = useState('')
+  const [phoneError, setPhoneError] = useState('')
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    if (/\d/.test(value)) {
+      setNameError('Nome nao pode conter numeros.')
+    } else {
+      setNameError('')
+    }
+    setClientName(value.replace(/\d/g, ''))
+  }
+
+  const formatPhone = (raw: string) => {
+    const nums = raw.replace(/\D/g, '').slice(0, 11)
+    if (nums.length <= 2) return nums
+    if (nums.length <= 7) return `(${nums.slice(0, 2)}) ${nums.slice(2)}`
+    if (nums.length <= 11) return `(${nums.slice(0, 2)}) ${nums.slice(2, 7)}-${nums.slice(7)}`
+    return raw
+  }
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhone(e.target.value)
+    setClientPhone(formatted)
+    const nums = formatted.replace(/\D/g, '')
+    if (nums.length > 0 && nums.length < 11) {
+      setPhoneError('Informe um celular valido com DDD (11 digitos).')
+    } else if (nums.length === 11 && nums[2] !== '9') {
+      setPhoneError('Informe um numero de celular (deve comecar com 9 apos o DDD).')
+    } else {
+      setPhoneError('')
+    }
+  }
 
   const isLoggedIn = !!userId
   const requireLogin = config?.require_google_login ?? true
@@ -102,9 +134,20 @@ export function BookingForm({
 
   const handleConfirm = () => {
     if (!selectedService || !selectedDate || !selectedTime) return
-    if (showFreeMode && (!clientName.trim() || !clientPhone.trim())) {
-      toast.error('Informe seu nome e telefone.')
-      return
+    if (showFreeMode) {
+      if (!clientName.trim()) {
+        toast.error('Informe seu nome completo.')
+        return
+      }
+      if (!clientPhone.trim()) {
+        toast.error('Informe seu telefone com DDD.')
+        return
+      }
+      const nums = clientPhone.replace(/\D/g, '')
+      if (nums.length !== 11 || nums[2] !== '9') {
+        toast.error('Telefone invalido. Use o formato (11) 99999-9999.')
+        return
+      }
     }
     const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
     if (!siteKey || siteKey === 'sua_site_key_aqui') {
@@ -147,7 +190,12 @@ export function BookingForm({
     !!selectedService &&
     !!selectedDate &&
     !!selectedTime &&
-    (!showFreeMode || (clientName.trim().length > 0 && clientPhone.trim().length > 0))
+    (!showFreeMode || (
+      clientName.trim().length > 1 &&
+      !nameError &&
+      clientPhone.replace(/\D/g, '').length === 11 &&
+      !phoneError
+    ))
 
   const displayName =
     config?.display_name_preference === 'nickname'
@@ -314,10 +362,16 @@ export function BookingForm({
               <Input
                 id="clientName"
                 value={clientName}
-                onChange={(e) => setClientName(e.target.value)}
-                placeholder="Seu nome"
-                className="h-10"
+                onChange={handleNameChange}
+                placeholder="Ex: Joao da Silva"
+                className={`h-10 ${nameError ? 'border-destructive' : ''}`}
+                maxLength={80}
+                inputMode="text"
+                autoComplete="name"
               />
+              {nameError && (
+                <p className="text-xs text-destructive">{nameError}</p>
+              )}
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="clientPhone" className="text-sm text-muted-foreground">
@@ -326,11 +380,17 @@ export function BookingForm({
               <Input
                 id="clientPhone"
                 value={clientPhone}
-                onChange={(e) => setClientPhone(e.target.value)}
+                onChange={handlePhoneChange}
                 placeholder="(11) 99999-9999"
                 type="tel"
-                className="h-10"
+                inputMode="numeric"
+                autoComplete="tel"
+                className={`h-10 ${phoneError ? 'border-destructive' : ''}`}
+                maxLength={16}
               />
+              {phoneError && (
+                <p className="text-xs text-destructive">{phoneError}</p>
+              )}
             </div>
           </section>
         )}

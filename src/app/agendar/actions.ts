@@ -220,7 +220,7 @@ export async function createAppointment(data: {
 
   if (error) {
     console.error('Erro ao criar agendamento:', error)
-    return { success: false, error: 'Erro ao confirmar agendamento. Tente novamente.' }
+    return { success: false, error: `Erro ao confirmar agendamento: ${error.message}` }
   }
 
   revalidatePath('/agendar')

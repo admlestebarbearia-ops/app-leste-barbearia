@@ -206,6 +206,44 @@ export async function uploadImage(
   }
 }
 
+// ─── Listar usuários (para gerenciar admins) ─────────────────────────────
+export async function listUsers(): Promise<{
+  users: { id: string; email: string | null; is_admin: boolean; is_blocked: boolean; created_at: string }[]
+  error?: string
+}> {
+  try {
+    const { supabase } = await requireAdmin()
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, is_admin, is_blocked, created_at')
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return { users: data ?? [] }
+  } catch (e) {
+    return { users: [], error: (e as Error).message }
+  }
+}
+
+// ─── Promover / remover admin ──────────────────────────────────────────────
+export async function setAdminRole(
+  userId: string,
+  isAdmin: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase, user } = await requireAdmin()
+    if (userId === user.id) throw new Error('Voce nao pode alterar sua propria permissao de admin.')
+    const { error } = await supabase
+      .from('profiles')
+      .update({ is_admin: isAdmin })
+      .eq('id', userId)
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
 // ─── Completar onboarding ────────────────────────────────────────────────
 export async function completeOnboarding(data: {
   barber_name: string
