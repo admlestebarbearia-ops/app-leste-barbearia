@@ -70,6 +70,26 @@ export function AdminDashboard({
   const [pauseMessage, setPauseMessage] = useState(config.pause_message || '')
   const [pauseReturnTime, setPauseReturnTime] = useState(config.pause_return_time || '')
 
+  // Upload de logo direto do header
+  const headerLogoRef = useRef<HTMLInputElement>(null)
+  const [headerLogoSrc, setHeaderLogoSrc] = useState(config.logo_url ?? '/logo-barbearialeste.png')
+  const [savingHeaderLogo, setSavingHeaderLogo] = useState(false)
+
+  const handleHeaderLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSavingHeaderLogo(true)
+    try {
+      const compressed = await compressImageToWebP(file)
+      const { url, error } = await uploadImage('logo', compressed, 'image/webp')
+      if (error) { toast.error('Erro ao enviar logo: ' + error); setSavingHeaderLogo(false); return }
+      const result = await saveBusinessConfig({ logo_url: url })
+      if (result.success) { setHeaderLogoSrc(url!); toast.success('Logo atualizado!'); router.refresh() }
+      else toast.error(result.error ?? 'Erro ao salvar.')
+    } catch { toast.error('Erro ao processar imagem.') }
+    setSavingHeaderLogo(false)
+  }
+
   const handlePauseConfirm = async (val: boolean) => {
     const id = toast.loading(val ? 'Pausando expediente...' : 'Retornando expediente...')
     const res = await togglePauseStatus(val, val ? pauseMessage : null, val ? pauseReturnTime : null)
@@ -97,16 +117,17 @@ export function AdminDashboard({
         {/* Linha 1: Logo + Título + Ações */}
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Logo — clique vai para configurações de logo */}
+            {/* Logo — clicável para upload */}
             <button
-              onClick={() => setTab('configuracoes')}
+              onClick={() => headerLogoRef.current?.click()}
+              disabled={savingHeaderLogo}
               className="relative group shrink-0"
-              title="Configurações de logo"
+              title="Clique para trocar o logo"
             >
               <div className="relative p-[1px] bg-gradient-to-b from-white/20 to-white/5 rounded-xl">
                 <div className="bg-black/50 p-1.5 rounded-xl backdrop-blur-xl">
                   <Image
-                    src={config.logo_url ?? '/logo-barbearialeste.png'}
+                    src={headerLogoSrc}
                     alt="Logo"
                     width={32}
                     height={32}
@@ -115,9 +136,12 @@ export function AdminDashboard({
                 </div>
               </div>
               <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
-                <Camera size={14} className="text-white" />
+                {savingHeaderLogo
+                  ? <span className="text-[9px] text-white animate-pulse">...</span>
+                  : <Camera size={14} className="text-white" />}
               </div>
             </button>
+            <input ref={headerLogoRef} type="file" accept="image/*" className="hidden" onChange={handleHeaderLogoChange} />
 
             <div className="min-w-0">
               <span className="block font-extrabold text-xs tracking-widest text-white uppercase opacity-90 truncate">Painel</span>
