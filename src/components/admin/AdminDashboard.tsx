@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
+import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -389,8 +390,7 @@ function TabHoje({
   }
 
   useEffect(() => {
-    const { createClient: createBrowser } = require('@/lib/supabase/client')
-    const supabase = createBrowser()
+    const supabase = createSupabaseBrowser()
     const channel = supabase
       .channel('admin-appointments')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'appointments' },

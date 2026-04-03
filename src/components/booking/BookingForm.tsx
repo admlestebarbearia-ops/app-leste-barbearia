@@ -282,7 +282,7 @@ const handleConfirm = async () => {
                 <div className="relative">
                   <div className="absolute inset-0 rounded-full bg-primary/30 blur-md"></div>
                   <Image
-                    src={config?.barber_photo_url ?? '/barbearialeste.png'}
+                    src={barber?.photo_url ?? config?.barber_photo_url ?? '/barbearialeste.png'}
                     alt={displayName ?? 'Barbeiro'}
                     width={56}
                     height={56}
