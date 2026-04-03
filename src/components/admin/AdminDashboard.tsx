@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -70,6 +70,7 @@ export function AdminDashboard({
 }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('hoje')
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [isPauseDialogOpen, setIsPauseDialogOpen] = useState(false)
   const [pauseMessage, setPauseMessage] = useState(config.pause_message || '')
   const [pauseReturnTime, setPauseReturnTime] = useState(config.pause_return_time || '')
@@ -116,10 +117,76 @@ export function AdminDashboard({
   ]
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#09090b] text-[#f4f4f5] font-sans selection:bg-white/20">
-      {/* Header Mobile-First */}
-      <header className="sticky top-0 z-30 bg-black/40 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-        {/* Linha 1: Logo + Título + Ações */}
+    <div className="min-h-screen flex flex-col bg-neutral-950 text-[#f4f4f5] font-sans selection:bg-white/20">
+      {/* Drawer Overlay */}
+      {isDrawerOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => setIsDrawerOpen(false)}
+        />
+      )}
+
+      {/* Drawer lateral */}
+      <aside
+        className={[
+          'fixed top-0 right-0 z-50 h-full w-72 bg-neutral-950 border-l border-white/10 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out',
+          isDrawerOpen ? 'translate-x-0' : 'translate-x-full',
+        ].join(' ')}
+      >
+        {/* Cabeçalho do Drawer */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+          <span className="text-xs font-black uppercase tracking-widest text-zinc-400">Menu</span>
+          <button
+            onClick={() => setIsDrawerOpen(false)}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Itens de navegação */}
+        <nav className="flex-1 flex flex-col gap-1 p-3 overflow-y-auto">
+          {([
+            { key: 'hoje',          label: 'Agenda',      icon: CalendarDays },
+            { key: 'configuracoes', label: 'Preferências', icon: Settings2 },
+            { key: 'servicos',      label: 'Catálogo',    icon: Scissors },
+            { key: 'barbeiros',     label: 'Barbeiros',   icon: Users },
+            { key: 'galeria',       label: 'Galeria',     icon: Images },
+            { key: 'admins',        label: 'Segurança',   icon: ShieldCheck },
+          ] as { key: Tab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => { setTab(key); setIsDrawerOpen(false) }}
+              className={[
+                'flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200',
+                tab === key
+                  ? 'bg-white/10 text-white'
+                  : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200',
+              ].join(' ')}
+            >
+              <Icon size={18} className={tab === key ? 'text-white' : 'text-zinc-500'} />
+              {label}
+              {tab === key && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white" />
+              )}
+            </button>
+          ))}
+        </nav>
+
+        {/* Rodapé do Drawer */}
+        <div className="px-5 py-4 border-t border-white/10">
+          <a
+            href="/api/auth/signout"
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-semibold text-zinc-500 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
+          >
+            <LogOut size={18} />
+            Sair
+          </a>
+        </div>
+      </aside>
+
+      {/* Header */}
+      <header className="sticky top-0 z-30 bg-neutral-950/80 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {/* Logo — clicável para upload */}
@@ -154,7 +221,7 @@ export function AdminDashboard({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Pausa/Retomar — ícone + texto em telas maiores */}
+            {/* Pausa/Retomar */}
             <button
               onClick={() => setIsPauseDialogOpen(true)}
               className={`flex items-center gap-1.5 cursor-pointer px-2.5 py-1.5 rounded-xl border font-bold transition-all duration-300 ${
@@ -169,7 +236,7 @@ export function AdminDashboard({
               }
             </button>
 
-            {/* Sair — ícone */}
+            {/* Sair */}
             <a
               href="/api/auth/signout"
               className="p-2 rounded-xl border border-white/10 bg-white/[0.03] text-zinc-500 hover:text-white hover:border-white/20 transition-all"
@@ -177,25 +244,16 @@ export function AdminDashboard({
             >
               <LogOut size={16} />
             </a>
-          </div>
-        </div>
 
-        {/* Linha 2: Tabs */}
-        <div className="flex border-t border-white/[0.05] overflow-x-auto hide-scrollbar">
-          {TABS.map((t) => (
+            {/* Menu Hambúrguer */}
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={[
-                'py-3 px-4 text-[9px] uppercase tracking-[0.12em] font-extrabold border-b-2 transition-all duration-300 whitespace-nowrap flex-1',
-                tab === t.key
-                  ? 'border-white text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]'
-                  : 'border-transparent text-zinc-600 hover:text-zinc-300',
-              ].join(' ')}
+              onClick={() => setIsDrawerOpen(true)}
+              className="p-2 rounded-xl border border-white/10 bg-white/[0.03] text-zinc-400 hover:text-white hover:border-white/20 transition-all"
+              aria-label="Abrir menu"
             >
-              {t.label}
+              <Menu size={20} />
             </button>
-          ))}
+          </div>
         </div>
       </header>
 
