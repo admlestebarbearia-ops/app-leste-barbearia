@@ -17,14 +17,14 @@ import 'react-day-picker/style.css'
 import { Scissors, Smile, Crown, Sparkles, Zap, Star, Flame, Droplets, CalendarDays, User, Menu, Home, Check } from 'lucide-react'
 
 const SERVICE_ICONS: Record<string, React.ReactNode> = {
-  scissors:  <Scissors  size={22} strokeWidth={1.5} />,
-  smile:     <Smile     size={22} strokeWidth={1.5} />,
-  crown:     <Crown     size={22} strokeWidth={1.5} />,
-  sparkles:  <Sparkles  size={22} strokeWidth={1.5} />,
-  zap:       <Zap       size={22} strokeWidth={1.5} />,
-  star:      <Star      size={22} strokeWidth={1.5} />,
-  flame:     <Flame     size={22} strokeWidth={1.5} />,
-  droplets:  <Droplets  size={22} strokeWidth={1.5} />,
+  scissors:  <Scissors  size={32} strokeWidth={1.3} />,
+  smile:     <Smile     size={32} strokeWidth={1.3} />,
+  crown:     <Crown     size={32} strokeWidth={1.3} />,
+  sparkles:  <Sparkles  size={32} strokeWidth={1.3} />,
+  zap:       <Zap       size={32} strokeWidth={1.3} />,
+  star:      <Star      size={32} strokeWidth={1.3} />,
+  flame:     <Flame     size={32} strokeWidth={1.3} />,
+  droplets:  <Droplets  size={32} strokeWidth={1.3} />,
 }
 
 

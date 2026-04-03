@@ -101,6 +101,16 @@ body {
   background-position: center;
   background-attachment: fixed;
   background-blend-mode: overlay; /* Permite ler os textos caso a imagem seja mt clara */
+  touch-action: manipulation; /* Evita zoom em double-tap */
+}
+
+/* Scrollbar oculta globalmente — visual de app nativo */
+* {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE / Edge */
+}
+*::-webkit-scrollbar {
+  display: none;                /* Chrome / Safari / Opera */
 }
 
 /* Ocultar barra de rolagem */
