@@ -37,6 +37,16 @@ export default async function AgendarPage() {
 
   const barber = (barbers as Barber[] | null)?.[0] ?? null
 
+  let isAdmin = false
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .single()
+    isAdmin = profile?.is_admin ?? false
+  }
+
   return (
     <main className="min-h-screen bg-background pb-32">
       <BookingForm
@@ -47,6 +57,7 @@ export default async function AgendarPage() {
         config={typedConfig}
         userEmail={user?.email ?? null}
         userId={user?.id ?? null}
+        isAdmin={isAdmin}
       />
     </main>
   )

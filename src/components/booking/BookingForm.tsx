@@ -23,6 +23,7 @@ interface Props {
   config: BusinessConfig | null
   userEmail: string | null
   userId: string | null
+  isAdmin?: boolean
 }
 
 export function BookingForm({
@@ -33,6 +34,7 @@ export function BookingForm({
   config,
   userEmail,
   userId,
+  isAdmin = false,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -168,12 +170,22 @@ export function BookingForm({
           <span className="text-sm font-medium text-foreground">Leste Barbearia</span>
         </div>
         {isLoggedIn && (
-          <a
-            href="/api/auth/signout"
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Sair
-          </a>
+          <div className="flex items-center gap-3">
+            {isAdmin && (
+              <a
+                href="/admin"
+                className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+              >
+                Painel Admin
+              </a>
+            )}
+            <a
+              href="/api/auth/signout"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Sair
+            </a>
+          </div>
         )}
       </header>
 
