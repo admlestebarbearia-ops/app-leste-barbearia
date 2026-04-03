@@ -76,7 +76,7 @@ export function AdminDashboard({
 
   // Upload de logo direto do header
   const headerLogoRef = useRef<HTMLInputElement>(null)
-  const [headerLogoSrc, setHeaderLogoSrc] = useState(config.logo_url ?? '/logo-barbearialeste.png')
+  const [headerLogoSrc, setHeaderLogoSrc] = useState(config.admin_logo_url ?? config.logo_url ?? '/logo-barbearialeste.png')
   const [savingHeaderLogo, setSavingHeaderLogo] = useState(false)
 
   const handleHeaderLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,8 +87,8 @@ export function AdminDashboard({
       const compressed = await compressImageToWebP(file)
       const { url, error } = await uploadImage('logo', compressed, 'image/webp')
       if (error) { toast.error('Erro ao enviar logo: ' + error); setSavingHeaderLogo(false); return }
-      const result = await saveBusinessConfig({ logo_url: url })
-      if (result.success) { setHeaderLogoSrc(url!); toast.success('Logo atualizado!'); router.refresh() }
+      const result = await saveBusinessConfig({ admin_logo_url: url })
+      if (result.success) { setHeaderLogoSrc(url!); toast.success('Logo do painel atualizado!'); router.refresh() }
       else toast.error(result.error ?? 'Erro ao salvar.')
     } catch { toast.error('Erro ao processar imagem.') }
     setSavingHeaderLogo(false)
