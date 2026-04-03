@@ -217,9 +217,9 @@ const handleConfirm = async () => {
         <Image
             src={config?.logo_url ?? '/logo-barbearialeste.png'}
             alt="Leste Barbearia"
-            width={124}
-            height={124}
-            className="object-contain mb-6 animate-shine drop-shadow-xl"
+            width={172}
+            height={172}
+            className="object-contain mb-6 animate-logo-glow"
           />
         <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">
           SELECIONE O SERVIÇO

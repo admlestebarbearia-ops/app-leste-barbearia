@@ -70,35 +70,6 @@ export function AdminDashboard({
   const [pauseMessage, setPauseMessage] = useState(config.pause_message || '')
   const [pauseReturnTime, setPauseReturnTime] = useState(config.pause_return_time || '')
 
-  // Admin header logo
-  const adminLogoRef = useRef<HTMLInputElement>(null)
-  const [adminLogoPreview, setAdminLogoPreview] = useState<string | null>(null)
-  const [savingAdminLogo, setSavingAdminLogo] = useState(false)
-
-  const handleAdminLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = async (ev) => {
-      const dataUrl = ev.target?.result as string
-      setAdminLogoPreview(dataUrl)
-      setSavingAdminLogo(true)
-      try {
-        const compressed = await compressImageToWebP(file)
-        const { url, error } = await uploadImage('logo', compressed, 'image/webp')
-        if (error) { toast.error('Erro ao enviar logo: ' + error); setSavingAdminLogo(false); return }
-        const result = await saveBusinessConfig({ logo_url: url })
-        setSavingAdminLogo(false)
-        if (result.success) { toast.success('Logo atualizado!'); router.refresh() }
-        else { toast.error(result.error ?? 'Erro ao salvar.') }
-      } catch {
-        toast.error('Erro ao processar imagem.')
-        setSavingAdminLogo(false)
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
   const handlePauseConfirm = async (val: boolean) => {
     const id = toast.loading(val ? 'Pausando expediente...' : 'Retornando expediente...')
     const res = await togglePauseStatus(val, val ? pauseMessage : null, val ? pauseReturnTime : null)
@@ -126,16 +97,16 @@ export function AdminDashboard({
         {/* Linha 1: Logo + Título + Ações */}
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Logo clicável para upload */}
+            {/* Logo — clique vai para configurações de logo */}
             <button
-              onClick={() => adminLogoRef.current?.click()}
+              onClick={() => setTab('configuracoes')}
               className="relative group shrink-0"
-              title="Clique para trocar o logo"
+              title="Configurações de logo"
             >
               <div className="relative p-[1px] bg-gradient-to-b from-white/20 to-white/5 rounded-xl">
                 <div className="bg-black/50 p-1.5 rounded-xl backdrop-blur-xl">
                   <Image
-                    src={adminLogoPreview ?? config.logo_url ?? '/logo-barbearialeste.png'}
+                    src={config.logo_url ?? '/logo-barbearialeste.png'}
                     alt="Logo"
                     width={32}
                     height={32}
@@ -147,11 +118,9 @@ export function AdminDashboard({
                 <Camera size={14} className="text-white" />
               </div>
             </button>
-            <input ref={adminLogoRef} type="file" accept="image/*" className="hidden" onChange={handleAdminLogoChange} />
 
             <div className="min-w-0">
               <span className="block font-extrabold text-xs tracking-widest text-white uppercase opacity-90 truncate">Painel</span>
-              {savingAdminLogo && <span className="block text-[9px] text-zinc-400 animate-pulse">Salvando...</span>}
             </div>
           </div>
 
