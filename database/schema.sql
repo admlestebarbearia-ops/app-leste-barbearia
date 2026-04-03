@@ -376,3 +376,15 @@ ON CONFLICT (day_of_week) DO NOTHING;
 --   SELECT id FROM auth.users WHERE email = 'email_do_willians@gmail.com'
 -- );
 -- ============================================================
+
+-- ============================================================
+-- MIGRAÇÃO: Adicionar colunas novas ao banco existente
+-- Execute no SQL Editor do Supabase se a tabela já existia antes
+-- ============================================================
+ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS bottom_logo_url TEXT;
+ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS is_paused BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS pause_message TEXT;
+ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS pause_return_time TIMESTAMPTZ;
+ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS enable_gallery BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS allow_client_uploads BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.services ADD COLUMN IF NOT EXISTS icon_name TEXT;

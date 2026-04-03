@@ -14,7 +14,18 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
-import { Scissors, CalendarDays, User, Menu, Star, Home, Check } from 'lucide-react'
+import { Scissors, Smile, Crown, Sparkles, Zap, Star, Flame, Droplets, CalendarDays, User, Menu, Home, Check } from 'lucide-react'
+
+const SERVICE_ICONS: Record<string, React.ReactNode> = {
+  scissors:  <Scissors  size={22} strokeWidth={1.5} />,
+  smile:     <Smile     size={22} strokeWidth={1.5} />,
+  crown:     <Crown     size={22} strokeWidth={1.5} />,
+  sparkles:  <Sparkles  size={22} strokeWidth={1.5} />,
+  zap:       <Zap       size={22} strokeWidth={1.5} />,
+  star:      <Star      size={22} strokeWidth={1.5} />,
+  flame:     <Flame     size={22} strokeWidth={1.5} />,
+  droplets:  <Droplets  size={22} strokeWidth={1.5} />,
+}
 
 
 interface Props {
@@ -220,31 +231,38 @@ const handleConfirm = async () => {
 
       <div className="px-4 pt-2 flex flex-col gap-10 max-w-lg mx-auto w-full">
 
-        {/* Secao 1: Servico (Horizontal Scroll) */}
+        {/* Secao 1: Servico */}
         <section>
-          <div className="flex overflow-x-auto gap-4 pb-6 snap-x snap-mandatory hide-scrollbars -mx-4 px-4 items-center">
+          <div className="flex flex-col gap-2">
             {services.map((service) => {
               const isSelected = selectedService?.id === service.id;
+              const icon = SERVICE_ICONS[service.icon_name ?? ''] ?? SERVICE_ICONS.scissors;
               return (
               <button
                 key={service.id}
                 onClick={() => handleServiceSelect(service)}
                 className={[
-                  'flex-none w-[130px] h-[130px] flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border transition-all snap-start',
+                  'flex items-center gap-4 p-3.5 rounded-2xl border transition-all duration-200 w-full text-left relative',
                   isSelected
-                    ? 'border-primary bg-primary/20 ring-1 ring-primary card-shadow relative'
+                    ? 'border-primary bg-primary/15 ring-1 ring-primary card-shadow'
                     : 'border-border bg-card hover:border-foreground/20 card-shadow',
                 ].join(' ')}
               >
-                {isSelected && <div className="absolute top-2 right-2 text-primary shadow-sm bg-background/50 rounded-full p-0.5"><Check size={14} strokeWidth={4} /></div>}
-                <div className={isSelected ? 'text-primary' : 'text-muted-foreground'}>
-                  <Scissors size={28} strokeWidth={1.5} />
+                <div className={[
+                  'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors',
+                  isSelected ? 'bg-primary/20 text-primary' : 'bg-white/5 text-muted-foreground',
+                ].join(' ')}>
+                  {icon}
                 </div>
-                <div className="flex flex-col items-center gap-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-foreground text-center leading-tight">{service.name}</span>
-                  <span className="text-[10px] font-bold text-muted-foreground tracking-widest">
+                <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                  <span className="text-sm font-bold uppercase tracking-wide text-foreground leading-tight">{service.name}</span>
+                  <span className="text-xs text-muted-foreground">{service.duration_minutes} min</span>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className={['text-sm font-extrabold tracking-wide', isSelected ? 'text-primary' : 'text-foreground'].join(' ')}>
                     R$ {service.price.toFixed(2).replace('.', ',')}
                   </span>
+                  {isSelected && <Check size={14} strokeWidth={3} className="text-primary" />}
                 </div>
               </button>
             )})}

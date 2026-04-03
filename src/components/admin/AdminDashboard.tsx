@@ -640,8 +640,8 @@ function TabConfiguracoes({
 
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-col gap-0.5 flex-1">
-              <span className="text-sm text-foreground">Clientes enviam fotos</span>
-              <span className="text-xs text-muted-foreground">Clientes podem enviar fotos para aprovação</span>
+              <span className="text-sm text-foreground">Upload de fotos por clientes</span>
+              <span className="text-xs text-muted-foreground">Permite que clientes enviem fotos do próprio corte para aprovação do admin antes de aparecer na galeria</span>
             </div>
             <Switch checked={allowClientUploads} onCheckedChange={setAllowClientUploads} />
           </div>
@@ -787,6 +787,17 @@ function TabConfiguracoes({
 // ------------------------------------------------------------------
 // Tab: Servicos
 // ------------------------------------------------------------------
+const ADMIN_ICON_OPTIONS = [
+  { key: 'scissors',  label: '✂ Tesoura'     },
+  { key: 'smile',     label: '😊 Relaxamento' },
+  { key: 'crown',     label: '👑 Premium'    },
+  { key: 'sparkles',  label: '✨ Tratamento' },
+  { key: 'zap',       label: '⚡ Express'    },
+  { key: 'star',      label: '⭐ Especial'   },
+  { key: 'flame',     label: '🔥 Hot'        },
+  { key: 'droplets',  label: '💧 Hidratação' },
+]
+
 function TabServicos({
   services,
   onRefresh,
@@ -798,6 +809,7 @@ function TabServicos({
   const [editName, setEditName] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editDuration, setEditDuration] = useState('')
+  const [editIcon, setEditIcon] = useState('scissors')
   const [saving, setSaving] = useState(false)
 
   // Novo servico
@@ -805,12 +817,14 @@ function TabServicos({
   const [newName, setNewName] = useState('')
   const [newPrice, setNewPrice] = useState('')
   const [newDuration, setNewDuration] = useState('30')
+  const [newIcon, setNewIcon] = useState('scissors')
 
   const startEdit = (svc: Service) => {
     setEditingId(svc.id)
     setEditName(svc.name)
     setEditPrice(String(svc.price))
     setEditDuration(String(svc.duration_minutes))
+    setEditIcon(svc.icon_name ?? 'scissors')
   }
 
   const handleSaveEdit = async () => {
@@ -819,7 +833,7 @@ function TabServicos({
     const duration = parseInt(editDuration, 10)
     if (isNaN(price) || isNaN(duration)) { toast.error('Valores invalidos.'); return }
     setSaving(true)
-    const result = await upsertService({ id: editingId, name: editName.trim(), price, duration_minutes: duration })
+    const result = await upsertService({ id: editingId, name: editName.trim(), price, duration_minutes: duration, icon_name: editIcon })
     setSaving(false)
     if (result.success) {
       toast.success('Servico atualizado.')
@@ -844,7 +858,7 @@ function TabServicos({
       return
     }
     setSaving(true)
-    const result = await upsertService({ name: newName.trim(), price, duration_minutes: duration })
+    const result = await upsertService({ name: newName.trim(), price, duration_minutes: duration, icon_name: newIcon })
     setSaving(false)
     if (result.success) {
       toast.success('Servico criado.')
@@ -852,6 +866,7 @@ function TabServicos({
       setNewName('')
       setNewPrice('')
       setNewDuration('30')
+      setNewIcon('scissors')
       onRefresh()
     } else {
       toast.error(result.error ?? 'Erro.')
@@ -861,7 +876,7 @@ function TabServicos({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium text-foreground">Servicos</h3>
+        <h3 className="text-sm font-semibold tracking-wide uppercase text-foreground/80">Catálogo de Serviços</h3>
         <Button size="sm" variant="outline" onClick={() => setShowNew(!showNew)}>
           {showNew ? 'Cancelar' : '+ Novo'}
         </Button>
@@ -883,8 +898,24 @@ function TabServicos({
               <Input type="number" min="5" step="5" value={newDuration} onChange={(e) => setNewDuration(e.target.value)} className="h-9" />
             </div>
           </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Ícone</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {ADMIN_ICON_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setNewIcon(opt.key)}
+                  className={`text-[11px] px-2.5 py-1.5 rounded-lg border transition-all ${newIcon === opt.key ? 'bg-primary/20 border-primary text-primary' : 'border-border text-muted-foreground hover:border-foreground/30'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <Button size="sm" onClick={handleCreateNew} disabled={saving}>
-            {saving ? 'Salvando...' : 'Criar servico'}
+            {saving ? 'Salvando...' : 'Criar serviço'}
           </Button>
         </div>
       )}
@@ -910,6 +941,22 @@ function TabServicos({
                   <div className="flex flex-col gap-1 flex-1">
                     <Label className="text-xs text-muted-foreground">Duracao (min)</Label>
                     <Input type="number" min="5" step="5" value={editDuration} onChange={(e) => setEditDuration(e.target.value)} className="h-9" />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label className="text-xs text-muted-foreground">Ícone</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ADMIN_ICON_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setEditIcon(opt.key)}
+                        className={`text-[11px] px-2.5 py-1.5 rounded-lg border transition-all ${editIcon === opt.key ? 'bg-primary/20 border-primary text-primary' : 'border-border text-muted-foreground hover:border-foreground/30'}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 <div className="flex gap-2">

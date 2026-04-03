@@ -175,6 +175,7 @@ export async function upsertService(data: {
   name: string
   price: number
   duration_minutes: number
+  icon_name?: string | null
   is_active?: boolean
 }): Promise<{ success: boolean; error?: string }> {
   try {
