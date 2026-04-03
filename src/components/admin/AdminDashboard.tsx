@@ -129,13 +129,25 @@ export function AdminDashboard({
       {/* Drawer lateral */}
       <aside
         className={[
-          'fixed top-0 right-0 z-50 h-full w-72 bg-neutral-950 border-l border-white/10 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out',
+          'fixed top-0 right-0 z-50 h-full w-72 bg-neutral-950/90 backdrop-blur-2xl border-l border-white/10 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out',
           isDrawerOpen ? 'translate-x-0' : 'translate-x-full',
         ].join(' ')}
       >
-        {/* Cabeçalho do Drawer */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-          <span className="text-xs font-black uppercase tracking-widest text-zinc-400">Menu</span>
+        {/* Cabeçalho do Drawer com logo */}
+        <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
+          <div className="flex items-center gap-3">
+            <Image
+              src={headerLogoSrc}
+              alt="Logo"
+              width={32}
+              height={32}
+              className="w-8 h-8 object-contain"
+            />
+            <div className="flex flex-col">
+              <span className="text-xs font-bold text-white leading-tight">Painel Admin</span>
+              <span className="text-[10px] text-zinc-500 leading-tight">Barbearia Leste</span>
+            </div>
+          </div>
           <button
             onClick={() => setIsDrawerOpen(false)}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
@@ -189,61 +201,45 @@ export function AdminDashboard({
       <header className="sticky top-0 z-30 bg-neutral-950/80 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Logo — clicável para upload */}
+            {/* Logo — clicável para upload, sem bordas */}
             <button
               onClick={() => headerLogoRef.current?.click()}
               disabled={savingHeaderLogo}
               className="relative group shrink-0"
-              title="Clique para trocar o logo"
+              title="Clique para trocar o logo do painel"
             >
-              <div className="relative p-[1px] bg-gradient-to-b from-white/20 to-white/5 rounded-xl">
-                <div className="bg-black/50 p-1.5 rounded-xl backdrop-blur-xl">
-                  <Image
-                    src={headerLogoSrc}
-                    alt="Logo"
-                    width={32}
-                    height={32}
-                    className="w-8 h-8 object-contain drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]"
-                  />
-                </div>
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity">
+              <Image
+                src={headerLogoSrc}
+                alt="Logo"
+                width={36}
+                height={36}
+                className="w-9 h-9 object-contain"
+              />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
                 {savingHeaderLogo
                   ? <span className="text-[9px] text-white animate-pulse">...</span>
-                  : <Camera size={14} className="text-white" />}
+                  : <Camera size={13} className="text-white" />}
               </div>
             </button>
             <input ref={headerLogoRef} type="file" accept="image/*" className="hidden" onChange={handleHeaderLogoChange} />
 
             <div className="min-w-0">
-              <span className="block font-extrabold text-xs tracking-widest text-white uppercase opacity-90 truncate">Painel</span>
+              <span className="block font-bold text-sm text-white truncate">Painel Administrativo</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Pausa/Retomar */}
+            {/* Botão Pausar Agendamentos */}
             <button
               onClick={() => setIsPauseDialogOpen(true)}
-              className={`flex items-center gap-1.5 cursor-pointer px-2.5 py-1.5 rounded-xl border font-bold transition-all duration-300 ${
+              className={`flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 ${
                 config.is_paused
-                  ? 'border-red-500/50 bg-red-500/10 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)]'
-                  : 'border-white/10 bg-white/[0.03] text-zinc-400 hover:border-white/20'
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                  : 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'
               }`}
             >
-              {config.is_paused
-                ? <><Pause size={14} /><span className="hidden sm:inline text-[10px] uppercase tracking-widest">Pausado</span></>
-                : <><Play  size={14} /><span className="hidden sm:inline text-[10px] uppercase tracking-widest">Ativo</span></>
-              }
+              {config.is_paused ? 'Retomar agenda' : 'Pausar agenda'}
             </button>
-
-            {/* Sair */}
-            <a
-              href="/api/auth/signout"
-              className="p-2 rounded-xl border border-white/10 bg-white/[0.03] text-zinc-500 hover:text-white hover:border-white/20 transition-all"
-              title="Sair"
-            >
-              <LogOut size={16} />
-            </a>
 
             {/* Menu Hambúrguer */}
             <button
@@ -343,7 +339,7 @@ export function AdminDashboard({
 }
 
 // ------------------------------------------------------------------
-// Tab: Hoje
+// Tab: Agenda (todos os agendamentos agrupados por data)
 // ------------------------------------------------------------------
 function TabHoje({
   appointments,
@@ -355,6 +351,7 @@ function TabHoje({
   onRefresh: () => void
 }) {
   const [loading, setLoading] = useState<string | null>(null)
+  const todayStr = new Date().toISOString().split('T')[0]
 
   const getDisplayName = (appt: Appointment) => {
     return appt.profiles?.display_name ?? appt.client_name ?? 'Cliente'
@@ -385,103 +382,122 @@ function TabHoje({
     setLoading(null)
   }
 
-  const confirmed = appointments.filter((a) => a.status === 'confirmado')
-  const others = appointments.filter((a) => a.status !== 'confirmado')
+  // Agrupa por data
+  const byDate = appointments.reduce<Record<string, Appointment[]>>((acc, appt) => {
+    const d = appt.date ?? 'sem-data'
+    if (!acc[d]) acc[d] = []
+    acc[d].push(appt)
+    return acc
+  }, {})
+
+  const sortedDates = Object.keys(byDate).sort()
+
+  const formatDateLabel = (dateStr: string) => {
+    if (dateStr === todayStr) return 'Hoje'
+    const d = new Date(dateStr + 'T12:00:00')
+    const diff = Math.round((d.getTime() - new Date().setHours(12,0,0,0)) / 86400000)
+    if (diff === 1) return 'Amanhã'
+    return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+  }
+
+  const statusColor: Record<string, string> = {
+    confirmado: 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10',
+    cancelado:  'text-zinc-500   border-white/10      bg-white/5',
+    faltou:     'text-amber-400  border-amber-500/20  bg-amber-500/10',
+  }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-extrabold uppercase tracking-widest text-white drop-shadow-[0_2px_10px_rgba(255,255,255,0.2)]">Agenda do Dia</h2>
-        <p className="text-[10px] uppercase font-bold tracking-widest text-zinc-500 bg-white/5 py-1 px-3 rounded-full border border-white/5">
-          {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </p>
+        <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">Agenda</h2>
+        <span className="text-[10px] font-bold tracking-widest text-zinc-500 bg-white/5 py-1 px-3 rounded-full border border-white/5">
+          {appointments.filter(a => a.status === 'confirmado').length} confirmado(s)
+        </span>
       </div>
 
-      {confirmed.length === 0 && (
-        <div className="text-center py-16 bg-white/[0.02] border border-white/5 rounded-3xl backdrop-blur-sm -mt-2">
-          <p className="text-zinc-500 font-medium tracking-wide uppercase text-xs">Agenda livre no momento.</p>
+      {sortedDates.length === 0 && (
+        <div className="text-center py-16 bg-white/[0.02] border border-white/5 rounded-3xl">
+          <p className="text-zinc-500 text-xs uppercase tracking-wide">Nenhum agendamento.</p>
         </div>
       )}
 
-      {confirmed.map((appt) => (
-        <div key={appt.id} className="relative group bg-white/[0.03] hover:bg-white/[0.06] transition-all duration-500 backdrop-blur-xl border border-white/10 rounded-2xl p-5 flex flex-col gap-4 shadow-[0_4px_25px_rgba(0,0,0,0.4)] overflow-hidden">
-          <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-white/40 to-transparent opacity-50"></div>
-          <div className="flex items-start justify-between gap-3 relative z-10">
-            <div className="flex flex-col gap-1.5">
-              <span className="font-bold text-sm tracking-wide text-white uppercase">{getDisplayName(appt)}</span>
-              <span className="text-[11px] font-medium tracking-widest uppercase text-zinc-400">{appt.services?.name}</span>
-            </div>
-            <div className="flex flex-col items-end gap-1.5 shrink-0 bg-black/40 px-3 py-2 rounded-xl border border-white/5">
-              <span className="text-xs font-black tracking-wider text-white">{appt.start_time}</span>
-              {appt.services?.price != null && (
-                <span className="text-[10px] font-bold text-zinc-400">
-                  R&#36; {appt.services.price.toFixed(2).replace('.', ',')}
-                </span>
-              )}
-            </div>
+      {sortedDates.map((dateStr) => (
+        <div key={dateStr} className="flex flex-col gap-3">
+          {/* Cabeçalho do grupo de data */}
+          <div className="flex items-center gap-3">
+            <span className={`text-xs font-extrabold uppercase tracking-widest ${dateStr === todayStr ? 'text-white' : 'text-zinc-400'}`}>
+              {formatDateLabel(dateStr)}
+            </span>
+            <span className="text-[10px] text-zinc-600">{new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+            <div className="flex-1 h-px bg-white/5" />
+            <span className="text-[10px] text-zinc-600">{byDate[dateStr].filter(a => a.status === 'confirmado').length} confirmado(s)</span>
           </div>
-          {appt.client_phone && (
-            <a
-              href={`https://wa.me/55${appt.client_phone.replace(/\D/g, '')}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[10px] font-bold tracking-widest text-emerald-400 hover:text-emerald-300 transition-colors inline-flex items-center gap-1.5 uppercase"
-            >
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              WhatsApp
-            </a>
-          )}
-          <div className="flex gap-2 flex-wrap pt-2 border-t border-white/5 relative z-10 mt-2">
-            <button
-              disabled={loading === appt.id + 'cancelado'}
-              onClick={() => handleStatus(appt.id, 'cancelado')}
-              className="text-[10px] font-extrabold tracking-widest uppercase text-white/50 hover:text-white bg-white/5 px-3 py-1.5 border border-white/5 hover:border-white/20 rounded-xl transition-all disabled:opacity-40"
-            >
-              Cancelar
-            </button>
-            <button
-              disabled={loading === appt.id + 'faltou'}
-              onClick={() => handleStatus(appt.id, 'faltou')}
-              className="text-[10px] font-extrabold tracking-widest uppercase text-amber-500/70 hover:text-amber-400 bg-amber-500/5 px-3 py-1.5 border border-amber-500/10 hover:border-amber-500/30 rounded-xl transition-all disabled:opacity-40"
-            >
-              Faltou
-            </button>
-            {appt.client_id && (
-              <button
-                disabled={loading === 'block' + appt.client_id}
-                onClick={() => handleBlock(appt.client_id, true)}
-                className="text-[10px] font-extrabold tracking-widest uppercase text-red-500 hover:text-red-400 bg-red-500/5 px-3 py-1.5 border border-red-500/20 hover:border-red-500/40 rounded-xl transition-all disabled:opacity-40"
-              >
-                Bloquear Acesso
-              </button>
-            )}
-          </div>
-        </div>
-      ))}
 
-      {others.length > 0 && (
-        <details className="mt-4 group">
-          <summary className="text-[10px] font-extrabold tracking-widest uppercase text-zinc-500 cursor-pointer hover:text-white transition-colors bg-white/5 px-4 py-3 rounded-xl border border-white/10 w-fit">
-            Ver Outros
-          </summary>
-          <div className="flex flex-col gap-3 mt-4">
-            {others.map((appt) => (
-              <div
-                key={appt.id}
-                className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between backdrop-blur-sm"
-              >
+          {byDate[dateStr].map((appt) => (
+            <div
+              key={appt.id}
+              className={`relative bg-white/[0.03] border rounded-2xl p-4 flex flex-col gap-3 ${appt.status !== 'confirmado' ? 'opacity-50' : 'border-white/10'}`}
+            >
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-col gap-1">
-                  <span className="text-[11px] font-bold tracking-wide uppercase text-zinc-300">{getDisplayName(appt)}</span>
-                  <span className="text-[10px] font-extrabold tracking-widest text-zinc-500">{appt.start_time}</span>
+                  <span className="font-bold text-sm text-white">{getDisplayName(appt)}</span>
+                  <span className="text-[11px] text-zinc-400">{appt.services?.name}</span>
                 </div>
-                <span className="text-[9px] font-black tracking-widest uppercase px-3 py-1.5 rounded-full border border-white/10 bg-black/40 text-zinc-400">
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <span className="text-sm font-black text-white">{appt.start_time?.slice(0, 5)}</span>
+                  {appt.services?.price != null && (
+                    <span className="text-[10px] text-zinc-500">R$ {appt.services.price.toFixed(2).replace('.', ',')}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border ${statusColor[appt.status] ?? statusColor['cancelado']}`}>
                   {appt.status}
                 </span>
+
+                {appt.status === 'confirmado' && (
+                  <div className="flex gap-2 flex-wrap">
+                    {appt.client_phone && (
+                      <a
+                        href={`https://wa.me/55${appt.client_phone.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 rounded-lg"
+                      >
+                        WhatsApp
+                      </a>
+                    )}
+                    <button
+                      disabled={loading === appt.id + 'faltou'}
+                      onClick={() => handleStatus(appt.id, 'faltou')}
+                      className="text-[10px] font-bold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                    >
+                      Faltou
+                    </button>
+                    <button
+                      disabled={loading === appt.id + 'cancelado'}
+                      onClick={() => handleStatus(appt.id, 'cancelado')}
+                      className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2 py-1 rounded-lg disabled:opacity-40"
+                    >
+                      Cancelar
+                    </button>
+                    {appt.client_id && (
+                      <button
+                        disabled={loading === 'block' + appt.client_id}
+                        onClick={() => handleBlock(appt.client_id, true)}
+                        className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                      >
+                        Bloquear
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </details>
-      )}
+            </div>
+          ))}
+        </div>
+      ))}
     </div>
   )
 }

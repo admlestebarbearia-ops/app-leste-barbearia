@@ -51,17 +51,17 @@ export default async function AdminPage() {
     )
   }
 
-  // Agendamentos de hoje
+  // Todos os agendamentos a partir de hoje
   const today = format(new Date(), 'yyyy-MM-dd')
-  const { data: todayAppointments } = await supabase
+  const { data: allAppointments } = await supabase
     .from('appointments')
     .select(`
       *,
       services(name, price, duration_minutes),
-      profiles(is_blocked)
+      profiles(is_blocked, display_name)
     `)
-    .eq('date', today)
-    .eq('status', 'confirmado')
+    .gte('date', today)
+    .order('date', { ascending: true })
     .order('start_time', { ascending: true })
 
   return (
@@ -71,7 +71,7 @@ export default async function AdminPage() {
         workingHours={(workingHours as WorkingHours[]) ?? []}
         services={(services as Service[]) ?? []}
         specialSchedules={(specialSchedules as SpecialSchedule[]) ?? []}
-        appointments={(todayAppointments as Appointment[]) ?? []}
+        appointments={(allAppointments as Appointment[]) ?? []}
       />
     </main>
   )
