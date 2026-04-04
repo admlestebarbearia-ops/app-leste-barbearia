@@ -42,7 +42,7 @@ export async function getAvailableSlots(
 
   // Se dia fechado por agenda especial
   if (typedSpecial?.is_closed) {
-    return { slots: [], error: 'Barbearia fechada neste dia.' }
+    return { slots: [], error: 'Barbearia fechada neste dia (data especial).' }
   }
 
   // Horários do dia da semana
@@ -60,8 +60,12 @@ export async function getAvailableSlots(
   const closeTime = typedSpecial?.close_time ?? typedWH?.close_time
   const isOpen = typedSpecial ? !typedSpecial.is_closed : (typedWH?.is_open ?? false)
 
-  if (!isOpen || !openTime || !closeTime) {
-    return { slots: [], error: 'Barbearia fechada neste dia.' }
+  if (!isOpen) {
+    return { slots: [], error: 'Barbearia não abre neste dia da semana.' }
+  }
+
+  if (!openTime || !closeTime) {
+    return { slots: [], error: 'Horário de funcionamento não configurado para este dia. Por favor, contate a barbearia.' }
   }
 
   // Verifica se está pausado temporariamente HOJE e se o dia da pesquisa é hoje

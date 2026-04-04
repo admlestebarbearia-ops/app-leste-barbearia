@@ -143,6 +143,7 @@ export async function saveWorkingHours(
       if (error) throw error
     }
     revalidatePath('/agendar')
+    revalidatePath('/', 'layout')
     return { success: true }
   } catch (e) {
     return { success: false, error: (e as Error).message }

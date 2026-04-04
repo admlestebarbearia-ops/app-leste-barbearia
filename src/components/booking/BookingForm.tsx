@@ -184,8 +184,9 @@ const handleConfirm = async () => {
       const supabase = createClient()
       const { error } = await supabase.auth.signInAnonymously()
       if (error) {
-        toast.error('Erro ao iniciar sessão. Tente novamente.')
-        return
+        // Sign-in anônimo desabilitado ou falhou — prossegue sem sessão.
+        // O server action trata usuários não autenticados corretamente.
+        console.warn('[BookingForm] signInAnonymously falhou:', error.message)
       }
     }
 

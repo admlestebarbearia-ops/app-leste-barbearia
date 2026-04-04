@@ -979,7 +979,16 @@ function TabConfiguracoes({
 
   const updateHour = (dayOfWeek: number, field: keyof WorkingHours, value: unknown) => {
     setHours((prev) =>
-      prev.map((h) => (h.day_of_week === dayOfWeek ? { ...h, [field]: value } : h))
+      prev.map((h) => {
+        if (h.day_of_week !== dayOfWeek) return h
+        const updated = { ...h, [field]: value }
+        // Ao ativar um dia sem horários configurados, aplica defaults editáveis
+        if (field === 'is_open' && value === true) {
+          if (!updated.open_time)  updated.open_time  = '09:00'
+          if (!updated.close_time) updated.close_time = '19:00'
+        }
+        return updated
+      })
     )
   }
 
