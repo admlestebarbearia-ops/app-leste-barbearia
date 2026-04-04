@@ -423,6 +423,19 @@ function TabHoje({
           const t = payload.new?.start_time?.slice(0, 5) ?? ''
           toast.success(`Novo agendamento! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '📅' })
           sendBrowserNotif(d, t)
+          // Som de notificação via Web Audio API
+          try {
+            const ctx = new AudioContext()
+            const osc = ctx.createOscillator()
+            const gain = ctx.createGain()
+            osc.connect(gain)
+            gain.connect(ctx.destination)
+            osc.frequency.value = 880
+            gain.gain.setValueAtTime(0.3, ctx.currentTime)
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+            osc.start(ctx.currentTime)
+            osc.stop(ctx.currentTime + 0.6)
+          } catch {}
           setNewBadge((prev) => prev + 1)
           onRefresh()
         })
@@ -688,8 +701,10 @@ function TabHoje({
                       {appt.profiles?.email && (
                         <span className="text-[10px] text-zinc-600 truncate">{appt.profiles.email}</span>
                       )}
-                      {appt.client_phone && (
-                        <span className="text-[10px] text-zinc-600">{appt.client_phone}</span>
+                      {(appt.profiles?.phone || appt.client_phone) && (
+                        <span className="text-[10px] text-zinc-600">
+                          {appt.profiles?.phone ?? appt.client_phone}
+                        </span>
                       )}
                       {appt.services?.price != null && (
                         <span className="text-xs font-bold text-zinc-300">
@@ -715,9 +730,9 @@ function TabHoje({
                   <div className="flex gap-2 flex-wrap pt-1 border-t border-white/5">
                     {appt.status === 'confirmado' && (
                       <>
-                        {appt.client_phone && (
+                        {(appt.client_phone || appt.profiles?.phone) && (
                           <a
-                            href={`https://wa.me/55${appt.client_phone.replace(/\D/g, '')}`}
+                            href={`https://wa.me/55${(appt.profiles?.phone ?? appt.client_phone ?? '').replace(/\D/g, '')}`}
                             target="_blank"
                             rel="noreferrer"
                             className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 rounded-lg"

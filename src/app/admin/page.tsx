@@ -65,6 +65,7 @@ export default async function AdminPage() {
       services(name, price, duration_minutes)
     `)
     .gte('date', thirtyDaysAgo)
+    .is('deleted_at', null)
     .order('date', { ascending: true })
     .order('start_time', { ascending: true })
 
@@ -75,7 +76,7 @@ export default async function AdminPage() {
     if (clientIds.length > 0) {
       const { data: profilesData } = await adminClient
         .from('profiles')
-        .select('id, is_blocked, display_name, email')
+        .select('id, is_blocked, display_name, email, phone')
         .in('id', clientIds)
       if (profilesData) {
         const profilesMap = Object.fromEntries(profilesData.map((p) => [p.id, p]))

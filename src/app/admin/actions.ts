@@ -67,7 +67,7 @@ export async function updateAppointmentStatus(
   }
 }
 
-// ─── Excluir agendamento (apenas admin) ─────────────────────────────────
+// ─── Excluir agendamento (soft delete — apenas admin) ───────────────────────
 export async function deleteAppointment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -75,7 +75,7 @@ export async function deleteAppointment(
     const { supabase } = await requireAdmin()
     const { error } = await supabase
       .from('appointments')
-      .delete()
+      .update({ status: 'cancelado', deleted_at: new Date().toISOString() })
       .eq('id', appointmentId)
     if (error) throw error
     revalidatePath('/admin')
