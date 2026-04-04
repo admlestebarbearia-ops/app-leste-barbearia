@@ -28,6 +28,9 @@ export interface BusinessConfig {
   pause_return_time: string | null
   enable_gallery: boolean
   allow_client_uploads: boolean
+  whatsapp_number: string | null
+  instagram_url: string | null
+  address: string | null
   updated_at: string
 }
 

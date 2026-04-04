@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
-import { Scissors, Star, CalendarDays, User, Menu, Home, Check } from 'lucide-react'
+import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield } from 'lucide-react'
 
 // Ícones SVG customizados da pasta public/barber-icon
 const SERVICE_ICON_PATHS: Record<string, string> = {
@@ -54,6 +54,7 @@ export function BookingForm({
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
@@ -488,7 +489,10 @@ const handleConfirm = async () => {
             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Início</span>
          </button>
 
-         <button onClick={() => { if(isLoggedIn) { document.getElementById('meus-agendamentos')?.scrollIntoView({ behavior: 'smooth' }) } else { toast('Faça login para ver as reservas') } }} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+         <button
+           onClick={() => isLoggedIn ? router.push('/reservas') : toast('Faça login para ver suas reservas')}
+           className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1"
+         >
             <CalendarDays size={24} strokeWidth={2} />
             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Reservas</span>
          </button>
@@ -511,19 +515,84 @@ const handleConfirm = async () => {
             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">{isLoggedIn ? 'Sair' : 'Perfil'}</span>
          </a>
 
-         {isAdmin ? (
-           <a href="/admin" className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
-             <Menu size={24} strokeWidth={2} />
-             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Menu</span>
-           </a>
-         ) : (
-           <button onClick={() => toast.info('Em Breve: Mais opções')} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
-             <Menu size={24} strokeWidth={2} />
-             <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Opções</span>
-           </button>
-         )}
+         <button
+           onClick={() => setMenuOpen(true)}
+           className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1"
+         >
+           <Menu size={24} strokeWidth={2} />
+           <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">{isAdmin ? 'Admin' : 'Opções'}</span>
+         </button>
        </div>
       </nav>
+
+      {/* ── PAINEL OPÇÕES (slide-up) ── */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end">
+          {/* Overlay */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setMenuOpen(false)}
+          />
+          {/* Painel */}
+          <div className="relative bg-[#111] border-t border-white/8 rounded-t-3xl px-5 pb-safe pt-5 flex flex-col gap-1">
+            {/* Handle */}
+            <div className="w-10 h-1 bg-white/20 rounded-full mx-auto mb-4" />
+
+            {/* Fechar */}
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-zinc-400 hover:text-white"
+            >
+              <X size={15} />
+            </button>
+
+            {isAdmin && (
+              <MenuLink href="/admin" icon={<Menu size={18} />} label="Painel Admin" />
+            )}
+
+            {config?.whatsapp_number && (
+              <MenuLink
+                href={`https://wa.me/55${config.whatsapp_number.replace(/\D/g, '')}`}
+                icon={<MessageCircle size={18} />}
+                label="WhatsApp"
+                external
+              />
+            )}
+
+            {config?.instagram_url && (
+              <MenuLink
+                href={config.instagram_url.startsWith('http') ? config.instagram_url : `https://instagram.com/${config.instagram_url.replace(/^@/, '')}`}
+                icon={
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                    <circle cx="12" cy="12" r="4"/>
+                    <circle cx="17.5" cy="6.5" r="0.5" fill="currentColor" stroke="none"/>
+                  </svg>
+                }
+                label="Instagram"
+                external
+              />
+            )}
+
+            {config?.address && (
+              <MenuLink
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(config.address)}`}
+                icon={<MapPin size={18} />}
+                label="Como chegar"
+                sub={config.address}
+                external
+              />
+            )}
+
+            <div className="h-px bg-white/5 my-2" />
+
+            <MenuLink href="/termos" icon={<FileText size={16} />} label="Termos de Uso" subtle />
+            <MenuLink href="/privacidade" icon={<Shield size={16} />} label="Política de Privacidade" subtle />
+
+            <div className="pb-6" />
+          </div>
+        </div>
+      )}
 
     </div>
   )
@@ -613,4 +682,43 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
   )
 }
 
-
+// ─── Sub-componente: MenuItem do painel Opções ────────────────────────────
+function MenuLink({
+  href,
+  icon,
+  label,
+  sub,
+  external,
+  subtle,
+}: {
+  href: string
+  icon: React.ReactNode
+  label: string
+  sub?: string
+  external?: boolean
+  subtle?: boolean
+}) {
+  return (
+    <a
+      href={href}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noreferrer' : undefined}
+      className={[
+        'flex items-center gap-3 px-3 py-3 rounded-xl transition-colors',
+        subtle
+          ? 'text-zinc-600 hover:text-zinc-400 hover:bg-white/3'
+          : 'text-zinc-300 hover:text-white hover:bg-white/8',
+      ].join(' ')}
+    >
+      <span className={subtle ? 'text-zinc-600' : 'text-zinc-400'}>{icon}</span>
+      <div className="flex flex-col gap-0 flex-1 min-w-0">
+        <span className={['font-semibold leading-tight', subtle ? 'text-[12px]' : 'text-sm'].join(' ')}>
+          {label}
+        </span>
+        {sub && (
+          <span className="text-[11px] text-zinc-500 truncate mt-0.5">{sub}</span>
+        )}
+      </div>
+    </a>
+  )
+}

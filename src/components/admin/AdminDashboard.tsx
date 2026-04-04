@@ -822,6 +822,12 @@ function TabConfiguracoes({
   const [allowClientUploads, setAllowClientUploads] = useState(config.allow_client_uploads)
   const [savingConfig, setSavingConfig] = useState(false)
 
+  // Contatos e localização
+  const [whatsapp, setWhatsapp] = useState(config.whatsapp_number ?? '')
+  const [instagram, setInstagram] = useState(config.instagram_url ?? '')
+  const [address, setAddress] = useState(config.address ?? '')
+  const [savingContacts, setSavingContacts] = useState(false)
+
   // Logo
   const [logoPreview, setLogoPreview] = useState<string | null>(config.logo_url)
   const [logoFile, setLogoFile] = useState<File | null>(null)
@@ -860,6 +866,22 @@ function TabConfiguracoes({
     setSavingHours(false)
     if (result.success) {
       toast.success('Horarios salvos.')
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao salvar.')
+    }
+  }
+
+  const handleSaveContacts = async () => {
+    setSavingContacts(true)
+    const result = await saveBusinessConfig({
+      whatsapp_number: whatsapp.trim() || null,
+      instagram_url: instagram.trim() || null,
+      address: address.trim() || null,
+    })
+    setSavingContacts(false)
+    if (result.success) {
+      toast.success('Contatos e endereço salvos.')
       onRefresh()
     } else {
       toast.error(result.error ?? 'Erro ao salvar.')
@@ -1084,6 +1106,53 @@ function TabConfiguracoes({
           </div>
           <Button onClick={handleSaveConfig} disabled={savingConfig} size="sm">
             {savingConfig ? 'Salvando...' : 'Salvar regras'}
+          </Button>
+        </div>
+      </section>
+
+      {/* Contatos e Endereço */}
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-medium text-foreground">Contatos e Localização</h3>
+        <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">WhatsApp (somente números, com DDD)</Label>
+            <p className="text-[11px] text-muted-foreground/70">Ex: 11999998888 — aparece como link no menu do app</p>
+            <Input
+              type="tel"
+              placeholder="11999998888"
+              value={whatsapp}
+              onChange={(e) => setWhatsapp(e.target.value.replace(/\D/g, ''))}
+              className="h-9"
+              maxLength={11}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Instagram (usuário ou URL)</Label>
+            <p className="text-[11px] text-muted-foreground/70">Ex: @lestebarbearia ou https://instagram.com/lestebarbearia</p>
+            <Input
+              type="text"
+              placeholder="@lestebarbearia"
+              value={instagram}
+              onChange={(e) => setInstagram(e.target.value)}
+              className="h-9"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Endereço (para Google Maps)</Label>
+            <p className="text-[11px] text-muted-foreground/70">Ex: Rua das Flores, 123 – São Paulo, SP. Ao clicar em "Como chegar" no app, abre o Google Maps com esse endereço.</p>
+            <Input
+              type="text"
+              placeholder="Rua das Flores, 123 – São Paulo, SP"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="h-9"
+            />
+          </div>
+
+          <Button onClick={handleSaveContacts} disabled={savingContacts} size="sm">
+            {savingContacts ? 'Salvando...' : 'Salvar contatos'}
           </Button>
         </div>
       </section>

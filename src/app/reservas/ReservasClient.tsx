@@ -1,0 +1,188 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { parseISO, format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
+import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw } from 'lucide-react'
+import { cancelMyAppointment } from '@/app/agendar/actions'
+
+interface Appt {
+  id: string
+  date: string
+  start_time: string
+  services: { name: string; price: number; duration_minutes: number | null } | null
+}
+
+interface Props {
+  appointments: Appt[]
+  cancellationWindowMinutes: number
+}
+
+export function ReservasClient({ appointments: initial, cancellationWindowMinutes }: Props) {
+  const router = useRouter()
+  const [appointments, setAppointments] = useState<Appt[]>(initial)
+  const [cancelling, setCancelling] = useState<string | null>(null)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+
+  const handleCancel = async (id: string) => {
+    setCancelling(id)
+    const result = await cancelMyAppointment(id)
+    if (result.success) {
+      setAppointments((prev) => prev.filter((a) => a.id !== id))
+      toast.success('Reserva cancelada.')
+      setConfirmId(null)
+    } else {
+      toast.error(result.error ?? 'Erro ao cancelar.')
+    }
+    setCancelling(null)
+  }
+
+  const canCancel = (appt: Appt) => {
+    const apptTime = parseISO(`${appt.date}T${appt.start_time}`)
+    const deadline = new Date(apptTime.getTime() - cancellationWindowMinutes * 60000)
+    return new Date() < deadline
+  }
+
+  return (
+    <main className="min-h-screen bg-background text-foreground">
+      <div className="max-w-lg mx-auto px-4 py-10 flex flex-col gap-6">
+        {/* Cabeçalho */}
+        <div className="flex items-center gap-3">
+          <Link
+            href="/agendar"
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-white transition-colors"
+          >
+            <ChevronLeft size={18} />
+          </Link>
+          <h1 className="text-xl font-extrabold uppercase tracking-widest text-white flex-1">
+            Minhas Reservas
+          </h1>
+          <button
+            onClick={() => router.refresh()}
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-white transition-colors"
+          >
+            <RefreshCw size={15} />
+          </button>
+        </div>
+
+        {/* Lista vazia */}
+        {appointments.length === 0 ? (
+          <div className="flex flex-col items-center gap-5 py-16 bg-neutral-900 rounded-2xl border border-white/5">
+            <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
+              <CalendarDays size={28} className="text-zinc-500" />
+            </div>
+            <div className="flex flex-col items-center gap-1 text-center">
+              <p className="text-base font-semibold text-zinc-300">Nenhuma reserva ativa</p>
+              <p className="text-sm text-zinc-500">Você ainda não tem agendamentos confirmados.</p>
+            </div>
+            <Link
+              href="/agendar"
+              className="bg-white text-black text-xs font-extrabold uppercase tracking-widest px-6 py-3 rounded-xl hover:bg-zinc-200 transition-colors"
+            >
+              Fazer uma reserva
+            </Link>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {appointments.map((appt) => {
+              const date = parseISO(appt.date)
+              const timeLabel = appt.start_time?.slice(0, 5) ?? ''
+              const canCancelAppt = canCancel(appt)
+
+              return (
+                <div
+                  key={appt.id}
+                  className="bg-neutral-900 rounded-2xl border border-white/5 overflow-hidden"
+                >
+                  {/* Barra de data */}
+                  <div className="bg-white/5 px-4 py-2 flex items-center gap-2">
+                    <CalendarDays size={13} className="text-zinc-500" />
+                    <span className="text-xs font-bold text-zinc-300 capitalize">
+                      {format(date, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    </span>
+                  </div>
+
+                  {/* Corpo */}
+                  <div className="px-4 py-4 flex items-center gap-4">
+                    {/* Horário destaque */}
+                    <div className="flex flex-col items-center bg-white/5 rounded-xl px-3 py-2 min-w-[54px]">
+                      <Clock size={12} className="text-zinc-500 mb-0.5" />
+                      <span className="text-xl font-black text-white tabular-nums leading-none">
+                        {timeLabel}
+                      </span>
+                      {appt.services?.duration_minutes && (
+                        <span className="text-[9px] text-zinc-500 mt-0.5">
+                          {appt.services.duration_minutes}min
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Serviço */}
+                    <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <Scissors size={11} className="text-zinc-500 shrink-0" />
+                        <span className="text-sm font-semibold text-white truncate">
+                          {appt.services?.name ?? 'Serviço'}
+                        </span>
+                      </div>
+                      {appt.services?.price != null && (
+                        <span className="text-xs text-zinc-400 font-medium">
+                          R$ {appt.services.price.toFixed(2).replace('.', ',')}
+                        </span>
+                      )}
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mt-0.5">
+                        Confirmado
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Rodapé com botão cancelar */}
+                  {canCancelAppt && (
+                    <div className="px-4 pb-4">
+                      {confirmId === appt.id ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-400 flex-1">Cancelar esta reserva?</span>
+                          <button
+                            disabled={cancelling === appt.id}
+                            onClick={() => handleCancel(appt.id)}
+                            className="text-[11px] font-black text-white bg-red-600 border border-red-500 px-3 py-1.5 rounded-lg disabled:opacity-40"
+                          >
+                            {cancelling === appt.id ? '...' : 'Sim'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmId(null)}
+                            className="text-[11px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg"
+                          >
+                            Não
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmId(appt.id)}
+                          className="w-full text-[11px] font-bold text-zinc-400 border border-white/10 bg-white/5 py-2 rounded-lg hover:text-white hover:border-white/20 transition-colors"
+                        >
+                          Cancelar reserva
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* CTA nova reserva */}
+            <Link
+              href="/agendar"
+              className="mt-2 w-full flex items-center justify-center gap-2 text-xs font-extrabold uppercase tracking-widest text-zinc-400 border border-white/10 bg-white/5 py-3 rounded-xl hover:text-white hover:border-white/15 transition-colors"
+            >
+              + Fazer nova reserva
+            </Link>
+          </div>
+        )}
+      </div>
+    </main>
+  )
+}
