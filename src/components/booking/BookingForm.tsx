@@ -111,61 +111,52 @@ export function BookingForm({
   const requireLogin = config?.require_google_login ?? true
   const showFreeMode = !isLoggedIn && !requireLogin
 
-  // Re-busca slots da data atual — sempre direto ao servidor, sem cache
+  // Ref sempre aponta para a versão mais recente do refetch — evita stale closure
+  const refetchRef = useRef<() => Promise<void>>(async () => {})
+
   const refetchCurrentSlots = useCallback(async () => {
     if (!selectedDate || !selectedService) return
-    setLoadingSlots(true)
     const dateStr = format(selectedDate, 'yyyy-MM-dd')
     const { slots } = await getAvailableSlots(dateStr, selectedService.id)
-    setLoadingSlots(false)
     setAvailableSlots(slots)
     setSelectedTime(null)
   }, [selectedDate, selectedService])
 
-  // Ao voltar para a aba (troca de tab)
+  // Mantém ref sempre atualizada com a última versão do callback
+  useEffect(() => { refetchRef.current = refetchCurrentSlots }, [refetchCurrentSlots])
+
+  // Reflexo imediato: ao voltar para a aba busca slots frescos + atualiza server props
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
+        refetchRef.current()
         router.refresh()
-        refetchCurrentSlots()
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [router, refetchCurrentSlots])
+  }, [router])
 
-  // bfcache (iOS Safari): restaura página congelada sem disparar visibilitychange
-  useEffect(() => {
-    const handlePageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) {
-        router.refresh()
-        refetchCurrentSlots()
-      }
-    }
-    window.addEventListener('pageshow', handlePageShow)
-    return () => window.removeEventListener('pageshow', handlePageShow)
-  }, [router, refetchCurrentSlots])
-
-  // Polling a cada 30s
+  // Polling a cada 30s: reflexo automático sem precisar trocar de aba
   useEffect(() => {
     const id = setInterval(() => {
+      refetchRef.current()
       router.refresh()
-      refetchCurrentSlots()
     }, 30_000)
     return () => clearInterval(id)
-  }, [router, refetchCurrentSlots])
+  }, [router])
 
-  // Detecta mudança nas workingHours vindas do servidor após router.refresh()
+  // Detecta quando workingHours prop muda (após router.refresh()) e re-busca slots
   const prevWorkingHoursKey = useRef('')
   useEffect(() => {
     const key = workingHours
       .map((w) => `${w.day_of_week}:${w.is_open}:${w.open_time}:${w.close_time}`)
       .join('|')
     if (prevWorkingHoursKey.current !== '' && prevWorkingHoursKey.current !== key) {
-      refetchCurrentSlots()
+      refetchRef.current()
     }
     prevWorkingHoursKey.current = key
-  }, [workingHours, refetchCurrentSlots])
+  }, [workingHours])
 
   // Dias desabilitados no calendário
   const closedDayOfWeeks = workingHours
@@ -452,22 +443,9 @@ const handleConfirm = async () => {
         {/* Secao 4: Horarios */}
         {selectedDate && (
           <section className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center justify-center gap-3 mb-5 mt-6">
-              <h2 className="text-[10px] tracking-[0.2em] font-bold uppercase text-foreground">
-                Horários disponíveis em {format(selectedDate, 'dd/MM')}
-              </h2>
-              <button
-                onClick={refetchCurrentSlots}
-                disabled={loadingSlots}
-                title="Atualizar horários"
-                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={loadingSlots ? 'animate-spin' : ''}>
-                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
-                  <path d="M21 3v5h-5"/>
-                </svg>
-              </button>
-            </div>
+            <h2 className="text-[10px] tracking-[0.2em] font-bold uppercase text-foreground mb-5 text-center mt-6">
+               Horários disponíveis em {format(selectedDate, 'dd/MM')}
+            </h2>
 
             {loadingSlots && (
               <div className="grid grid-cols-4 gap-3 max-w-[340px] mx-auto">
