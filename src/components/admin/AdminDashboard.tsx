@@ -367,7 +367,7 @@ export function AdminDashboard({
 }
 
 // ------------------------------------------------------------------
-// Tab: Agenda — Calendário mensal com agendamentos por dia
+// Tab: Agenda — Calendário estilo iOS + lista vertical
 // ------------------------------------------------------------------
 function TabHoje({
   appointments,
@@ -385,9 +385,10 @@ function TabHoje({
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [newBadge, setNewBadge] = useState(0)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
-  // Calendário
-  const [calMonth, setCalMonth] = useState(() => todayStr.slice(0, 7)) // "yyyy-mm"
+  const [calMonth, setCalMonth] = useState(() => todayStr.slice(0, 7))
   const [selectedDay, setSelectedDay] = useState<string | null>(todayStr)
+  // Estado local para remoção imediata pós-delete
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -429,15 +430,21 @@ function TabHoje({
     return () => { supabase.removeChannel(channel) }
   }, [onRefresh])
 
-  // Mapa de data → agendamentos
+  // Filtra excluídos localmente para remoção imediata
+  const localAppointments = useMemo(
+    () => appointments.filter(a => !deletedIds.has(a.id)),
+    [appointments, deletedIds]
+  )
+
+  // Mapa de data → agendamentos (sem os excluídos localmente)
   const apptByDate = useMemo(() => {
-    return appointments.reduce<Record<string, Appointment[]>>((acc, a) => {
+    return localAppointments.reduce<Record<string, Appointment[]>>((acc, a) => {
       if (!a.date) return acc
       if (!acc[a.date]) acc[a.date] = []
       acc[a.date].push(a)
       return acc
     }, {})
-  }, [appointments])
+  }, [localAppointments])
 
   // Dados do calendário
   const [calYear, calMonthNum] = calMonth.split('-').map(Number)
@@ -498,6 +505,7 @@ function TabHoje({
     if (result.success) {
       toast.success('Agendamento excluído.')
       setDeleteConfirm(null)
+      setDeletedIds(prev => new Set(prev).add(id))
       onRefresh()
     } else {
       toast.error(result.error ?? 'Erro ao excluir.')
@@ -507,17 +515,10 @@ function TabHoje({
 
   const formatSelectedDay = (dateStr: string) => {
     const d = new Date(dateStr + 'T12:00:00')
-    if (dateStr === todayStr) return 'Hoje — ' + d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })
-    return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }).toUpperCase()
   }
 
-  const statusColor: Record<string, string> = {
-    confirmado: 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10',
-    cancelado:  'text-zinc-500   border-white/10      bg-white/5',
-    faltou:     'text-amber-400  border-amber-500/20  bg-amber-500/10',
-  }
-
-  const totalConfirmed = appointments.filter(a => a.status === 'confirmado').length
+  const totalConfirmed = localAppointments.filter(a => a.status === 'confirmado').length
 
   return (
     <div className="flex flex-col gap-5">
@@ -530,14 +531,14 @@ function TabHoje({
         </div>
       )}
 
-      {/* Notificações do navegador */}
+      {/* Notificações */}
       {notifPermission !== 'granted' && (
         <button
           onClick={requestNotifPermission}
           className="flex items-center gap-2 w-full bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-400 font-semibold"
         >
-          <span className="text-base">🔔</span>
-          Ativar notificações do navegador para novos agendamentos
+          <span>🔔</span>
+          Ativar notificações de novos agendamentos
         </button>
       )}
 
@@ -559,182 +560,159 @@ function TabHoje({
         </span>
       </div>
 
-      {/* ────────── CALENDÁRIO ────────── */}
-      <div className="bg-white/[0.03] border border-white/[0.08] rounded-3xl overflow-hidden">
+      {/* ── CALENDÁRIO ESTILO iOS ── */}
+      <div className="bg-neutral-900 rounded-2xl overflow-hidden">
         {/* Navegação de mês */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <button
             onClick={prevMonth}
-            className="w-9 h-9 flex items-center justify-center rounded-2xl border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-lg font-bold"
-          >
-            ‹
-          </button>
-          <span className="text-base font-extrabold text-white capitalize tracking-wide">{calMonthLabel}</span>
+            className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white transition-all text-lg"
+          >‹</button>
+          <span className="text-sm font-bold text-white capitalize">{calMonthLabel}</span>
           <button
             onClick={nextMonth}
-            className="w-9 h-9 flex items-center justify-center rounded-2xl border border-white/10 text-zinc-400 hover:text-white hover:bg-white/10 transition-all text-lg font-bold"
-          >
-            ›
-          </button>
+            className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white transition-all text-lg"
+          >›</button>
         </div>
 
-        {/* Cabeçalho dias da semana */}
-        <div className="grid grid-cols-7 px-3 pb-1">
+        {/* Dias da semana */}
+        <div className="grid grid-cols-7 px-2 pb-1">
           {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
-            <div key={i} className="text-center text-[10px] font-black uppercase tracking-widest text-zinc-600 py-1">
+            <div key={i} className="flex items-center justify-center text-[10px] font-bold text-zinc-600 py-1">
               {d}
             </div>
           ))}
         </div>
 
-        {/* Separador */}
-        <div className="h-px bg-white/5 mx-3 mb-2" />
-
         {/* Grade de dias */}
-        <div className="grid grid-cols-7 gap-1 px-3 pb-4">
+        <div className="grid grid-cols-7 gap-y-1 px-2 pb-4">
           {gridCells.map((dayNum, i) => {
             if (!dayNum) return <div key={i} />
             const dateStr = `${calMonth}-${String(dayNum).padStart(2, '0')}`
             const appts = apptByDate[dateStr] ?? []
-            const confirmedCount = appts.filter(a => a.status === 'confirmado').length
             const hasAppts = appts.length > 0
             const isToday = dateStr === todayStr
             const isSelected = dateStr === selectedDay
 
             return (
-              <button
-                key={i}
-                onClick={() => setSelectedDay(isSelected ? null : dateStr)}
-                className={[
-                  'relative flex flex-col items-center justify-center rounded-2xl transition-all duration-150 aspect-square',
-                  isSelected
-                    ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30'
-                    : isToday
-                      ? 'ring-2 ring-white/30 bg-white/10'
-                      : 'hover:bg-white/8',
-                ].join(' ')}
-              >
-                <span className={[
-                  'text-[13px] font-black leading-none',
-                  isSelected ? 'text-black' : isToday ? 'text-white' : hasAppts ? 'text-white' : 'text-zinc-600',
-                ].join(' ')}>
-                  {dayNum}
-                </span>
-                {hasAppts && (
-                  <span className={[
-                    'absolute bottom-[5px] text-[9px] font-black min-w-[16px] h-[14px] flex items-center justify-center rounded-full px-1',
+              <div key={i} className="flex items-center justify-center py-0.5">
+                <button
+                  onClick={() => setSelectedDay(isSelected ? null : dateStr)}
+                  className={[
+                    'relative w-10 h-10 flex items-center justify-center rounded-full transition-all duration-150 select-none',
                     isSelected
-                      ? 'bg-black/30 text-white'
-                      : 'bg-emerald-500 text-black',
+                      ? 'bg-blue-600'
+                      : isToday
+                        ? 'bg-white/15 ring-1 ring-white/30'
+                        : 'hover:bg-white/8',
+                  ].join(' ')}
+                >
+                  <span className={[
+                    'text-[13px] font-semibold leading-none',
+                    isSelected ? 'text-white' : isToday ? 'text-white' : hasAppts ? 'text-white' : 'text-zinc-600',
                   ].join(' ')}>
-                    {appts.length}
+                    {dayNum}
                   </span>
-                )}
-              </button>
+                  {hasAppts && (
+                    <span className={[
+                      'absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-black',
+                      isSelected ? 'bg-white text-blue-600' : 'bg-red-600 text-white',
+                    ].join(' ')}>
+                      {appts.length}
+                    </span>
+                  )}
+                </button>
+              </div>
             )
           })}
         </div>
-
-        {/* Rodapé legenda */}
-        <div className="flex items-center gap-4 px-5 py-3 border-t border-white/5 bg-white/[0.02]">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            <span className="text-[10px] text-zinc-500">Tem agendamentos</span>
-          </div>
-          <span className="ml-auto text-[10px] text-zinc-600">
-            {Object.keys(apptByDate).length} dia(s) com agendamentos
-          </span>
-        </div>
       </div>
 
-      {/* ────────── LISTA DO DIA SELECIONADO ────────── */}
+      {/* ── LISTA DO DIA ── */}
       {selectedDay && (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-extrabold uppercase tracking-widest text-white capitalize">
-              {formatSelectedDay(selectedDay)}
-            </span>
-            <div className="flex-1 h-px bg-white/5" />
-            {dayAppts.length > 0 && (
-              <span className="text-[10px] text-zinc-600">
-                {dayAppts.filter(a => a.status === 'confirmado').length} confirmado(s)
-              </span>
-            )}
-          </div>
+          {/* Título dinâmico */}
+          <p className="text-[10px] font-black tracking-[0.15em] text-zinc-500 uppercase">
+            Agendamentos — {formatSelectedDay(selectedDay)}
+          </p>
 
           {dayAppts.length === 0 ? (
-            <div className="text-center py-10 bg-white/[0.02] border border-white/5 rounded-2xl">
-              <p className="text-zinc-600 text-xs">Nenhum agendamento neste dia.</p>
+            <div className="text-center py-10 bg-neutral-900 rounded-2xl border border-white/5">
+              <p className="text-zinc-600 text-sm">Nenhum agendamento neste dia.</p>
             </div>
           ) : (
-            dayAppts.map((appt) => (
-              <div
-                key={appt.id}
-                className={[
-                  'border rounded-2xl p-4 flex flex-col gap-3 transition-all',
-                  appt.status === 'confirmado'
-                    ? 'bg-white/[0.04] border-white/10'
-                    : appt.status === 'cancelado'
-                      ? 'bg-red-500/[0.04] border-red-500/10 opacity-70'
-                      : 'bg-amber-500/[0.03] border-amber-500/10 opacity-70',
-                ].join(' ')}
-              >
-                {/* Linha 1: nome + horário */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-sm text-white">{getDisplayName(appt)}</span>
-                      {appt.client_id && (
-                        <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded-full tracking-wide">
-                          Google
-                        </span>
-                      )}
-                      {appt.profiles?.is_blocked && (
-                        <span className="text-[9px] font-black bg-red-500/20 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded-full tracking-wide">
-                          Bloqueado
+            <div className="flex flex-col gap-3">
+              {dayAppts.map((appt) => (
+                <div
+                  key={appt.id}
+                  className={[
+                    'bg-neutral-900 rounded-xl p-4 flex flex-col gap-3 transition-all',
+                    appt.status === 'cancelado' ? 'opacity-60' : '',
+                    appt.status === 'faltou' ? 'opacity-60' : '',
+                  ].join(' ')}
+                >
+                  {/* Corpo do card: hora + detalhes */}
+                  <div className="flex items-start gap-4">
+                    {/* Lado esquerdo — hora em destaque */}
+                    <div className="flex flex-col items-center justify-center bg-white/5 rounded-xl px-3 py-2 min-w-[56px]">
+                      <span className="text-2xl font-black text-white leading-none tabular-nums">
+                        {appt.start_time?.slice(0, 5)}
+                      </span>
+                      {appt.services?.duration_minutes && (
+                        <span className="text-[9px] text-zinc-500 mt-0.5 font-medium">
+                          {appt.services.duration_minutes}min
                         </span>
                       )}
                     </div>
-                    {/* Email (apenas clientes Google) */}
-                    {appt.profiles?.email && (
-                      <span className="text-[10px] text-zinc-500">{appt.profiles.email}</span>
-                    )}
-                    {/* Telefone */}
-                    {appt.client_phone && (
-                      <span className="text-[10px] text-zinc-500">{appt.client_phone}</span>
-                    )}
-                  </div>
-                  {/* Horário e preço */}
-                  <div className="flex flex-col items-end gap-0.5 shrink-0">
-                    <span className="text-lg font-black text-white leading-none">{appt.start_time?.slice(0, 5)}</span>
-                    {appt.services?.price != null && (
-                      <span className="text-[10px] text-zinc-400 font-semibold">
-                        R$ {appt.services.price.toFixed(2).replace('.', ',')}
+
+                    {/* Lado direito — detalhes */}
+                    <div className="flex-1 flex flex-col gap-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-semibold text-white truncate">
+                          {getDisplayName(appt)}
+                        </span>
+                        {appt.client_id && (
+                          <span className="text-[9px] font-black bg-blue-500/20 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded-full shrink-0">
+                            Google
+                          </span>
+                        )}
+                        {appt.profiles?.is_blocked && (
+                          <span className="text-[9px] font-black bg-red-500/20 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded-full shrink-0">
+                            Bloqueado
+                          </span>
+                        )}
+                      </div>
+                      {appt.services && (
+                        <span className="text-xs text-zinc-400">{appt.services.name}</span>
+                      )}
+                      {appt.profiles?.email && (
+                        <span className="text-[10px] text-zinc-600 truncate">{appt.profiles.email}</span>
+                      )}
+                      {appt.client_phone && (
+                        <span className="text-[10px] text-zinc-600">{appt.client_phone}</span>
+                      )}
+                      {appt.services?.price != null && (
+                        <span className="text-xs font-bold text-zinc-300">
+                          R$ {appt.services.price.toFixed(2).replace('.', ',')}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Badge de status */}
+                    <div className="shrink-0">
+                      <span className={[
+                        'text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border',
+                        appt.status === 'confirmado' ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' :
+                        appt.status === 'cancelado'  ? 'text-zinc-500 border-white/10 bg-white/5' :
+                                                        'text-amber-400 border-amber-500/20 bg-amber-500/10',
+                      ].join(' ')}>
+                        {appt.status}
                       </span>
-                    )}
+                    </div>
                   </div>
-                </div>
 
-                {/* Linha 2: serviço + duração */}
-                {appt.services && (
-                  <div className="flex items-center gap-2 text-[11px] text-zinc-400">
-                    <span className="font-semibold">{appt.services.name}</span>
-                    {appt.services.duration_minutes && (
-                      <>
-                        <span className="text-zinc-700">·</span>
-                        <span>{appt.services.duration_minutes} min</span>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Linha 3: status + ações */}
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border ${statusColor[appt.status] ?? statusColor['cancelado']}`}>
-                    {appt.status}
-                  </span>
-
-                  <div className="flex gap-2 flex-wrap">
+                  {/* Rodapé — botões de ação */}
+                  <div className="flex gap-2 flex-wrap pt-1 border-t border-white/5">
                     {appt.status === 'confirmado' && (
                       <>
                         {appt.client_phone && (
@@ -742,39 +720,39 @@ function TabHoje({
                             href={`https://wa.me/55${appt.client_phone.replace(/\D/g, '')}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 rounded-lg"
+                            className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 rounded-lg"
                           >
                             WhatsApp
                           </a>
                         )}
                         <button
-                          disabled={loading === appt.id + 'faltou'}
+                          disabled={!!loading}
                           onClick={() => handleStatus(appt.id, 'faltou')}
-                          className="text-[10px] font-bold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                          className="text-[10px] font-bold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
                         >
                           Faltou
                         </button>
                         <button
-                          disabled={loading === appt.id + 'cancelado'}
+                          disabled={!!loading}
                           onClick={() => handleStatus(appt.id, 'cancelado')}
-                          className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2 py-1 rounded-lg disabled:opacity-40"
+                          className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
                         >
                           Cancelar
                         </button>
                         {appt.client_id && !appt.profiles?.is_blocked && (
                           <button
-                            disabled={loading === 'block' + appt.client_id}
+                            disabled={!!loading}
                             onClick={() => handleBlock(appt.client_id, true)}
-                            className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                            className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
                           >
                             Bloquear
                           </button>
                         )}
                         {appt.client_id && appt.profiles?.is_blocked && (
                           <button
-                            disabled={loading === 'block' + appt.client_id}
+                            disabled={!!loading}
                             onClick={() => handleBlock(appt.client_id, false)}
-                            className="text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2 py-1 rounded-lg disabled:opacity-40"
+                            className="text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
                           >
                             Desbloquear
                           </button>
@@ -782,21 +760,20 @@ function TabHoje({
                       </>
                     )}
 
-                    {/* Excluir — disponível para cancelado e faltou */}
                     {(appt.status === 'cancelado' || appt.status === 'faltou') && (
                       deleteConfirm === appt.id ? (
                         <>
-                          <span className="text-[10px] text-zinc-400 self-center">Confirmar exclusão?</span>
+                          <span className="text-[10px] text-zinc-500 self-center">Confirmar?</span>
                           <button
                             disabled={loading === 'del' + appt.id}
                             onClick={() => handleDelete(appt.id)}
-                            className="text-[10px] font-black text-white bg-red-600 border border-red-500 px-2 py-1 rounded-lg disabled:opacity-40"
+                            className="text-[10px] font-black text-white bg-red-600 border border-red-500 px-2.5 py-1 rounded-lg disabled:opacity-40"
                           >
-                            {loading === 'del' + appt.id ? '...' : 'Sim, excluir'}
+                            {loading === 'del' + appt.id ? '...' : 'Excluir'}
                           </button>
                           <button
                             onClick={() => setDeleteConfirm(null)}
-                            className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2 py-1 rounded-lg"
+                            className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg"
                           >
                             Não
                           </button>
@@ -804,7 +781,7 @@ function TabHoje({
                       ) : (
                         <button
                           onClick={() => setDeleteConfirm(appt.id)}
-                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-1 rounded-lg"
+                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
                         >
                           Excluir
                         </button>
@@ -812,8 +789,8 @@ function TabHoje({
                     )}
                   </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       )}
