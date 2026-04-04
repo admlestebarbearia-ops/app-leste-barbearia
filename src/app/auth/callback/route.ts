@@ -5,6 +5,12 @@ import type { NextRequest } from 'next/server'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
+
+  // No Vercel, request.url pode conter o hostname interno do deploy.
+  // x-forwarded-host tem o domínio real que o usuário usou (incluindo domínio customizado).
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  const proto = request.headers.get('x-forwarded-proto') ?? 'https'
+  const resolvedOrigin = forwardedHost ? `${proto}://${forwardedHost}` : origin
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/agendar'
 
@@ -37,13 +43,13 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (profile?.is_admin) {
-        return NextResponse.redirect(`${origin}/admin`)
+        return NextResponse.redirect(`${resolvedOrigin}/admin`)
       }
 
-      return NextResponse.redirect(`${origin}${next}`)
+      return NextResponse.redirect(`${resolvedOrigin}${next}`)
     }
   }
 
   // Falha no callback — redireciona para login
-  return NextResponse.redirect(`${origin}/`)
+  return NextResponse.redirect(`${resolvedOrigin}/`)
 }
