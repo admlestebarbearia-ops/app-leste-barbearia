@@ -111,16 +111,18 @@ export function BookingForm({
   const requireLogin = config?.require_google_login ?? true
   const showFreeMode = !isLoggedIn && !requireLogin
 
-  // Re-busca slots da data atual (usado pelo polling e visibilitychange)
+  // Re-busca slots da data atual — sempre direto ao servidor, sem cache
   const refetchCurrentSlots = useCallback(async () => {
     if (!selectedDate || !selectedService) return
+    setLoadingSlots(true)
     const dateStr = format(selectedDate, 'yyyy-MM-dd')
     const { slots } = await getAvailableSlots(dateStr, selectedService.id)
+    setLoadingSlots(false)
     setAvailableSlots(slots)
     setSelectedTime(null)
   }, [selectedDate, selectedService])
 
-  // Reflexo imediato: ao voltar para a aba re-carrega dados do servidor + slots
+  // Ao voltar para a aba (troca de tab)
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -132,17 +134,28 @@ export function BookingForm({
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [router, refetchCurrentSlots])
 
-  // Polling a cada 60s: garante atualização mesmo sem troca de aba
+  // bfcache (iOS Safari): restaura página congelada sem disparar visibilitychange
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        router.refresh()
+        refetchCurrentSlots()
+      }
+    }
+    window.addEventListener('pageshow', handlePageShow)
+    return () => window.removeEventListener('pageshow', handlePageShow)
+  }, [router, refetchCurrentSlots])
+
+  // Polling a cada 30s
   useEffect(() => {
     const id = setInterval(() => {
       router.refresh()
       refetchCurrentSlots()
-    }, 60_000)
+    }, 30_000)
     return () => clearInterval(id)
   }, [router, refetchCurrentSlots])
 
-  // Detecta quando servidor envia workingHours novos (após router.refresh())
-  // e re-busca os slots da data já selecionada automaticamente
+  // Detecta mudança nas workingHours vindas do servidor após router.refresh()
   const prevWorkingHoursKey = useRef('')
   useEffect(() => {
     const key = workingHours
@@ -439,9 +452,22 @@ const handleConfirm = async () => {
         {/* Secao 4: Horarios */}
         {selectedDate && (
           <section className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-[10px] tracking-[0.2em] font-bold uppercase text-foreground mb-5 text-center mt-6">
-               Horários disponíveis em {format(selectedDate, 'dd/MM')}
-            </h2>
+            <div className="flex items-center justify-center gap-3 mb-5 mt-6">
+              <h2 className="text-[10px] tracking-[0.2em] font-bold uppercase text-foreground">
+                Horários disponíveis em {format(selectedDate, 'dd/MM')}
+              </h2>
+              <button
+                onClick={refetchCurrentSlots}
+                disabled={loadingSlots}
+                title="Atualizar horários"
+                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={loadingSlots ? 'animate-spin' : ''}>
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                  <path d="M21 3v5h-5"/>
+                </svg>
+              </button>
+            </div>
 
             {loadingSlots && (
               <div className="grid grid-cols-4 gap-3 max-w-[340px] mx-auto">
