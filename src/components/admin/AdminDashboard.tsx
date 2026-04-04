@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -845,6 +845,10 @@ function TabConfiguracoes({
   const [folgaMotivo, setFolgaMotivo] = useState('')
   const [addingFolga, setAddingFolga] = useState(false)
 
+  // Accordion
+  const [openSection, setOpenSection] = useState<string>('geral')
+  const toggleSection = (id: string) => setOpenSection(prev => prev === id ? '' : id)
+
   const updateHour = (dayOfWeek: number, field: keyof WorkingHours, value: unknown) => {
     setHours((prev) =>
       prev.map((h) => (h.day_of_week === dayOfWeek ? { ...h, [field]: value } : h))
@@ -997,303 +1001,252 @@ function TabConfiguracoes({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Logo */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Logo Principal</h3>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => logoRef.current?.click()}
-            className="w-20 h-20 rounded-xl bg-card border border-border overflow-hidden flex items-center justify-center hover:border-primary/50 transition-colors shrink-0"
-          >
-            {logoPreview ? (
-              <Image src={logoPreview} alt="Logo" width={80} height={80} className="object-contain w-full h-full" />
-            ) : (
-              <span className="text-xs text-muted-foreground text-center px-2">Sem logo</span>
-            )}
-          </button>
-          <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
-          <div className="flex flex-col gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => logoRef.current?.click()}
-            >
-              Trocar imagem
-            </Button>
-            {logoFile && (
-              <Button size="sm" onClick={handleSaveLogo} disabled={savingLogo}>
-                {savingLogo ? 'Enviando...' : 'Salvar logo'}
-              </Button>
-            )}
+    <div className="flex flex-col gap-3">
+
+      {/* ── ACCORDION 1: Geral & Logos ── */}
+      <div className="border border-white/10 rounded-2xl overflow-hidden">
+        <button
+          onClick={() => toggleSection('geral')}
+          className="w-full flex items-center justify-between px-4 py-4 bg-white/[0.03] hover:bg-white/5 transition-colors text-left"
+        >
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-bold text-white">Geral &amp; Logos</span>
+            <span className="text-xs text-zinc-500">Logos, permissões e regras de uso</span>
           </div>
-        </div>
-      </section>
+          <ChevronDown size={16} className={`text-zinc-500 transition-transform duration-200 ${openSection === 'geral' ? 'rotate-180' : ''}`} />
+        </button>
+        {openSection === 'geral' && (
+          <div className="border-t border-white/5 px-4 py-5 flex flex-col gap-6">
 
-      {/* Logo Menu Inferior */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Logo Menu Inferior (Separado)</h3>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => bottomLogoRef.current?.click()}
-            className="w-20 h-20 rounded-xl bg-card border border-border overflow-hidden flex items-center justify-center hover:border-primary/50 transition-colors shrink-0"
-          >
-            {bottomLogoPreview ? (
-              <Image src={bottomLogoPreview} alt="Logo Bottom" width={80} height={80} className="object-contain w-full h-full" />
-            ) : (
-              <span className="text-xs text-muted-foreground text-center px-2">Sem logo</span>
-            )}
-          </button>
-          <input ref={bottomLogoRef} type="file" accept="image/*" className="hidden" onChange={handleBottomLogoChange} />
-          <div className="flex flex-col gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => bottomLogoRef.current?.click()}
-            >
-              Trocar menu logo
-            </Button>
-            {bottomLogoFile && (
-              <Button size="sm" onClick={handleSaveBottomLogo} disabled={savingBottomLogo}>
-                {savingBottomLogo ? 'Enviando...' : 'Salvar logo inferior'}
-              </Button>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Regras e Galeria */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Configurações Gerais</h3>
-        <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-col gap-0.5 flex-1">
-              <span className="text-sm text-foreground">Exigir login com Google para agendar</span>
-              <span className="text-xs text-muted-foreground">Ativado: apenas clientes logados com conta Google podem fazer agendamentos. Desativado: qualquer pessoa agenda informando nome e telefone, sem criar conta.</span>
-            </div>
-            <Switch checked={requireGoogle} onCheckedChange={setRequireGoogle} />
-          </div>
-
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-col gap-0.5 flex-1">
-              <span className="text-sm text-foreground">Exibir aba Galeria de Fotos</span>
-              <span className="text-xs text-muted-foreground">Ativado: aparece uma aba "Galeria" no app dos clientes com fotos de cortes realizados. Desativado: a aba fica oculta.</span>
-            </div>
-            <Switch checked={enableGallery} onCheckedChange={setEnableGallery} />
-          </div>
-
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-col gap-0.5 flex-1">
-              <span className="text-sm text-foreground">Upload de fotos por clientes</span>
-              <span className="text-xs text-muted-foreground">Permite que clientes enviem fotos do próprio corte para aprovação do admin antes de aparecer na galeria</span>
-            </div>
-            <Switch checked={allowClientUploads} onCheckedChange={setAllowClientUploads} />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Prazo mínimo para cancelamento</Label>
-            <p className="text-[11px] text-muted-foreground/70 leading-snug">Define até quantos minutos antes do horário o cliente pode cancelar pelo app. Ex: 60 = pode cancelar até 1h antes. 0 = pode cancelar a qualquer momento.</p>
-            <div className="flex items-center gap-2 mt-1">
-              <Input
-                type="number"
-                min="0"
-                value={cancelWindow}
-                onChange={(e) => setCancelWindow(e.target.value)}
-                className="h-9 w-24"
-              />
-              <span className="text-xs text-muted-foreground">minutos antes</span>
-            </div>
-          </div>
-          <Button onClick={handleSaveConfig} disabled={savingConfig} size="sm">
-            {savingConfig ? 'Salvando...' : 'Salvar regras'}
-          </Button>
-        </div>
-      </section>
-
-      {/* Contatos e Endereço */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Contatos e Localização</h3>
-        <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">WhatsApp (somente números, com DDD)</Label>
-            <p className="text-[11px] text-muted-foreground/70">Ex: 11999998888 — aparece como link no menu do app</p>
-            <Input
-              type="tel"
-              placeholder="11999998888"
-              value={whatsapp}
-              onChange={(e) => setWhatsapp(e.target.value.replace(/\D/g, ''))}
-              className="h-9"
-              maxLength={11}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Instagram (usuário ou URL)</Label>
-            <p className="text-[11px] text-muted-foreground/70">Ex: @lestebarbearia ou https://instagram.com/lestebarbearia</p>
-            <Input
-              type="text"
-              placeholder="@lestebarbearia"
-              value={instagram}
-              onChange={(e) => setInstagram(e.target.value)}
-              className="h-9"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Endereço (para Google Maps)</Label>
-            <p className="text-[11px] text-muted-foreground/70">Ex: Rua das Flores, 123 – São Paulo, SP. Ao clicar em "Como chegar" no app, abre o Google Maps com esse endereço.</p>
-            <Input
-              type="text"
-              placeholder="Rua das Flores, 123 – São Paulo, SP"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="h-9"
-            />
-          </div>
-
-          <Button onClick={handleSaveContacts} disabled={savingContacts} size="sm">
-            {savingContacts ? 'Salvando...' : 'Salvar contatos'}
-          </Button>
-        </div>
-      </section>
-
-      {/* Horários semanais */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Horarios semanais</h3>
-        <div className="flex flex-col gap-2">
-          {hours.map((h) => (
-            <div key={h.day_of_week} className="bg-card border border-border rounded-xl p-3 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-foreground">{DAYS[h.day_of_week]}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">{h.is_open ? 'Aberto' : 'Fechado'}</span>
-                  <Switch
-                    checked={h.is_open}
-                    onCheckedChange={(v) => updateHour(h.day_of_week, 'is_open', v)}
-                  />
-                </div>
-              </div>
-              {h.is_open && (
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-2">
-                    <div className="flex flex-col gap-1 flex-1">
-                      <Label className="text-xs text-muted-foreground">Abertura</Label>
-                      <input
-                        type="time"
-                        value={h.open_time ?? '09:00'}
-                        onChange={(e) => updateHour(h.day_of_week, 'open_time', e.target.value || null)}
-                        className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1 flex-1">
-                      <Label className="text-xs text-muted-foreground">Fechamento</Label>
-                      <input
-                        type="time"
-                        value={h.close_time ?? '19:00'}
-                        onChange={(e) => updateHour(h.day_of_week, 'close_time', e.target.value || null)}
-                        className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
-                      />
-                    </div>
-                  </div>
-                  {/* Almoço opcional */}
-                  <details className="group">
-                    <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none list-none flex items-center gap-1">
-                      <span className="group-open:hidden">+ Configurar horário de almoço</span>
-                      <span className="hidden group-open:inline">− Ocultar almoço</span>
-                    </summary>
-                    <div className="flex gap-2 mt-2">
-                      <div className="flex flex-col gap-1 flex-1">
-                        <Label className="text-xs text-muted-foreground">Início almoço</Label>
-                        <input
-                          type="time"
-                          value={h.lunch_start ?? ''}
-                          onChange={(e) => updateHour(h.day_of_week, 'lunch_start', e.target.value || null)}
-                          className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1 flex-1">
-                        <Label className="text-xs text-muted-foreground">Fim almoço</Label>
-                        <input
-                          type="time"
-                          value={h.lunch_end ?? ''}
-                          onChange={(e) => updateHour(h.day_of_week, 'lunch_end', e.target.value || null)}
-                          className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
-                        />
-                      </div>
-                    </div>
-                  </details>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-        <Button onClick={handleSaveHours} disabled={savingHours} size="sm">
-          {savingHours ? 'Salvando...' : 'Salvar horarios'}
-        </Button>
-      </section>
-
-      {/* Folgas / Feriados */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Folgas e feriados</h3>
-        <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3">
-          <div className="flex flex-col gap-2">
-            <Label className="text-xs text-muted-foreground">Data</Label>
-            <input
-              type="date"
-              value={folgaDate}
-              onChange={(e) => setFolgaDate(e.target.value)}
-              className="h-9 rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label className="text-xs text-muted-foreground">Motivo (opcional)</Label>
-            <Input
-              value={folgaMotivo}
-              onChange={(e) => setFolgaMotivo(e.target.value)}
-              placeholder="Ex: Feriado nacional"
-              className="h-9"
-            />
-          </div>
-          <Button size="sm" onClick={handleAddFolga} disabled={addingFolga}>
-            {addingFolga ? 'Adicionando...' : 'Adicionar folga'}
-          </Button>
-        </div>
-
-        {specialSchedules.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {specialSchedules.map((ss) => (
-              <div
-                key={ss.id}
-                className="flex items-center justify-between bg-card/50 border border-border/50 rounded-xl px-4 py-3"
-              >
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm text-foreground">
-                    {new Date(ss.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
-                  </span>
-                  {ss.reason && <span className="text-xs text-muted-foreground">{ss.reason}</span>}
-                </div>
-                <button
-                  onClick={() => handleRemoveFolga(ss.id)}
-                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-                >
-                  Remover
+            {/* Logo Principal */}
+            <section className="flex flex-col gap-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Logo Principal</h3>
+              <div className="flex items-center gap-4">
+                <button onClick={() => logoRef.current?.click()} className="w-20 h-20 rounded-xl bg-card border border-border overflow-hidden flex items-center justify-center hover:border-primary/50 transition-colors shrink-0">
+                  {logoPreview ? (
+                    <Image src={logoPreview} alt="Logo" width={80} height={80} className="object-contain w-full h-full" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground text-center px-2">Sem logo</span>
+                  )}
                 </button>
+                <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+                <div className="flex flex-col gap-1.5">
+                  <Button variant="outline" size="sm" onClick={() => logoRef.current?.click()}>Trocar imagem</Button>
+                  {logoFile && <Button size="sm" onClick={handleSaveLogo} disabled={savingLogo}>{savingLogo ? 'Enviando...' : 'Salvar logo'}</Button>}
+                </div>
               </div>
-            ))}
+            </section>
+
+            {/* Logo Menu Inferior */}
+            <section className="flex flex-col gap-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Logo Menu Inferior</h3>
+              <div className="flex items-center gap-4">
+                <button onClick={() => bottomLogoRef.current?.click()} className="w-20 h-20 rounded-xl bg-card border border-border overflow-hidden flex items-center justify-center hover:border-primary/50 transition-colors shrink-0">
+                  {bottomLogoPreview ? (
+                    <Image src={bottomLogoPreview} alt="Logo Bottom" width={80} height={80} className="object-contain w-full h-full" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground text-center px-2">Sem logo</span>
+                  )}
+                </button>
+                <input ref={bottomLogoRef} type="file" accept="image/*" className="hidden" onChange={handleBottomLogoChange} />
+                <div className="flex flex-col gap-1.5">
+                  <Button variant="outline" size="sm" onClick={() => bottomLogoRef.current?.click()}>Trocar menu logo</Button>
+                  {bottomLogoFile && <Button size="sm" onClick={handleSaveBottomLogo} disabled={savingBottomLogo}>{savingBottomLogo ? 'Enviando...' : 'Salvar logo inferior'}</Button>}
+                </div>
+              </div>
+            </section>
+
+            {/* Configurações Gerais */}
+            <section className="flex flex-col gap-4">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Configurações Gerais</h3>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col gap-0.5 flex-1">
+                  <span className="text-sm text-foreground">Exigir login com Google</span>
+                  <span className="text-xs text-muted-foreground">Apenas clientes logados poderão agendar.</span>
+                </div>
+                <Switch checked={requireGoogle} onCheckedChange={setRequireGoogle} />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col gap-0.5 flex-1">
+                  <span className="text-sm text-foreground">Exibir Galeria de Fotos</span>
+                  <span className="text-xs text-muted-foreground">Aparece aba Galeria no app dos clientes.</span>
+                </div>
+                <Switch checked={enableGallery} onCheckedChange={setEnableGallery} />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col gap-0.5 flex-1">
+                  <span className="text-sm text-foreground">Upload de fotos por clientes</span>
+                  <span className="text-xs text-muted-foreground">Clientes enviam fotos para aprovação antes da galeria.</span>
+                </div>
+                <Switch checked={allowClientUploads} onCheckedChange={setAllowClientUploads} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">Prazo mínimo para cancelamento</Label>
+                <p className="text-[11px] text-muted-foreground/70">Ex: 60 = cliente pode cancelar até 1h antes. 0 = a qualquer momento.</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <Input type="number" min="0" value={cancelWindow} onChange={(e) => setCancelWindow(e.target.value)} className="h-9 w-24" />
+                  <span className="text-xs text-muted-foreground">minutos antes</span>
+                </div>
+              </div>
+              <Button onClick={handleSaveConfig} disabled={savingConfig} size="sm">
+                {savingConfig ? 'Salvando...' : 'Salvar configurações'}
+              </Button>
+            </section>
+
+            {/* Domínio */}
+            <section className="flex flex-col gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Domínio</h3>
+              <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-1.5">
+                <span className="text-sm font-medium text-foreground">Domínio próprio</span>
+                <p className="text-xs text-muted-foreground">Seu site está em lestebarbearia.agenciajn.com.br. Para ter um domínio próprio, entre em contato.</p>
+                <div className="mt-1"><DomainModal /></div>
+              </div>
+            </section>
+
           </div>
         )}
-      </section>
+      </div>
 
-      {/* Dominio */}
-      <section className="bg-card border border-border rounded-xl p-4 flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-foreground">Dominio proprio</span>
-        <p className="text-xs text-muted-foreground">
-          Seu site esta em leste.agenciajn.com.br. Para ter um dominio proprio, entre em contato.
-        </p>
-        <div className="mt-1">
-          <DomainModal />
-        </div>
-      </section>
+      {/* ── ACCORDION 2: Localização & Redes Sociais ── */}
+      <div className="border border-white/10 rounded-2xl overflow-hidden">
+        <button
+          onClick={() => toggleSection('social')}
+          className="w-full flex items-center justify-between px-4 py-4 bg-white/[0.03] hover:bg-white/5 transition-colors text-left"
+        >
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-bold text-white">Localização &amp; Redes Sociais</span>
+            <span className="text-xs text-zinc-500">WhatsApp, Instagram e endereço</span>
+          </div>
+          <ChevronDown size={16} className={`text-zinc-500 transition-transform duration-200 ${openSection === 'social' ? 'rotate-180' : ''}`} />
+        </button>
+        {openSection === 'social' && (
+          <div className="border-t border-white/5 px-4 py-5 flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">WhatsApp (somente números, com DDD)</Label>
+              <p className="text-[11px] text-muted-foreground/70">Ex: 11999998888 — aparece como link no menu do app</p>
+              <Input type="tel" placeholder="11999998888" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value.replace(/\D/g, ''))} className="h-9" maxLength={11} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Instagram (usuário ou URL)</Label>
+              <p className="text-[11px] text-muted-foreground/70">Ex: @lestebarbearia</p>
+              <Input type="text" placeholder="@lestebarbearia" value={instagram} onChange={(e) => setInstagram(e.target.value)} className="h-9" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Endereço (para Google Maps)</Label>
+              <p className="text-[11px] text-muted-foreground/70">Ex: Rua das Flores, 123 – São Paulo, SP</p>
+              <Input type="text" placeholder="Rua das Flores, 123 – São Paulo, SP" value={address} onChange={(e) => setAddress(e.target.value)} className="h-9" />
+            </div>
+            <Button onClick={handleSaveContacts} disabled={savingContacts} size="sm">
+              {savingContacts ? 'Salvando...' : 'Salvar contatos'}
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* ── ACCORDION 3: Horário de Funcionamento ── */}
+      <div className="border border-white/10 rounded-2xl overflow-hidden">
+        <button
+          onClick={() => toggleSection('horarios')}
+          className="w-full flex items-center justify-between px-4 py-4 bg-white/[0.03] hover:bg-white/5 transition-colors text-left"
+        >
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-bold text-white">Horário de Funcionamento</span>
+            <span className="text-xs text-zinc-500">Dias da semana, almoço e folgas</span>
+          </div>
+          <ChevronDown size={16} className={`text-zinc-500 transition-transform duration-200 ${openSection === 'horarios' ? 'rotate-180' : ''}`} />
+        </button>
+        {openSection === 'horarios' && (
+          <div className="border-t border-white/5 px-4 py-5 flex flex-col gap-6">
+
+            {/* Horários semanais */}
+            <section className="flex flex-col gap-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Horários semanais</h3>
+              <div className="flex flex-col gap-2">
+                {hours.map((h) => (
+                  <div key={h.day_of_week} className="bg-card border border-border rounded-xl p-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground">{DAYS[h.day_of_week]}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">{h.is_open ? 'Aberto' : 'Fechado'}</span>
+                        <Switch checked={h.is_open} onCheckedChange={(v) => updateHour(h.day_of_week, 'is_open', v)} />
+                      </div>
+                    </div>
+                    {h.is_open && (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <div className="flex flex-col gap-1 flex-1">
+                            <Label className="text-xs text-muted-foreground">Abertura</Label>
+                            <input type="time" value={h.open_time ?? '09:00'} onChange={(e) => updateHour(h.day_of_week, 'open_time', e.target.value || null)} className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring" />
+                          </div>
+                          <div className="flex flex-col gap-1 flex-1">
+                            <Label className="text-xs text-muted-foreground">Fechamento</Label>
+                            <input type="time" value={h.close_time ?? '19:00'} onChange={(e) => updateHour(h.day_of_week, 'close_time', e.target.value || null)} className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring" />
+                          </div>
+                        </div>
+                        <details className="group">
+                          <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none list-none flex items-center gap-1">
+                            <span className="group-open:hidden">+ Configurar horário de almoço</span>
+                            <span className="hidden group-open:inline">− Ocultar almoço</span>
+                          </summary>
+                          <div className="flex gap-2 mt-2">
+                            <div className="flex flex-col gap-1 flex-1">
+                              <Label className="text-xs text-muted-foreground">Início almoço</Label>
+                              <input type="time" value={h.lunch_start ?? ''} onChange={(e) => updateHour(h.day_of_week, 'lunch_start', e.target.value || null)} className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring" />
+                            </div>
+                            <div className="flex flex-col gap-1 flex-1">
+                              <Label className="text-xs text-muted-foreground">Fim almoço</Label>
+                              <input type="time" value={h.lunch_end ?? ''} onChange={(e) => updateHour(h.day_of_week, 'lunch_end', e.target.value || null)} className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring" />
+                            </div>
+                          </div>
+                        </details>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <Button onClick={handleSaveHours} disabled={savingHours} size="sm">
+                {savingHours ? 'Salvando...' : 'Salvar horários'}
+              </Button>
+            </section>
+
+            {/* Folgas e Feriados */}
+            <section className="flex flex-col gap-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Folgas e Feriados</h3>
+              <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
+                  <Label className="text-xs text-muted-foreground">Data</Label>
+                  <input type="date" value={folgaDate} onChange={(e) => setFolgaDate(e.target.value)} className="h-9 rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring" />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label className="text-xs text-muted-foreground">Motivo (opcional)</Label>
+                  <Input value={folgaMotivo} onChange={(e) => setFolgaMotivo(e.target.value)} placeholder="Ex: Feriado nacional" className="h-9" />
+                </div>
+                <Button size="sm" onClick={handleAddFolga} disabled={addingFolga}>
+                  {addingFolga ? 'Adicionando...' : 'Adicionar folga'}
+                </Button>
+              </div>
+              {specialSchedules.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {specialSchedules.map((ss) => (
+                    <div key={ss.id} className="flex items-center justify-between bg-card/50 border border-border/50 rounded-xl px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm text-foreground">
+                          {new Date(ss.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
+                        </span>
+                        {ss.reason && <span className="text-xs text-muted-foreground">{ss.reason}</span>}
+                      </div>
+                      <button onClick={() => handleRemoveFolga(ss.id)} className="text-xs text-muted-foreground hover:text-destructive transition-colors">
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+          </div>
+        )}
+      </div>
 
       {/* Footer */}
       {config.show_agency_brand && (
