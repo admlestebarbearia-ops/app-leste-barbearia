@@ -208,10 +208,10 @@ const handleConfirm = async () => {
     }
     setSavedPhone(whatsInput)
     setShowWhatsCapture(false)
-    submitBooking()
+    submitBooking(whatsInput)
   }
 
-  const submitBooking = () => {
+  const submitBooking = (overridePhone?: string) => {
     if (!selectedService || !selectedDate || !selectedTime || !barber) return   
 
     startTransition(async () => {
@@ -222,7 +222,7 @@ const handleConfirm = async () => {
         startTime: selectedTime + ':00',
         clientName: showFreeMode ? clientName : undefined,
         clientPhone: showFreeMode ? clientPhone : undefined,
-        loggedUserPhone: isLoggedIn ? (savedPhone ?? undefined) : undefined,
+        loggedUserPhone: isLoggedIn ? (overridePhone ?? savedPhone ?? undefined) : undefined,
       })
 
       if (result.success && result.appointmentId) {
