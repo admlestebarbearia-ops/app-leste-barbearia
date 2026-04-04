@@ -7,7 +7,7 @@ import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { format, isBefore, startOfDay, getDay, parseISO } from 'date-fns'
 import { toast } from 'sonner'
-import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment } from '@/app/agendar/actions'
+import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone } from '@/app/agendar/actions'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,6 +39,7 @@ interface Props {
   config: BusinessConfig | null
   userEmail: string | null
   userId: string | null
+  userPhone: string | null
   isAdmin?: boolean
 }
 
@@ -50,11 +51,19 @@ export function BookingForm({
   config,
   userEmail,
   userId,
+  userPhone,
   isAdmin = false,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // WhatsApp obrigatório
+  const [savedPhone, setSavedPhone] = useState<string | null>(userPhone)
+  const [showWhatsCapture, setShowWhatsCapture] = useState(false)
+  const [whatsInput, setWhatsInput] = useState('')
+  const [whatsError, setWhatsError] = useState('')
+  const [savingWhats, setSavingWhats] = useState(false)
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
@@ -165,6 +174,12 @@ const handleConfirm = async () => {
       }
     }
 
+    // Se logado mas sem WhatsApp salvo, exige captura antes de prosseguir
+    if (isLoggedIn && !savedPhone) {
+      setShowWhatsCapture(true)
+      return
+    }
+
     if (!isLoggedIn) {
       const supabase = createClient()
       const { error } = await supabase.auth.signInAnonymously()
@@ -174,6 +189,25 @@ const handleConfirm = async () => {
       }
     }
 
+    submitBooking()
+  }
+
+  const handleSaveWhats = async () => {
+    const nums = whatsInput.replace(/\D/g, '')
+    if (nums.length !== 11 || nums[2] !== '9') {
+      setWhatsError('Informe um celular válido com DDD (ex: 11 99999-9999).')
+      return
+    }
+    setWhatsError('')
+    setSavingWhats(true)
+    const result = await saveUserPhone(whatsInput)
+    setSavingWhats(false)
+    if (!result.success) {
+      toast.error(result.error ?? 'Erro ao salvar. Tente novamente.')
+      return
+    }
+    setSavedPhone(whatsInput)
+    setShowWhatsCapture(false)
     submitBooking()
   }
 
@@ -469,11 +503,17 @@ const handleConfirm = async () => {
 
       {/* Barra de confirmacao flutuante (CTA) */}
       <div className={`fixed bottom-[90px] left-0 right-0 px-4 z-40 transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] ${selectedTime ? 'translate-y-0 opacity-100 pointer-events-auto scale-100' : 'translate-y-full opacity-0 pointer-events-none scale-95'}`}>
-         <div className="max-w-[340px] mx-auto w-full">
+         <div className="max-w-[340px] mx-auto w-full flex gap-2">
+            <button
+              onClick={() => setSelectedTime(null)}
+              className="shrink-0 h-14 px-5 rounded-2xl text-xs font-extrabold tracking-[0.12em] uppercase text-white/50 border border-white/[0.08] hover:text-white/80 hover:border-white/20 transition-colors"
+            >
+              ← Voltar
+            </button>
             <Button
               onClick={handleConfirm}
               disabled={!canConfirm || isPending}
-              className="w-full h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50"
+              className="flex-1 h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50"
             >
               {isPending ? 'Confirmando...' : 'Confirmar'}
             </Button>
@@ -524,6 +564,51 @@ const handleConfirm = async () => {
          </button>
        </div>
       </nav>
+
+      {/* ── MODAL CAPTURA WHATSAPP ── */}
+      {showWhatsCapture && (
+        <div className="fixed inset-0 z-[70] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowWhatsCapture(false)} />
+          <div className="relative bg-[#111] border-t border-white/[0.08] rounded-t-3xl px-6 pt-6 pb-10 flex flex-col gap-5 animate-in slide-in-from-bottom duration-300">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-white/90">Seu WhatsApp</p>
+                <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
+                  Precisamos do seu número para enviar confirmações e lembretes.
+                </p>
+              </div>
+              <button onClick={() => setShowWhatsCapture(false)} className="text-white/40 hover:text-white/70 transition-colors mt-0.5">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Input
+                type="tel"
+                inputMode="numeric"
+                placeholder="(11) 99999-9999"
+                value={whatsInput}
+                onChange={(e) => {
+                  const formatted = formatPhone(e.target.value)
+                  setWhatsInput(formatted)
+                  const nums = formatted.replace(/\D/g, '')
+                  if (nums.length > 0 && nums.length < 11) setWhatsError('Informe um celular válido com DDD.')
+                  else if (nums.length === 11 && nums[2] !== '9') setWhatsError('Deve começar com 9 após o DDD.')
+                  else setWhatsError('')
+                }}
+                className="bg-white/[0.04] border-white/[0.08] text-white h-12 rounded-xl text-sm"
+              />
+              {whatsError && <p className="text-[10px] text-destructive font-bold px-1 uppercase tracking-wider">{whatsError}</p>}
+            </div>
+            <Button
+              onClick={handleSaveWhats}
+              disabled={savingWhats || whatsInput.replace(/\D/g, '').length !== 11}
+              className="w-full h-12 rounded-xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 disabled:opacity-50"
+            >
+              {savingWhats ? 'Salvando...' : 'Salvar e confirmar reserva'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── PAINEL OPÇÕES (slide-up) ── */}
       {menuOpen && (

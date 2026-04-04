@@ -38,13 +38,15 @@ export default async function AgendarPage() {
   const barber = (barbers as Barber[] | null)?.[0] ?? null
 
   let isAdmin = false
+  let userPhone: string | null = null
   if (user) {
     const { data: profile } = await supabase
       .from('profiles')
-      .select('is_admin')
+      .select('is_admin, phone')
       .eq('id', user.id)
       .single()
     isAdmin = profile?.is_admin ?? false
+    userPhone = profile?.phone ?? null
   }
 
   return (
@@ -57,6 +59,7 @@ export default async function AgendarPage() {
         config={typedConfig}
         userEmail={user?.email ?? null}
         userId={user?.id ?? null}
+        userPhone={userPhone}
         isAdmin={isAdmin}
       />
     </main>

@@ -309,3 +309,18 @@ export async function getMyAppointments() {
 
   return { appointments: data ?? [] }
 }
+
+// ─── Salvar WhatsApp do usuário no perfil ──────────────────────────────────
+export async function saveUserPhone(phone: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Não autenticado.' }
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ phone })
+    .eq('id', user.id)
+
+  if (error) return { success: false, error: error.message }
+  return { success: true }
+}
