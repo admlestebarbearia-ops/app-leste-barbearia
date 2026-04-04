@@ -211,9 +211,9 @@ export async function createAppointment(data: {
   const appointmentData = user
     ? {
         client_id: user.id,
-        client_name: (user.user_metadata?.full_name as string | undefined) ?? user.email ?? null,
+        client_name: (user.user_metadata?.full_name as string | undefined) ?? data.clientName ?? user.email ?? null,
         client_email: user.email ?? null,
-        client_phone: data.loggedUserPhone ?? null,
+        client_phone: data.loggedUserPhone ?? data.clientPhone ?? null,
         barber_id: data.barberId,
         service_id: data.serviceId,
         date: data.date,
