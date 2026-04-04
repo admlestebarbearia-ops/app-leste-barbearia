@@ -111,20 +111,35 @@ export function BookingForm({
   const requireLogin = config?.require_google_login ?? true
   const showFreeMode = !isLoggedIn && !requireLogin
 
-  // Ao voltar para a aba, força re-render do Server Component para
-  // refletir imediatamente qualquer alteração feita no painel admin
+  // Re-busca slots da data atual (usado pelo polling e visibilitychange)
+  const refetchCurrentSlots = useCallback(async () => {
+    if (!selectedDate || !selectedService) return
+    const dateStr = format(selectedDate, 'yyyy-MM-dd')
+    const { slots } = await getAvailableSlots(dateStr, selectedService.id)
+    setAvailableSlots(slots)
+    setSelectedTime(null)
+  }, [selectedDate, selectedService])
+
+  // Reflexo imediato: ao voltar para a aba re-carrega dados do servidor + slots
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         router.refresh()
-        // Reseta slots ao recarregar para evitar cache local desatualizado
-        setAvailableSlots([])
-        setSelectedTime(null)
+        refetchCurrentSlots()
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [router])
+  }, [router, refetchCurrentSlots])
+
+  // Polling a cada 90s: garante atualização mesmo sem troca de aba
+  useEffect(() => {
+    const id = setInterval(() => {
+      router.refresh()
+      refetchCurrentSlots()
+    }, 90_000)
+    return () => clearInterval(id)
+  }, [router, refetchCurrentSlots])
 
   // Dias desabilitados no calendário
   const closedDayOfWeeks = workingHours
