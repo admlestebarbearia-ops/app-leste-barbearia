@@ -212,6 +212,7 @@ export async function createAppointment(data: {
     ? {
         client_id: user.id,
         client_name: (user.user_metadata?.full_name as string | undefined) ?? user.email ?? null,
+        client_email: user.email ?? null,
         client_phone: data.loggedUserPhone ?? null,
         barber_id: data.barberId,
         service_id: data.serviceId,
@@ -221,6 +222,7 @@ export async function createAppointment(data: {
       }
     : {
         client_name: data.clientName,
+        client_email: null,
         client_phone: data.clientPhone,
         barber_id: data.barberId,
         service_id: data.serviceId,

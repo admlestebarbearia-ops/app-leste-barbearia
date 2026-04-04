@@ -78,6 +78,7 @@ export interface Appointment {
   id: string
   client_id: string | null
   client_name: string | null
+  client_email: string | null
   client_phone: string | null
   barber_id: string
   service_id: string
