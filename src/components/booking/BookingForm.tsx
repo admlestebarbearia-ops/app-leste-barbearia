@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useTransition } from 'react'
+import { useState, useCallback, useEffect, useTransition } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { DayPicker } from 'react-day-picker'
@@ -235,9 +235,9 @@ const handleConfirm = async () => {
 
       <div className="px-4 pt-2 flex flex-col gap-10 max-w-lg mx-auto w-full">
 
-        {/* Secao 1: Servico — Carrossel Horizontal */}
-        <section className="-mx-4">
-          <div className="flex flex-row overflow-x-auto flex-nowrap gap-3 px-4 pb-3 snap-x snap-mandatory">
+        {/* Secao 1: Servico — Grid 3 colunas */}
+        <section>
+          <div className="grid grid-cols-3 gap-3">
             {services.map((service) => {
               const isSelected = selectedService?.id === service.id;
               const iconPath = SERVICE_ICON_PATHS[service.icon_name ?? ''] ?? SERVICE_ICON_PATHS.scissors;
@@ -246,7 +246,7 @@ const handleConfirm = async () => {
                 key={service.id}
                 onClick={() => handleServiceSelect(service)}
                 className={[
-                  'flex-none w-[110px] h-[110px] flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all duration-200 snap-start',
+                  'w-full h-[110px] flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all duration-200',
                   isSelected
                     ? 'border-white/30 bg-[#252525] shadow-[0_0_20px_rgba(255,255,255,0.05)]'
                     : 'border-white/[0.06] bg-[#1a1a1a] active:bg-[#222]',
@@ -601,21 +601,22 @@ const handleConfirm = async () => {
 
 // ─── Sub-componente: Meus Agendamentos ────────────────────────────────────
 function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinutes: number }) {
-  const [appointments, setAppointments] = useState<
-    Array<{
-      id: string
-      date: string
-      start_time: string
-      services: { name: string; price: number } | null
-    }>
-  >([])
+  type Appt = { id: string; date: string; start_time: string; services: { name: string; price: number } | null }
+  const [appointments, setAppointments] = useState<Appt[]>([])
   const [loaded, setLoaded] = useState(false)
   const [cancelling, setCancelling] = useState<string | null>(null)
+  const [now, setNow] = useState(() => new Date())
 
-  const load = useCallback(async () => {
-    const { appointments: data } = await getMyAppointments()
-    setAppointments(data as typeof appointments)
-    setLoaded(true)
+  useEffect(() => {
+    getMyAppointments().then(({ appointments: data }) => {
+      setAppointments(data as Appt[])
+      setLoaded(true)
+    })
+  }, [])
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000)
+    return () => clearInterval(id)
   }, [])
 
   const handleCancel = async (id: string) => {
@@ -630,55 +631,52 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
     setCancelling(null)
   }
 
-  if (!loaded) {
+  if (!loaded) return null
+
+  const nextAppt = appointments.find((a) => parseISO(`${a.date}T${a.start_time}`) > now)
+
+  if (!nextAppt) {
     return (
-      <button
-        onClick={load}
-        className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
-      >
-        Ver meus agendamentos
-      </button>
+      <div className="rounded-2xl border border-white/[0.06] bg-[#1a1a1a] px-5 py-5 flex flex-col gap-1.5">
+        <p className="text-sm font-semibold text-white/80">Nenhum agendamento futuro</p>
+        <p className="text-xs text-white/40 leading-relaxed">Escolha um serviço acima para fazer sua reserva.</p>
+      </div>
     )
   }
 
-  if (appointments.length === 0) return null
+  const apptTime = parseISO(`${nextAppt.date}T${nextAppt.start_time}`)
+  const diffMs = apptTime.getTime() - now.getTime()
+  const diffH = Math.floor(diffMs / 3600000)
+  const diffM = Math.floor((diffMs % 3600000) / 60000)
+  const countdownText = diffH > 0 ? `${diffH}h ${diffM}min` : `${diffM} minutos`
+  const deadline = new Date(apptTime.getTime() - cancellationWindowMinutes * 60000)
+  const canCancel = now < deadline
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-base font-medium text-foreground">Meus agendamentos:</h2>
-      <div className="flex flex-col gap-2">
-        {appointments.map((appt) => {
-          const apptTime = parseISO(`${appt.date}T${appt.start_time}`)
-          const deadline = new Date(apptTime.getTime() - cancellationWindowMinutes * 60000)
-          const canCancel = new Date() < deadline
-
-          return (
-            <div
-              key={appt.id}
-              className="flex items-center justify-between bg-card border border-border rounded-xl px-4 py-3"
-            >
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-foreground">
-                  {appt.services?.name}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {format(parseISO(appt.date), 'dd/MM')} as {appt.start_time?.slice(0, 5)}
-                </span>
-              </div>
-              {canCancel && (
-                <button
-                  onClick={() => handleCancel(appt.id)}
-                  disabled={cancelling === appt.id}
-                  className="text-xs text-destructive hover:text-destructive/80 transition-colors disabled:opacity-50"
-                >
-                  {cancelling === appt.id ? 'Cancelando...' : 'Cancelar'}
-                </button>
-              )}
-            </div>
-          )
-        })}
+    <div className="rounded-2xl border border-white/[0.06] bg-[#1a1a1a] px-5 py-5 flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-0.5">
+          <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Próximo agendamento</p>
+          <p className="text-sm font-semibold text-white/90">{nextAppt.services?.name}</p>
+          <p className="text-xs text-white/50">
+            {format(parseISO(nextAppt.date), "dd 'de' MMMM", { locale: ptBR })} às {nextAppt.start_time?.slice(0, 5)}
+          </p>
+        </div>
+        {canCancel && (
+          <button
+            onClick={() => handleCancel(nextAppt.id)}
+            disabled={cancelling === nextAppt.id}
+            className="text-[10px] font-bold uppercase tracking-widest text-destructive/70 hover:text-destructive transition-colors disabled:opacity-50 mt-1 shrink-0"
+          >
+            {cancelling === nextAppt.id ? 'Cancelando...' : 'Cancelar'}
+          </button>
+        )}
       </div>
-    </section>
+      <div className="border-t border-white/[0.06] pt-3 flex flex-col gap-0.5">
+        <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Faltam</p>
+        <p className="text-xl font-black text-white/90 tabular-nums">{countdownText}</p>
+      </div>
+    </div>
   )
 }
 
