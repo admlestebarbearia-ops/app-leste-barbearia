@@ -291,6 +291,29 @@ export function AdminDashboard({
         </div>
       </main>
 
+      {/* Rodapé da agência */}
+      <footer className="py-5 flex flex-col items-center gap-1.5">
+        <p className="text-[10px] text-zinc-700 tracking-wide">
+          Sistema desenvolvido por{' '}
+          <a
+            href="https://wa.me/5511940825120?text=Ol%C3%A1%2C+quero+saber+mais+sobre+ter+um+dom%C3%ADnio+pr%C3%B3prio+para+minha+barbearia"
+            target="_blank"
+            rel="noreferrer"
+            className="text-zinc-500 hover:text-white transition-colors font-semibold"
+          >
+            Agência JN
+          </a>
+        </p>
+        <a
+          href="https://wa.me/5511940825120?text=Ol%C3%A1%2C+quero+saber+mais+sobre+ter+um+dom%C3%ADnio+pr%C3%B3prio+para+minha+barbearia"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[10px] text-zinc-700 hover:text-zinc-400 transition-colors"
+        >
+          🌐 Ative seu domínio próprio
+        </a>
+      </footer>
+
       {/* Dialog de Pausa */}
       <Dialog open={isPauseDialogOpen} onOpenChange={setIsPauseDialogOpen}>
         <DialogContent>
