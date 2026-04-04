@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useTransition } from 'react'
+import { useState, useCallback, useEffect, useTransition, useRef } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { DayPicker } from 'react-day-picker'
@@ -132,14 +132,27 @@ export function BookingForm({
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [router, refetchCurrentSlots])
 
-  // Polling a cada 90s: garante atualização mesmo sem troca de aba
+  // Polling a cada 60s: garante atualização mesmo sem troca de aba
   useEffect(() => {
     const id = setInterval(() => {
       router.refresh()
       refetchCurrentSlots()
-    }, 90_000)
+    }, 60_000)
     return () => clearInterval(id)
   }, [router, refetchCurrentSlots])
+
+  // Detecta quando servidor envia workingHours novos (após router.refresh())
+  // e re-busca os slots da data já selecionada automaticamente
+  const prevWorkingHoursKey = useRef('')
+  useEffect(() => {
+    const key = workingHours
+      .map((w) => `${w.day_of_week}:${w.is_open}:${w.open_time}:${w.close_time}`)
+      .join('|')
+    if (prevWorkingHoursKey.current !== '' && prevWorkingHoursKey.current !== key) {
+      refetchCurrentSlots()
+    }
+    prevWorkingHoursKey.current = key
+  }, [workingHours, refetchCurrentSlots])
 
   // Dias desabilitados no calendário
   const closedDayOfWeeks = workingHours

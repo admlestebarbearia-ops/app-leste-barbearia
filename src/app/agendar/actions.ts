@@ -94,11 +94,10 @@ export async function getAvailableSlots(
   const now = new Date()
 
   while (true) {
-    // Último slot disponível = fechamento - slotInterval
-    // O intervalo define tanto o espaçamento quanto o buffer mínimo antes do fechamento
-    if (!isBefore(current, addMinutes(end, -slotInterval + 1))) break
-
     const slotEnd = addMinutes(current, duration)
+
+    // Slot só é válido se o serviço termina até o fechamento
+    if (isAfter(slotEnd, end)) break
 
     const slotStr = format(current, 'HH:mm')
     const slotDateTime = parseISO(`${date}T${format(current, 'HH:mm:ss')}`)
