@@ -150,6 +150,7 @@ export async function createAppointment(data: {
   startTime: string
   clientName?: string
   clientPhone?: string
+  loggedUserPhone?: string
 }): Promise<{ success: boolean; appointmentId?: string; error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -210,6 +211,8 @@ export async function createAppointment(data: {
   const appointmentData = user
     ? {
         client_id: user.id,
+        client_name: (user.user_metadata?.full_name as string | undefined) ?? user.email ?? null,
+        client_phone: data.loggedUserPhone ?? null,
         barber_id: data.barberId,
         service_id: data.serviceId,
         date: data.date,

@@ -98,6 +98,13 @@ export default async function SucessoPage({ searchParams }: Props) {
         </div>
 
         <a
+          href="/"
+          className="w-full h-12 flex items-center justify-center rounded-xl bg-primary text-primary-foreground text-sm font-bold tracking-wide hover:bg-primary/90 transition-colors"
+        >
+          ← Voltar para o Início
+        </a>
+
+        <a
           href="/agendar"
           className="w-full h-10 flex items-center justify-center rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground transition-colors"
         >

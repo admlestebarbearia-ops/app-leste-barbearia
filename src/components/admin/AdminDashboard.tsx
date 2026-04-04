@@ -77,7 +77,10 @@ export function AdminDashboard({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [isPauseDialogOpen, setIsPauseDialogOpen] = useState(false)
   const [pauseMessage, setPauseMessage] = useState(config.pause_message || '')
-  const [pauseReturnTime, setPauseReturnTime] = useState(config.pause_return_time || '')
+  const [pauseReturnTime, setPauseReturnTime] = useState(() => {
+    if (!config.pause_return_time) return ''
+    try { return new Date(config.pause_return_time).toTimeString().slice(0, 5) } catch { return '' }
+  })
 
   // Upload de logo direto do header
   const headerLogoRef = useRef<HTMLInputElement>(null)
@@ -101,7 +104,14 @@ export function AdminDashboard({
 
   const handlePauseConfirm = async (val: boolean) => {
     const id = toast.loading(val ? 'Pausando expediente...' : 'Retornando expediente...')
-    const res = await togglePauseStatus(val, val ? pauseMessage : null, val ? pauseReturnTime : null)
+    let returnTimestamp: string | null = null
+    if (val && pauseReturnTime) {
+      const d = new Date()
+      const [h, m] = pauseReturnTime.split(':').map(Number)
+      d.setHours(h, m, 0, 0)
+      returnTimestamp = d.toISOString()
+    }
+    const res = await togglePauseStatus(val, val ? pauseMessage : null, returnTimestamp)
     if (res.success) {
       toast.success(val ? 'Sistema pausado.' : 'Sistema liberado.', { id })
       setIsPauseDialogOpen(false)
@@ -338,10 +348,10 @@ export function AdminDashboard({
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="pauseReturn">Retornos previsto as (ex: 14:00)</Label>
+                <Label htmlFor="pauseReturn">Retorno previsto às</Label>
                 <Input
                   id="pauseReturn"
-                  placeholder="14:00"
+                  type="time"
                   value={pauseReturnTime}
                   onChange={(e) => setPauseReturnTime(e.target.value)}
                 />
@@ -423,18 +433,23 @@ function TabHoje({
           const t = payload.new?.start_time?.slice(0, 5) ?? ''
           toast.success(`Novo agendamento! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '📅' })
           sendBrowserNotif(d, t)
-          // Som de notificação via Web Audio API
+          // Som de notificação
           try {
-            const ctx = new AudioContext()
-            const osc = ctx.createOscillator()
-            const gain = ctx.createGain()
-            osc.connect(gain)
-            gain.connect(ctx.destination)
-            osc.frequency.value = 880
-            gain.gain.setValueAtTime(0.3, ctx.currentTime)
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
-            osc.start(ctx.currentTime)
-            osc.stop(ctx.currentTime + 0.6)
+            const audio = new Audio('/bell.mp3')
+            audio.volume = 0.6
+            audio.play().catch(() => {
+              // fallback Web Audio API se autoplay bloqueado
+              const ctx = new AudioContext()
+              const osc = ctx.createOscillator()
+              const gain = ctx.createGain()
+              osc.connect(gain)
+              gain.connect(ctx.destination)
+              osc.frequency.value = 880
+              gain.gain.setValueAtTime(0.3, ctx.currentTime)
+              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+              osc.start(ctx.currentTime)
+              osc.stop(ctx.currentTime + 0.6)
+            })
           } catch {}
           setNewBadge((prev) => prev + 1)
           onRefresh()

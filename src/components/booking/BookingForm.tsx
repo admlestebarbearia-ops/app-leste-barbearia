@@ -222,6 +222,7 @@ const handleConfirm = async () => {
         startTime: selectedTime + ':00',
         clientName: showFreeMode ? clientName : undefined,
         clientPhone: showFreeMode ? clientPhone : undefined,
+        loggedUserPhone: isLoggedIn ? (savedPhone ?? undefined) : undefined,
       })
 
       if (result.success && result.appointmentId) {
