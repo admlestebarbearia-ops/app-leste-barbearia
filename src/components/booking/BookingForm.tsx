@@ -111,6 +111,21 @@ export function BookingForm({
   const requireLogin = config?.require_google_login ?? true
   const showFreeMode = !isLoggedIn && !requireLogin
 
+  // Ao voltar para a aba, força re-render do Server Component para
+  // refletir imediatamente qualquer alteração feita no painel admin
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        router.refresh()
+        // Reseta slots ao recarregar para evitar cache local desatualizado
+        setAvailableSlots([])
+        setSelectedTime(null)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [router])
+
   // Dias desabilitados no calendário
   const closedDayOfWeeks = workingHours
     .filter((wh) => !wh.is_open)

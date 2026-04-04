@@ -946,6 +946,7 @@ function TabConfiguracoes({
   // Config geral
   const [requireGoogle, setRequireGoogle] = useState(config.require_google_login)
   const [cancelWindow, setCancelWindow] = useState(String(config.cancellation_window_minutes))
+  const [slotInterval, setSlotInterval] = useState(String(config.slot_interval_minutes ?? 30))
   const [enableGallery, setEnableGallery] = useState(config.enable_gallery)
   const [allowClientUploads, setAllowClientUploads] = useState(config.allow_client_uploads)
   const [savingConfig, setSavingConfig] = useState(false)
@@ -1039,6 +1040,7 @@ function TabConfiguracoes({
     const result = await saveBusinessConfig({
       require_google_login: requireGoogle,
       cancellation_window_minutes: window_minutes,
+      slot_interval_minutes: parseInt(slotInterval, 10) || 30,
       enable_gallery: enableGallery,
       allow_client_uploads: allowClientUploads,
     })
@@ -1224,6 +1226,19 @@ function TabConfiguracoes({
                   <Input type="number" min="0" value={cancelWindow} onChange={(e) => setCancelWindow(e.target.value)} className="h-9 w-24" />
                   <span className="text-xs text-muted-foreground">minutos antes</span>
                 </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">Intervalo entre horários disponíveis</Label>
+                <p className="text-[11px] text-muted-foreground/70">Define o espaçamento entre slots na agenda. Ex: 15min → 09:00, 09:15, 09:30...</p>
+                <select
+                  value={slotInterval}
+                  onChange={(e) => setSlotInterval(e.target.value)}
+                  className="h-9 w-36 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                >
+                  {[5, 10, 15, 20, 30, 60].map((v) => (
+                    <option key={v} value={String(v)}>{v} minutos</option>
+                  ))}
+                </select>
               </div>
               <Button onClick={handleSaveConfig} disabled={savingConfig} size="sm">
                 {savingConfig ? 'Salvando...' : 'Salvar configurações'}

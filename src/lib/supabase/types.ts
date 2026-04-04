@@ -32,6 +32,7 @@ export interface BusinessConfig {
   whatsapp_number: string | null
   instagram_url: string | null
   address: string | null
+  slot_interval_minutes: number
   updated_at: string
 }
 

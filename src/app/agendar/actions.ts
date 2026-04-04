@@ -21,13 +21,14 @@ export async function getAvailableSlots(
 
   if (!service) return { slots: [], error: 'Servico nao encontrado.' }
 
-  // Verifica se a barbearia está em modo "Pausa Temporária"
+  // Busca configurações da barbearia (pausa + intervalo de slots)
   const { data: configData } = await supabase
     .from('business_config')
-    .select('is_paused')
+    .select('is_paused, slot_interval_minutes')
     .single()
 
   const isPaused = configData?.is_paused ?? false
+  const slotInterval = configData?.slot_interval_minutes ?? 30
 
   const duration = service.duration_minutes
 
@@ -106,7 +107,7 @@ export async function getAvailableSlots(
 
     // Não exibe slots no passado
     if (isBefore(slotDateTime, now)) {
-      current = addMinutes(current, 30)
+      current = addMinutes(current, slotInterval)
       continue
     }
 
@@ -140,7 +141,7 @@ export async function getAvailableSlots(
       }
     }
 
-    current = addMinutes(current, 30)
+    current = addMinutes(current, slotInterval)
   }
 
   return { slots }
