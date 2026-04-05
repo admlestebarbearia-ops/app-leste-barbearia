@@ -5,10 +5,16 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
-import { format, isBefore, startOfDay, getDay, parseISO } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
 import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone } from '@/app/agendar/actions'
 import { createClient } from '@/lib/supabase/client'
+import {
+  buildAvailabilitySyncKey,
+  getBarberAvailabilityChangeMessage,
+  isBookingDateDisabled,
+  resolveSelectedService,
+} from '@/lib/booking/public-booking-sync'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -193,26 +199,14 @@ export function BookingForm({
     }
   }, [router])
 
-  // Dias desabilitados no calendário
-  const closedDayOfWeeks = workingHours
-    .filter((wh) => !wh.is_open)
-    .map((wh) => wh.day_of_week)
-
-  const closedSpecialDates = specialSchedules
-    .filter((ss) => ss.is_closed)
-    .map((ss) => parseISO(ss.date))
-
   const isDateDisabled = (date: Date) => {
-    if (isBefore(date, startOfDay(new Date()))) return true
-    if (closedDayOfWeeks.includes(getDay(date))) return true
-    if (closedSpecialDates.some((d) => d.toDateString() === date.toDateString())) return true
-    return false
+    return isBookingDateDisabled(date, workingHours, specialSchedules)
   }
 
   useEffect(() => {
     if (!selectedService) return
 
-    const freshService = services.find((service) => service.id === selectedService.id)
+    const freshService = resolveSelectedService(services, selectedService)
     if (!freshService) {
       resetScheduleSelection({ clearDate: true, clearService: true })
       toast.error('O servico selecionado nao esta mais disponivel. Escolha outro servico.')
@@ -235,30 +229,24 @@ export function BookingForm({
   useEffect(() => {
     const currentBarberId = barber?.id ?? null
     const previousBarberId = prevBarberIdRef.current
+    const barberChangeMessage = getBarberAvailabilityChangeMessage(previousBarberId, currentBarberId)
 
-    if (previousBarberId && currentBarberId !== previousBarberId) {
+    if (barberChangeMessage) {
       resetScheduleSelection({ clearDate: true })
-      toast.error(
-        currentBarberId
-          ? 'O barbeiro disponivel mudou. Escolha a data e o horario novamente.'
-          : 'Nenhum barbeiro esta disponivel no momento. Tente novamente em instantes.'
-      )
+      toast.error(barberChangeMessage)
     }
 
     prevBarberIdRef.current = currentBarberId
   }, [barber?.id, resetScheduleSelection])
 
   useEffect(() => {
-    const availabilityKey = [
-      workingHours
-        .map((hour) => `${hour.day_of_week}:${hour.is_open}:${hour.open_time}:${hour.close_time}:${hour.lunch_start}:${hour.lunch_end}`)
-        .join('|'),
-      specialSchedules
-        .map((schedule) => `${schedule.date}:${schedule.is_closed}:${schedule.open_time}:${schedule.close_time}`)
-        .join('|'),
-      `${config?.is_paused ?? false}:${config?.slot_interval_minutes ?? 30}`,
-      barber?.id ?? 'none',
-    ].join('||')
+    const availabilityKey = buildAvailabilitySyncKey({
+      workingHours,
+      specialSchedules,
+      isPaused: config?.is_paused ?? false,
+      slotIntervalMinutes: config?.slot_interval_minutes ?? 30,
+      barberId: barber?.id ?? null,
+    })
 
     if (prevAvailabilityKeyRef.current !== '' && prevAvailabilityKeyRef.current !== availabilityKey) {
       refetchRef.current()
