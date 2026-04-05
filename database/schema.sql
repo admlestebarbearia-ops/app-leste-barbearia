@@ -112,13 +112,18 @@ CREATE TABLE IF NOT EXISTS public.appointments (
   client_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   -- Modo livre: client_name + client_phone preenchidos
   client_name TEXT,
+  client_email TEXT,
   client_phone TEXT,
   barber_id UUID NOT NULL REFERENCES public.barbers(id),
   service_id UUID NOT NULL REFERENCES public.services(id),
+  service_name_snapshot TEXT,
+  service_price_snapshot NUMERIC(10,2),
+  service_duration_minutes_snapshot INTEGER,
   date DATE NOT NULL,
   start_time TIME NOT NULL,
   status TEXT NOT NULL DEFAULT 'confirmado'
     CHECK (status IN ('confirmado', 'cancelado', 'faltou')),
+  deleted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   -- Garantir que pelo menos um identificador de cliente existe
   CONSTRAINT client_identifier CHECK (
@@ -387,4 +392,11 @@ ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS pause_message TEXT;
 ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS pause_return_time TIMESTAMPTZ;
 ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS enable_gallery BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS allow_client_uploads BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS slot_interval_minutes INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS client_email TEXT;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS service_name_snapshot TEXT;
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS service_price_snapshot NUMERIC(10,2);
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS service_duration_minutes_snapshot INTEGER;
 ALTER TABLE public.services ADD COLUMN IF NOT EXISTS icon_name TEXT;

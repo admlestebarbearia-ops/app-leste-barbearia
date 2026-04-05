@@ -83,6 +83,9 @@ export interface Appointment {
   client_phone: string | null
   barber_id: string
   service_id: string
+  service_name_snapshot?: string | null
+  service_price_snapshot?: number | null
+  service_duration_minutes_snapshot?: number | null
   date: string
   start_time: string
   status: AppointmentStatus

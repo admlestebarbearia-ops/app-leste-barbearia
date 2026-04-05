@@ -1,9 +1,48 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import {
+  calculateAvailableSlots,
+  type ExistingAppointmentWindow,
+} from '@/lib/scheduling/availability-engine'
 import { revalidatePath } from 'next/cache'
-import { format, addMinutes, parse, isAfter, isBefore, parseISO } from 'date-fns'
+import { format, addMinutes, isAfter, parseISO } from 'date-fns'
 import type { WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
+
+type AppointmentServiceDurationRelation =
+  | { duration_minutes?: number | null }
+  | Array<{ duration_minutes?: number | null }>
+  | null
+
+type AppointmentAvailabilityRow = {
+  start_time: string
+  services: AppointmentServiceDurationRelation
+  service_duration_minutes_snapshot?: number | null
+  status?: string | null
+  deleted_at?: string | null
+}
+
+function getRelatedServiceDuration(services: AppointmentServiceDurationRelation) {
+  if (Array.isArray(services)) {
+    return services[0]?.duration_minutes ?? null
+  }
+
+  return services?.duration_minutes ?? null
+}
+
+function normalizeAppointmentWindows(
+  appointments: AppointmentAvailabilityRow[] | null | undefined
+): ExistingAppointmentWindow[] {
+  return (appointments ?? []).map((appointment) => ({
+    start_time: appointment.start_time,
+    duration_minutes:
+      appointment.service_duration_minutes_snapshot ??
+      getRelatedServiceDuration(appointment.services) ??
+      30,
+    status: appointment.status ?? 'confirmado',
+    deleted_at: appointment.deleted_at ?? null,
+  }))
+}
 
 // ─── Calcular slots disponíveis ────────────────────────────────────────────
 export async function getAvailableSlots(
@@ -79,72 +118,51 @@ export async function getAvailableSlots(
   const lunchEnd = typedWH?.lunch_end ?? null
 
   // Busca agendamentos confirmados do dia para cruzamento
-  const { data: existingAppointments } = await supabase
+  const { data: existingAppointmentsWithSnapshots, error: existingAppointmentsError } = await supabase
     .from('appointments')
-    .select('start_time, services(duration_minutes)')
+    .select('start_time, status, deleted_at, service_duration_minutes_snapshot, services(duration_minutes)')
     .eq('date', date)
     .eq('status', 'confirmado')
+    .is('deleted_at', null)
 
-  // Gera todos os slots possíveis
-  const slots: string[] = []
-  const baseDate = date + 'T'
+  let normalizedExistingAppointments = normalizeAppointmentWindows(
+    existingAppointmentsWithSnapshots as AppointmentAvailabilityRow[] | null | undefined
+  )
 
-  let current = parse(openTime, 'HH:mm:ss', new Date(date + 'T00:00:00'))
-  const end = parse(closeTime, 'HH:mm:ss', new Date(date + 'T00:00:00'))
-  const now = new Date()
+  if (existingAppointmentsError) {
+    const shouldFallbackToLegacyQuery =
+      existingAppointmentsError.code === 'PGRST204' ||
+      existingAppointmentsError.message.includes('service_duration_minutes_snapshot') ||
+      existingAppointmentsError.message.includes('deleted_at')
 
-  // Último slot válido = fechamento - slotInterval (o intervalo é o buffer antes do fechamento)
-  const lastValidStart = addMinutes(end, -slotInterval)
-
-  while (true) {
-    // Para quando ultrapassa o último slot permitido
-    if (isAfter(current, lastValidStart)) break
-
-    const slotEnd = addMinutes(current, duration)
-
-    const slotStr = format(current, 'HH:mm')
-    const slotDateTime = parseISO(`${date}T${format(current, 'HH:mm:ss')}`)
-
-    // Não exibe slots no passado
-    if (isBefore(slotDateTime, now)) {
-      current = addMinutes(current, slotInterval)
-      continue
+    if (!shouldFallbackToLegacyQuery) {
+      return { slots: [], error: `Erro ao consultar disponibilidade: ${existingAppointmentsError.message}` }
     }
 
-    // Verifica conflito com horário de almoço
-    let lunchConflict = false
-    if (lunchStart && lunchEnd) {
-      const lunchStartTime = parse(lunchStart, 'HH:mm:ss', new Date(date + 'T00:00:00'))
-      const lunchEndTime = parse(lunchEnd, 'HH:mm:ss', new Date(date + 'T00:00:00'))
-      // Conflito se o slot começa antes do fim do almoço e termina depois do início
-      if (isBefore(current, lunchEndTime) && isAfter(slotEnd, lunchStartTime)) {
-        lunchConflict = true
-      }
+    const { data: legacyExistingAppointments, error: legacyExistingAppointmentsError } = await supabase
+      .from('appointments')
+      .select('start_time, services(duration_minutes)')
+      .eq('date', date)
+      .eq('status', 'confirmado')
+
+    if (legacyExistingAppointmentsError) {
+      return { slots: [], error: `Erro ao consultar disponibilidade: ${legacyExistingAppointmentsError.message}` }
     }
 
-    if (!lunchConflict) {
-      // Verifica conflito com agendamentos existentes
-      let hasConflict = false
-      for (const appt of existingAppointments ?? []) {
-        const apptStart = parse(appt.start_time, 'HH:mm:ss', new Date(date + 'T00:00:00'))
-        const apptDuration = (appt.services as unknown as { duration_minutes?: number } | null)?.duration_minutes ?? 30
-        const apptEnd = addMinutes(apptStart, apptDuration)
-
-        if (isBefore(current, apptEnd) && isAfter(slotEnd, apptStart)) {
-          hasConflict = true
-          break
-        }
-      }
-
-      if (!hasConflict) {
-        slots.push(slotStr)
-      }
-    }
-
-    current = addMinutes(current, slotInterval)
+    normalizedExistingAppointments = normalizeAppointmentWindows(
+      legacyExistingAppointments as AppointmentAvailabilityRow[] | null | undefined
+    )
   }
 
-  return { slots }
+  return calculateAvailableSlots({
+    date,
+    serviceDurationMinutes: duration,
+    slotIntervalMinutes: slotInterval,
+    isPaused,
+    workingHours: typedWH,
+    specialSchedule: typedSpecial,
+    existingAppointments: normalizedExistingAppointments,
+  })
 }
 
 // ─── Criar agendamento ──────────────────────────────────────────────────────
@@ -206,6 +224,16 @@ export async function createAppointment(data: {
     return { success: false, error: 'Dispositivo bloqueado temporariamente por spam. Tente mais tarde.' }
   }
 
+  const { data: serviceSnapshot, error: serviceSnapshotError } = await supabase
+    .from('services')
+    .select('name, price, duration_minutes')
+    .eq('id', data.serviceId)
+    .single()
+
+  if (serviceSnapshotError || !serviceSnapshot) {
+    return { success: false, error: 'Servico nao encontrado ou indisponivel.' }
+  }
+
   // Verifica disponibilidade do slot (dupla checagem no servidor)
   const { slots } = await getAvailableSlots(data.date, data.serviceId)
   const requested = data.startTime.slice(0, 5)
@@ -221,6 +249,9 @@ export async function createAppointment(data: {
         client_phone: data.loggedUserPhone ?? data.clientPhone ?? null,
         barber_id: data.barberId,
         service_id: data.serviceId,
+        service_name_snapshot: serviceSnapshot.name,
+        service_price_snapshot: serviceSnapshot.price,
+        service_duration_minutes_snapshot: serviceSnapshot.duration_minutes,
         date: data.date,
         start_time: data.startTime,
         status: 'confirmado' as const,
@@ -231,20 +262,53 @@ export async function createAppointment(data: {
         client_phone: data.clientPhone,
         barber_id: data.barberId,
         service_id: data.serviceId,
+        service_name_snapshot: serviceSnapshot.name,
+        service_price_snapshot: serviceSnapshot.price,
+        service_duration_minutes_snapshot: serviceSnapshot.duration_minutes,
         date: data.date,
         start_time: data.startTime,
         status: 'confirmado' as const,
       }
 
-  const { data: appointment, error } = await supabase
+  let { data: appointment, error } = await supabase
     .from('appointments')
     .insert(appointmentData)
     .select('id')
     .single()
 
+  if (
+    error &&
+    (
+      error.code === 'PGRST204' ||
+      error.message.includes('service_name_snapshot') ||
+      error.message.includes('service_price_snapshot') ||
+      error.message.includes('service_duration_minutes_snapshot')
+    )
+  ) {
+    const legacyAppointmentData = {
+      ...appointmentData,
+      service_name_snapshot: undefined,
+      service_price_snapshot: undefined,
+      service_duration_minutes_snapshot: undefined,
+    }
+
+    const legacyInsert = await supabase
+      .from('appointments')
+      .insert(legacyAppointmentData)
+      .select('id')
+      .single()
+
+    appointment = legacyInsert.data
+    error = legacyInsert.error
+  }
+
   if (error) {
     console.error('Erro ao criar agendamento:', error)
     return { success: false, error: `Erro ao confirmar agendamento: ${error.message}` }
+  }
+
+  if (!appointment?.id) {
+    return { success: false, error: 'Erro ao confirmar agendamento: resposta invalida do banco.' }
   }
 
   revalidatePath('/agendar')

@@ -4,6 +4,80 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { BusinessConfig, WorkingHours } from '@/lib/supabase/types'
 
+const ALLOWED_SLOT_INTERVALS = new Set([5, 10, 15, 20, 30, 60])
+
+function normalizeTimeValue(time: string) {
+  return time.length === 5 ? `${time}:00` : time
+}
+
+function validateWorkingHoursRow(h: Omit<WorkingHours, 'id'>): string | null {
+  if (!h.is_open) return null
+
+  if (!h.open_time || !h.close_time) {
+    return 'Dia aberto exige horário de abertura e fechamento.'
+  }
+
+  const openTime = normalizeTimeValue(h.open_time)
+  const closeTime = normalizeTimeValue(h.close_time)
+  if (openTime >= closeTime) {
+    return 'O horário de fechamento precisa ser maior que o de abertura.'
+  }
+
+  const hasLunchStart = !!h.lunch_start
+  const hasLunchEnd = !!h.lunch_end
+  if (hasLunchStart !== hasLunchEnd) {
+    return 'Preencha início e fim do almoço, ou deixe ambos vazios.'
+  }
+
+  if (h.lunch_start && h.lunch_end) {
+    const lunchStart = normalizeTimeValue(h.lunch_start)
+    const lunchEnd = normalizeTimeValue(h.lunch_end)
+    if (lunchStart >= lunchEnd) {
+      return 'O horário final do almoço precisa ser maior que o inicial.'
+    }
+    if (lunchStart < openTime || lunchEnd > closeTime) {
+      return 'O almoço precisa estar dentro do horário de funcionamento.'
+    }
+  }
+
+  return null
+}
+
+function validateSpecialSchedulePayload(data: {
+  is_closed: boolean
+  open_time?: string | null
+  close_time?: string | null
+}) {
+  if (data.is_closed) return null
+
+  if (!data.open_time || !data.close_time) {
+    return 'Data especial aberta exige horário de abertura e fechamento.'
+  }
+
+  const openTime = normalizeTimeValue(data.open_time)
+  const closeTime = normalizeTimeValue(data.close_time)
+  if (openTime >= closeTime) {
+    return 'O horário de fechamento precisa ser maior que o de abertura.'
+  }
+
+  return null
+}
+
+function validateBusinessConfigPatch(data: Partial<BusinessConfig>) {
+  if (data.cancellation_window_minutes != null && data.cancellation_window_minutes < 0) {
+    return 'A janela de cancelamento não pode ser negativa.'
+  }
+
+  if (
+    data.slot_interval_minutes != null &&
+    !ALLOWED_SLOT_INTERVALS.has(data.slot_interval_minutes)
+  ) {
+    return 'Intervalo de grade inválido. Use 5, 10, 15, 20, 30 ou 60 minutos.'
+  }
+
+  return null
+}
+
 // ─── Guard: verifica se o usuário atual é admin ──────────────────────────
 async function requireAdmin() {
   const supabase = await createClient()
@@ -110,6 +184,10 @@ export async function saveBusinessConfig(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
+    const validationError = validateBusinessConfigPatch(data)
+    if (validationError) {
+      return { success: false, error: validationError }
+    }
     const { error } = await supabase
       .from('business_config')
       .update({ ...data, updated_at: new Date().toISOString() })
@@ -130,6 +208,10 @@ export async function saveWorkingHours(
   try {
     const { supabase } = await requireAdmin()
     for (const h of hours) {
+      const validationError = validateWorkingHoursRow(h)
+      if (validationError) {
+        return { success: false, error: `${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'][h.day_of_week]}: ${validationError}` }
+      }
       const { error } = await supabase
         .from('working_hours')
         .update({
@@ -160,9 +242,17 @@ export async function addSpecialSchedule(data: {
 }): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
+    const validationError = validateSpecialSchedulePayload(data)
+    if (validationError) {
+      return { success: false, error: validationError }
+    }
     const { error } = await supabase
       .from('special_schedules')
-      .upsert(data, { onConflict: 'date' })
+      .upsert({
+        ...data,
+        open_time: data.is_closed ? null : data.open_time ?? null,
+        close_time: data.is_closed ? null : data.close_time ?? null,
+      }, { onConflict: 'date' })
     if (error) throw error
     revalidatePath('/agendar')
     revalidatePath('/admin')
@@ -308,6 +398,11 @@ export async function completeOnboarding(data: {
 
     const { workingHours, ...configData } = data
 
+    const configValidationError = validateBusinessConfigPatch(configData)
+    if (configValidationError) {
+      return { success: false, error: configValidationError }
+    }
+
     const { error: configError } = await supabase
       .from('business_config')
       .update({
@@ -320,6 +415,10 @@ export async function completeOnboarding(data: {
     if (configError) throw configError
 
     for (const h of workingHours) {
+      const validationError = validateWorkingHoursRow(h)
+      if (validationError) {
+        return { success: false, error: `${['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'][h.day_of_week]}: ${validationError}` }
+      }
       const { error } = await supabase
         .from('working_hours')
         .update({
