@@ -2,16 +2,18 @@
 
 import { createClient } from '@/lib/supabase/server'
 import {
+  buildBlockedDeviceLookup,
   getCreateAppointmentStateError,
   normalizeAppointmentWindows,
   shouldFallbackToLegacyAvailabilityQuery,
   shouldRetryLegacyAppointmentInsert,
 } from '@/lib/booking/appointment-server-guards'
+import { getCancellationPolicyError } from '@/lib/booking/cancellation-policy'
 import {
   calculateAvailableSlots,
 } from '@/lib/scheduling/availability-engine'
 import { revalidatePath } from 'next/cache'
-import { format, addMinutes, isAfter, parseISO } from 'date-fns'
+import { format } from 'date-fns'
 import type { WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
 
 // ─── Calcular slots disponíveis ────────────────────────────────────────────
@@ -172,22 +174,28 @@ export async function createAppointment(data: {
   }
 
   // Verifica na tabela blocked_devices por session_id ou telefone
-  const checkPhone = data.clientPhone ? data.clientPhone.replace(/\D/g, '') : null;
-  const blockedQuery = supabase
-    .from('blocked_devices')
-    .select('id')
-    .limit(1);
+  const blockedLookup = buildBlockedDeviceLookup({
+    userId: user?.id ?? null,
+    phone: data.loggedUserPhone ?? data.clientPhone ?? null,
+  })
 
-  if (user && checkPhone) {
-    blockedQuery.or(`session_id.eq.${user.id},phone.eq.${checkPhone}`);
-  } else if (user) {
-    blockedQuery.eq('session_id', user.id);
-  } else if (checkPhone) {
-    // Modo anônimo forçado com telefone apenas (tecnicamente não acontece se signInAnonymously foi chamado)
-    blockedQuery.eq('phone', checkPhone);
+  let blockedMatch: { id: string } | null = null
+  if (blockedLookup.kind !== 'none') {
+    const blockedQuery = supabase
+      .from('blocked_devices')
+      .select('id')
+      .limit(1)
+
+    if (blockedLookup.kind === 'or') {
+      blockedQuery.or(blockedLookup.filter)
+    } else {
+      blockedQuery.eq(blockedLookup.field, blockedLookup.value)
+    }
+
+    const blockedResult = await blockedQuery.maybeSingle()
+    blockedMatch = blockedResult.data
   }
 
-  const { data: blockedMatch } = await blockedQuery.maybeSingle();
   if (blockedMatch) {
     return { success: false, error: 'Dispositivo bloqueado temporariamente por spam. Tente mais tarde.' }
   }
@@ -321,13 +329,17 @@ export async function cancelMyAppointment(
     .single()
 
   const windowMinutes = config?.cancellation_window_minutes ?? 120
-  const apptDateTime = parseISO(`${appt.date}T${appt.start_time}`)
-  const cancelDeadline = addMinutes(apptDateTime, -windowMinutes)
+  const cancellationError = getCancellationPolicyError({
+    status: appt.status,
+    appointmentDate: appt.date,
+    appointmentStartTime: appt.start_time,
+    cancellationWindowMinutes: windowMinutes,
+  })
 
-  if (isAfter(new Date(), cancelDeadline)) {
+  if (cancellationError) {
     return {
       success: false,
-      error: `Cancelamento nao permitido com menos de ${windowMinutes} minuto(s) de antecedencia.`,
+      error: cancellationError,
     }
   }
 

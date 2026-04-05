@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  buildBlockedDeviceLookup,
   getCreateAppointmentStateError,
   getRelatedServiceDuration,
   normalizeAppointmentWindows,
@@ -54,6 +55,25 @@ describe('appointment server guards', () => {
     assert.equal(shouldRetryLegacyAppointmentInsert({ message: 'column service_price_snapshot does not exist' }), true)
     assert.equal(shouldRetryLegacyAppointmentInsert({ message: 'column service_duration_minutes_snapshot does not exist' }), true)
     assert.equal(shouldRetryLegacyAppointmentInsert({ message: 'duplicate key value violates unique constraint' }), false)
+  })
+
+  it('monta corretamente o lookup de blocked_devices para sessão, telefone ou ambos', () => {
+    assert.deepEqual(
+      buildBlockedDeviceLookup({ userId: 'user-1', phone: '(11) 99999-0000' }),
+      { kind: 'or', filter: 'session_id.eq.user-1,phone.eq.11999990000' }
+    )
+
+    assert.deepEqual(
+      buildBlockedDeviceLookup({ userId: 'user-1', phone: null }),
+      { kind: 'eq', field: 'session_id', value: 'user-1' }
+    )
+
+    assert.deepEqual(
+      buildBlockedDeviceLookup({ userId: null, phone: '(11) 99999-0000' }),
+      { kind: 'eq', field: 'phone', value: '11999990000' }
+    )
+
+    assert.deepEqual(buildBlockedDeviceLookup({ userId: null, phone: null }), { kind: 'none' })
   })
 
   it('retorna a mensagem correta para os guardrails finais do createAppointment', () => {

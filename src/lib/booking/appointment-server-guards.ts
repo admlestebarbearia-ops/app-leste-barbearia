@@ -18,6 +18,11 @@ export type SupabaseLikeError = {
   message?: string | null
 }
 
+export type BlockedDeviceLookup =
+  | { kind: 'or'; filter: string }
+  | { kind: 'eq'; field: 'session_id' | 'phone'; value: string }
+  | { kind: 'none' }
+
 export function getRelatedServiceDuration(services: AppointmentServiceDurationRelation) {
   if (Array.isArray(services)) {
     return services[0]?.duration_minutes ?? null
@@ -78,4 +83,28 @@ export function getCreateAppointmentStateError(input: {
   }
 
   return null
+}
+
+export function buildBlockedDeviceLookup(input: {
+  userId?: string | null
+  phone?: string | null
+}): BlockedDeviceLookup {
+  const normalizedPhone = input.phone?.replace(/\D/g, '') || null
+
+  if (input.userId && normalizedPhone) {
+    return {
+      kind: 'or',
+      filter: `session_id.eq.${input.userId},phone.eq.${normalizedPhone}`,
+    }
+  }
+
+  if (input.userId) {
+    return { kind: 'eq', field: 'session_id', value: input.userId }
+  }
+
+  if (normalizedPhone) {
+    return { kind: 'eq', field: 'phone', value: normalizedPhone }
+  }
+
+  return { kind: 'none' }
 }
