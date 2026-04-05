@@ -1,82 +1,13 @@
 'use server'
 
+import {
+  validateBusinessConfigPatch,
+  validateSpecialSchedulePayload,
+  validateWorkingHoursRow,
+} from '@/lib/admin/admin-validation'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { BusinessConfig, WorkingHours } from '@/lib/supabase/types'
-
-const ALLOWED_SLOT_INTERVALS = new Set([5, 10, 15, 20, 30, 60])
-
-function normalizeTimeValue(time: string) {
-  return time.length === 5 ? `${time}:00` : time
-}
-
-function validateWorkingHoursRow(h: Omit<WorkingHours, 'id'>): string | null {
-  if (!h.is_open) return null
-
-  if (!h.open_time || !h.close_time) {
-    return 'Dia aberto exige horário de abertura e fechamento.'
-  }
-
-  const openTime = normalizeTimeValue(h.open_time)
-  const closeTime = normalizeTimeValue(h.close_time)
-  if (openTime >= closeTime) {
-    return 'O horário de fechamento precisa ser maior que o de abertura.'
-  }
-
-  const hasLunchStart = !!h.lunch_start
-  const hasLunchEnd = !!h.lunch_end
-  if (hasLunchStart !== hasLunchEnd) {
-    return 'Preencha início e fim do almoço, ou deixe ambos vazios.'
-  }
-
-  if (h.lunch_start && h.lunch_end) {
-    const lunchStart = normalizeTimeValue(h.lunch_start)
-    const lunchEnd = normalizeTimeValue(h.lunch_end)
-    if (lunchStart >= lunchEnd) {
-      return 'O horário final do almoço precisa ser maior que o inicial.'
-    }
-    if (lunchStart < openTime || lunchEnd > closeTime) {
-      return 'O almoço precisa estar dentro do horário de funcionamento.'
-    }
-  }
-
-  return null
-}
-
-function validateSpecialSchedulePayload(data: {
-  is_closed: boolean
-  open_time?: string | null
-  close_time?: string | null
-}) {
-  if (data.is_closed) return null
-
-  if (!data.open_time || !data.close_time) {
-    return 'Data especial aberta exige horário de abertura e fechamento.'
-  }
-
-  const openTime = normalizeTimeValue(data.open_time)
-  const closeTime = normalizeTimeValue(data.close_time)
-  if (openTime >= closeTime) {
-    return 'O horário de fechamento precisa ser maior que o de abertura.'
-  }
-
-  return null
-}
-
-function validateBusinessConfigPatch(data: Partial<BusinessConfig>) {
-  if (data.cancellation_window_minutes != null && data.cancellation_window_minutes < 0) {
-    return 'A janela de cancelamento não pode ser negativa.'
-  }
-
-  if (
-    data.slot_interval_minutes != null &&
-    !ALLOWED_SLOT_INTERVALS.has(data.slot_interval_minutes)
-  ) {
-    return 'Intervalo de grade inválido. Use 5, 10, 15, 20, 30 ou 60 minutos.'
-  }
-
-  return null
-}
 
 // ─── Guard: verifica se o usuário atual é admin ──────────────────────────
 async function requireAdmin() {

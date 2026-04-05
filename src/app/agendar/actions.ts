@@ -2,47 +2,17 @@
 
 import { createClient } from '@/lib/supabase/server'
 import {
+  getCreateAppointmentStateError,
+  normalizeAppointmentWindows,
+  shouldFallbackToLegacyAvailabilityQuery,
+  shouldRetryLegacyAppointmentInsert,
+} from '@/lib/booking/appointment-server-guards'
+import {
   calculateAvailableSlots,
-  type ExistingAppointmentWindow,
 } from '@/lib/scheduling/availability-engine'
 import { revalidatePath } from 'next/cache'
 import { format, addMinutes, isAfter, parseISO } from 'date-fns'
 import type { WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
-
-type AppointmentServiceDurationRelation =
-  | { duration_minutes?: number | null }
-  | Array<{ duration_minutes?: number | null }>
-  | null
-
-type AppointmentAvailabilityRow = {
-  start_time: string
-  services: AppointmentServiceDurationRelation
-  service_duration_minutes_snapshot?: number | null
-  status?: string | null
-  deleted_at?: string | null
-}
-
-function getRelatedServiceDuration(services: AppointmentServiceDurationRelation) {
-  if (Array.isArray(services)) {
-    return services[0]?.duration_minutes ?? null
-  }
-
-  return services?.duration_minutes ?? null
-}
-
-function normalizeAppointmentWindows(
-  appointments: AppointmentAvailabilityRow[] | null | undefined
-): ExistingAppointmentWindow[] {
-  return (appointments ?? []).map((appointment) => ({
-    start_time: appointment.start_time,
-    duration_minutes:
-      appointment.service_duration_minutes_snapshot ??
-      getRelatedServiceDuration(appointment.services) ??
-      30,
-    status: appointment.status ?? 'confirmado',
-    deleted_at: appointment.deleted_at ?? null,
-  }))
-}
 
 // ─── Calcular slots disponíveis ────────────────────────────────────────────
 export async function getAvailableSlots(
@@ -127,14 +97,11 @@ export async function getAvailableSlots(
     .is('deleted_at', null)
 
   let normalizedExistingAppointments = normalizeAppointmentWindows(
-    existingAppointmentsWithSnapshots as AppointmentAvailabilityRow[] | null | undefined
+    existingAppointmentsWithSnapshots
   )
 
   if (existingAppointmentsError) {
-    const shouldFallbackToLegacyQuery =
-      existingAppointmentsError.code === 'PGRST204' ||
-      existingAppointmentsError.message.includes('service_duration_minutes_snapshot') ||
-      existingAppointmentsError.message.includes('deleted_at')
+    const shouldFallbackToLegacyQuery = shouldFallbackToLegacyAvailabilityQuery(existingAppointmentsError)
 
     if (!shouldFallbackToLegacyQuery) {
       return { slots: [], error: `Erro ao consultar disponibilidade: ${existingAppointmentsError.message}` }
@@ -151,7 +118,7 @@ export async function getAvailableSlots(
     }
 
     normalizedExistingAppointments = normalizeAppointmentWindows(
-      legacyExistingAppointments as AppointmentAvailabilityRow[] | null | undefined
+      legacyExistingAppointments
     )
   }
 
@@ -252,8 +219,14 @@ export async function createAppointment(data: {
   // Verifica disponibilidade do slot (dupla checagem no servidor)
   const { slots } = await getAvailableSlots(data.date, data.serviceId)
   const requested = data.startTime.slice(0, 5)
-  if (!slots.includes(requested)) {
-    return { success: false, error: 'Horario nao disponivel. Por favor, escolha outro horario.' }
+  const createAppointmentStateError = getCreateAppointmentStateError({
+    serviceIsActive: serviceSnapshot.is_active,
+    barberIsActive: !!barberSnapshot?.is_active,
+    availableSlots: slots,
+    requestedTime: requested,
+  })
+  if (createAppointmentStateError) {
+    return { success: false, error: createAppointmentStateError }
   }
 
   const appointmentData = user
@@ -291,15 +264,7 @@ export async function createAppointment(data: {
     .select('id')
     .single()
 
-  if (
-    error &&
-    (
-      error.code === 'PGRST204' ||
-      error.message.includes('service_name_snapshot') ||
-      error.message.includes('service_price_snapshot') ||
-      error.message.includes('service_duration_minutes_snapshot')
-    )
-  ) {
+  if (shouldRetryLegacyAppointmentInsert(error)) {
     const legacyAppointmentData = {
       ...appointmentData,
       service_name_snapshot: undefined,
