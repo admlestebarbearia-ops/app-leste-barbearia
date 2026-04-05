@@ -9,6 +9,15 @@ export default async function LoginPage() {
 
   const { data: { user } } = await supabase.auth.getUser()
   if (user) {
+    // Verifica se é admin para redirecionar ao painel correto
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .single()
+    if (profile?.is_admin) {
+      redirect('/admin')
+    }
     redirect('/agendar')
   }
 

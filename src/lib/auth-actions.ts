@@ -4,8 +4,9 @@ import { createClient } from '@/lib/supabase/client'
 
 export async function signInWithGoogle() {
   const supabase = createClient()
-  // Usa NEXT_PUBLIC_SITE_URL se definido (garante domínio canônico em vez do URL do Vercel)
-  const origin = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ?? window.location.origin
+  // Usa window.location.origin para funcionar tanto em localhost quanto em IP de rede (192.168.x.x)
+  // Em produção o Supabase já ignora esse redirectTo e usa o Site URL configurado no dashboard
+  const origin = window.location.origin
   await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
