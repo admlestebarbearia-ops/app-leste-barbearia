@@ -113,11 +113,26 @@ export function BookingForm({
 
   // Ref sempre aponta para a versão mais recente do refetch — evita stale closure
   const refetchRef = useRef<() => Promise<void>>(async () => {})
+  const realtimeRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevAvailabilityKeyRef = useRef('')
+  const prevBarberIdRef = useRef<string | null>(barber?.id ?? null)
+
+  const resetScheduleSelection = useCallback((options?: { clearDate?: boolean; clearService?: boolean }) => {
+    setAvailableSlots([])
+    setSelectedTime(null)
+    if (options?.clearDate) setSelectedDate(undefined)
+    if (options?.clearService) setSelectedService(null)
+  }, [])
 
   const refetchCurrentSlots = useCallback(async () => {
     if (!selectedDate || !selectedService) return
     const dateStr = format(selectedDate, 'yyyy-MM-dd')
-    const { slots } = await getAvailableSlots(dateStr, selectedService.id)
+    const { slots, error } = await getAvailableSlots(dateStr, selectedService.id)
+    if (error) {
+      setAvailableSlots([])
+      setSelectedTime(null)
+      return
+    }
     setAvailableSlots(slots)
     setSelectedTime(null)
   }, [selectedDate, selectedService])
@@ -146,17 +161,37 @@ export function BookingForm({
     return () => clearInterval(id)
   }, [router])
 
-  // Detecta quando workingHours prop muda (após router.refresh()) e re-busca slots
-  const prevWorkingHoursKey = useRef('')
   useEffect(() => {
-    const key = workingHours
-      .map((w) => `${w.day_of_week}:${w.is_open}:${w.open_time}:${w.close_time}`)
-      .join('|')
-    if (prevWorkingHoursKey.current !== '' && prevWorkingHoursKey.current !== key) {
-      refetchRef.current()
+    const supabase = createClient()
+
+    const scheduleSync = () => {
+      if (realtimeRefreshRef.current) {
+        clearTimeout(realtimeRefreshRef.current)
+      }
+
+      realtimeRefreshRef.current = setTimeout(() => {
+        refetchRef.current()
+        router.refresh()
+      }, 250)
     }
-    prevWorkingHoursKey.current = key
-  }, [workingHours])
+
+    const channel = supabase
+      .channel('booking-public-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, scheduleSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_config' }, scheduleSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'working_hours' }, scheduleSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'special_schedules' }, scheduleSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, scheduleSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'barbers' }, scheduleSync)
+      .subscribe()
+
+    return () => {
+      if (realtimeRefreshRef.current) {
+        clearTimeout(realtimeRefreshRef.current)
+      }
+      supabase.removeChannel(channel)
+    }
+  }, [router])
 
   // Dias desabilitados no calendário
   const closedDayOfWeeks = workingHours
@@ -173,6 +208,64 @@ export function BookingForm({
     if (closedSpecialDates.some((d) => d.toDateString() === date.toDateString())) return true
     return false
   }
+
+  useEffect(() => {
+    if (!selectedService) return
+
+    const freshService = services.find((service) => service.id === selectedService.id)
+    if (!freshService) {
+      resetScheduleSelection({ clearDate: true, clearService: true })
+      toast.error('O servico selecionado nao esta mais disponivel. Escolha outro servico.')
+      return
+    }
+
+    if (freshService !== selectedService) {
+      setSelectedService(freshService)
+    }
+  }, [services, selectedService, resetScheduleSelection])
+
+  useEffect(() => {
+    if (!selectedDate) return
+    if (!isDateDisabled(selectedDate)) return
+
+    resetScheduleSelection({ clearDate: true })
+    toast.error('A data selecionada nao esta mais disponivel. Escolha outro dia.')
+  }, [selectedDate, workingHours, specialSchedules, resetScheduleSelection])
+
+  useEffect(() => {
+    const currentBarberId = barber?.id ?? null
+    const previousBarberId = prevBarberIdRef.current
+
+    if (previousBarberId && currentBarberId !== previousBarberId) {
+      resetScheduleSelection({ clearDate: true })
+      toast.error(
+        currentBarberId
+          ? 'O barbeiro disponivel mudou. Escolha a data e o horario novamente.'
+          : 'Nenhum barbeiro esta disponivel no momento. Tente novamente em instantes.'
+      )
+    }
+
+    prevBarberIdRef.current = currentBarberId
+  }, [barber?.id, resetScheduleSelection])
+
+  useEffect(() => {
+    const availabilityKey = [
+      workingHours
+        .map((hour) => `${hour.day_of_week}:${hour.is_open}:${hour.open_time}:${hour.close_time}:${hour.lunch_start}:${hour.lunch_end}`)
+        .join('|'),
+      specialSchedules
+        .map((schedule) => `${schedule.date}:${schedule.is_closed}:${schedule.open_time}:${schedule.close_time}`)
+        .join('|'),
+      `${config?.is_paused ?? false}:${config?.slot_interval_minutes ?? 30}`,
+      barber?.id ?? 'none',
+    ].join('||')
+
+    if (prevAvailabilityKeyRef.current !== '' && prevAvailabilityKeyRef.current !== availabilityKey) {
+      refetchRef.current()
+    }
+
+    prevAvailabilityKeyRef.current = availabilityKey
+  }, [workingHours, specialSchedules, config?.is_paused, config?.slot_interval_minutes, barber?.id])
 
   const handleServiceSelect = (service: Service) => {
     setSelectedService(service)
@@ -205,6 +298,10 @@ export function BookingForm({
 
 const handleConfirm = async () => {
     if (!selectedService || !selectedDate || !selectedTime) return
+    if (!barber) {
+      toast.error('Nenhum barbeiro esta disponivel no momento. Tente novamente em instantes.')
+      return
+    }
     if (showFreeMode) {
       if (!clientName.trim()) {
         toast.error('Informe seu nome completo.')
@@ -260,7 +357,11 @@ const handleConfirm = async () => {
   }
 
   const submitBooking = (overridePhone?: string) => {
-    if (!selectedService || !selectedDate || !selectedTime || !barber) return   
+    if (!selectedService || !selectedDate || !selectedTime) return
+    if (!barber) {
+      toast.error('Nenhum barbeiro esta disponivel no momento. Tente novamente em instantes.')
+      return
+    }
 
     startTransition(async () => {
       const result = await createAppointment({
@@ -282,6 +383,7 @@ const handleConfirm = async () => {
   }
 
   const canConfirm =
+    !!barber &&
     !!selectedService &&
     !!selectedDate &&
     !!selectedTime &&

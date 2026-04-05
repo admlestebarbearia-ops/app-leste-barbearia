@@ -54,11 +54,12 @@ export async function getAvailableSlots(
   // Busca duração do serviço
   const { data: service } = await supabase
     .from('services')
-    .select('duration_minutes')
+    .select('duration_minutes, is_active')
     .eq('id', serviceId)
     .single()
 
   if (!service) return { slots: [], error: 'Servico nao encontrado.' }
+  if (!service.is_active) return { slots: [], error: 'Servico indisponivel no momento.' }
 
   // Busca configurações da barbearia (pausa + intervalo de slots)
   const { data: configData } = await supabase
@@ -226,12 +227,26 @@ export async function createAppointment(data: {
 
   const { data: serviceSnapshot, error: serviceSnapshotError } = await supabase
     .from('services')
-    .select('name, price, duration_minutes')
+    .select('name, price, duration_minutes, is_active')
     .eq('id', data.serviceId)
     .single()
 
   if (serviceSnapshotError || !serviceSnapshot) {
     return { success: false, error: 'Servico nao encontrado ou indisponivel.' }
+  }
+
+  if (!serviceSnapshot.is_active) {
+    return { success: false, error: 'Servico indisponivel. Foi desativado recentemente.' }
+  }
+
+  const { data: barberSnapshot, error: barberSnapshotError } = await supabase
+    .from('barbers')
+    .select('is_active')
+    .eq('id', data.barberId)
+    .single()
+
+  if (barberSnapshotError || !barberSnapshot?.is_active) {
+    return { success: false, error: 'Barbeiro indisponivel no momento. Atualize a pagina e tente novamente.' }
   }
 
   // Verifica disponibilidade do slot (dupla checagem no servidor)
