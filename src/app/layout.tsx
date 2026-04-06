@@ -22,10 +22,29 @@ export const viewport: Viewport = {
   themeColor: '#161616',
 }
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : 'http://localhost:3000')
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "Leste Barbearia",
-  description: "Agende seu horario na Leste Barbearia",
+  description: "Agende seu horário na Leste Barbearia",
   manifest: "/site.webmanifest",
+  openGraph: {
+    title: "Leste Barbearia",
+    description: "Agende seu horário na Leste Barbearia",
+    images: [{ url: "/android-chrome-512x512.png", width: 512, height: 512, alt: "Leste Barbearia" }],
+    type: "website",
+    locale: "pt_BR",
+  },
+  twitter: {
+    card: "summary",
+    title: "Leste Barbearia",
+    description: "Agende seu horário na Leste Barbearia",
+    images: ["/android-chrome-512x512.png"],
+  },
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "16x16 32x32 48x48", type: "image/x-icon" },
