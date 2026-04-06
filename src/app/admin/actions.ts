@@ -637,3 +637,29 @@ export async function updateProductReservationStatus(
     return { success: false, error: (e as Error).message }
   }
 }
+
+export async function deleteProductReservation(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    const { data: reservation } = await supabase
+      .from('product_reservations')
+      .select('status')
+      .eq('id', id)
+      .single()
+
+    if (!reservation) return { success: false, error: 'Reserva não encontrada.' }
+    if (reservation.status !== 'cancelado') {
+      return { success: false, error: 'Só é possível excluir reservas canceladas.' }
+    }
+
+    const { error } = await supabase.from('product_reservations').delete().eq('id', id)
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}

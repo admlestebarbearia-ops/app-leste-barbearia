@@ -48,6 +48,7 @@ import {
   uploadProductImage,
   listProductReservations,
   updateProductReservationStatus,
+  deleteProductReservation,
 } from '@/app/admin/actions'
 import type {
   BusinessConfig,
@@ -73,6 +74,7 @@ interface Props {
   services: Service[]
   products: Product[]
   initialProductReservations?: ProductReservation[]
+  initialStandaloneReservations?: ProductReservation[]
   appointmentsError?: string | null
 }
 
@@ -84,6 +86,7 @@ export function AdminDashboard({
   services,
   products,
   initialProductReservations = [],
+  initialStandaloneReservations = [],
   appointmentsError,
 }: Props) {
   const router = useRouter()
@@ -137,10 +140,13 @@ export function AdminDashboard({
 
   // Estado local das reservas de produtos (atualizado via realtime)
   const [productReservations, setProductReservations] = React.useState<ProductReservation[]>(initialProductReservations)
+  // Estado das reservas standalone da loja (/loja sem agendamento)
+  const [standaloneReservations, setStandaloneReservations] = React.useState<ProductReservation[]>(initialStandaloneReservations)
 
   const productReservationsByAppt = React.useMemo(() => {
     const map: Record<string, ProductReservation[]> = {}
     for (const pr of productReservations) {
+      if (!pr.appointment_id) continue
       if (!map[pr.appointment_id]) map[pr.appointment_id] = []
       map[pr.appointment_id].push(pr)
     }
@@ -167,10 +173,18 @@ export function AdminDashboard({
             audio.play().catch(() => {})
           } catch {}
           // Atualiza estado local para aparecer no card imediatamente
-          setProductReservations(prev => {
-            if (prev.some(pr => pr.id === r.id)) return prev
-            return [...prev, r as unknown as ProductReservation]
-          })
+          const newReservation = r as unknown as ProductReservation
+          if (newReservation.appointment_id) {
+            setProductReservations(prev => {
+              if (prev.some(pr => pr.id === newReservation.id)) return prev
+              return [...prev, newReservation]
+            })
+          } else {
+            setStandaloneReservations(prev => {
+              if (prev.some(pr => pr.id === newReservation.id)) return prev
+              return [newReservation, ...prev]
+            })
+          }
         })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -334,6 +348,16 @@ export function AdminDashboard({
             onRefresh={() => router.refresh()}
             queryError={appointmentsError}
             productReservationsByAppt={productReservationsByAppt}
+            standaloneReservations={standaloneReservations}
+            onStandaloneUpdated={(id, newStatus) => {
+              if (newStatus === 'deleted') {
+                setStandaloneReservations(prev => prev.filter(r => r.id !== id))
+              } else {
+                setStandaloneReservations(prev =>
+                  prev.map(r => r.id === id ? { ...r, status: newStatus } : r)
+                )
+              }
+            }}
           />
         )}
         {tab === 'configuracoes' && (
@@ -450,12 +474,16 @@ function TabHoje({
   onRefresh,
   queryError,
   productReservationsByAppt = {},
+  standaloneReservations = [],
+  onStandaloneUpdated,
 }: {
   appointments: Appointment[]
   displayPref: string
   onRefresh: () => void
   queryError?: string | null
   productReservationsByAppt?: Record<string, ProductReservation[]>
+  standaloneReservations?: ProductReservation[]
+  onStandaloneUpdated?: (id: string, newStatus: 'reservado' | 'retirado' | 'cancelado' | 'deleted') => void
 }) {
   const todayStr = new Date().toISOString().split('T')[0]
   const [loading, setLoading] = useState<string | null>(null)
@@ -929,6 +957,14 @@ function TabHoje({
           )}
         </div>
       )}
+
+      {/* ── RESERVAS DA LOJA (standalone, sem agendamento) ── */}
+      {standaloneReservations.length > 0 && (
+        <StandaloneReservasSection
+          reservations={standaloneReservations}
+          onUpdated={onStandaloneUpdated}
+        />
+      )}
     </div>
 
     {/* ── Modal: Detalhes do Cliente ── */}
@@ -1022,6 +1058,180 @@ function TabHoje({
       </DialogContent>
     </Dialog>
     </>
+  )
+}
+
+// ------------------------------------------------------------------
+// StandaloneReservasSection — Reservas feitas diretamente na loja
+// ------------------------------------------------------------------
+function StandaloneReservasSection({
+  reservations,
+  onUpdated,
+}: {
+  reservations: ProductReservation[]
+  onUpdated?: (id: string, newStatus: 'reservado' | 'retirado' | 'cancelado' | 'deleted') => void
+}) {
+  const [loading, setLoading] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+
+  const handleStatus = async (id: string, status: 'retirado' | 'cancelado') => {
+    setLoading(id + status)
+    const result = await updateProductReservationStatus(id, status)
+    if (result.success) {
+      toast.success(status === 'retirado' ? 'Marcado como retirado.' : 'Reserva cancelada.')
+      onUpdated?.(id, status)
+    } else {
+      toast.error(result.error ?? 'Erro.')
+    }
+    setLoading(null)
+  }
+
+  const handleDelete = async (id: string) => {
+    setLoading('del' + id)
+    const result = await deleteProductReservation(id)
+    if (result.success) {
+      toast.success('Reserva excluída.')
+      onUpdated?.(id, 'deleted')
+    } else {
+      toast.error(result.error ?? 'Erro.')
+    }
+    setLoading(null)
+    setDeleteConfirmId(null)
+  }
+
+  const active = reservations.filter((r) => r.status === 'reservado')
+  const others = reservations.filter((r) => r.status !== 'reservado')
+
+  return (
+    <div className="flex flex-col gap-3 mt-2">
+      <div className="flex items-center gap-2">
+        <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">
+          Reservas da Loja
+        </h2>
+        {active.length > 0 && (
+          <span className="text-[10px] font-black bg-violet-500 text-white px-2 py-0.5 rounded-full">
+            {active.length}
+          </span>
+        )}
+      </div>
+
+      {reservations.map((r) => (
+        <div
+          key={r.id}
+          className={[
+            'bg-neutral-900 rounded-xl p-4 flex flex-col gap-3',
+            r.status !== 'reservado' ? 'opacity-60' : '',
+          ].join(' ')}
+        >
+          {/* Corpo */}
+          <div className="flex items-start gap-3">
+            {/* Imagem */}
+            <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 shrink-0">
+              {r.product_image_snapshot ? (
+                <img
+                  src={r.product_image_snapshot}
+                  alt={r.product_name_snapshot}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Package size={16} className="text-zinc-700" />
+                </div>
+              )}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+              <p className="text-sm font-bold text-white truncate">{r.product_name_snapshot}</p>
+              <p className="text-xs font-bold text-emerald-400">
+                R$ {(r.product_price_snapshot * r.quantity).toFixed(2).replace('.', ',')}
+                {r.quantity > 1 && (
+                  <span className="text-zinc-500 font-normal ml-1">× {r.quantity}</span>
+                )}
+              </p>
+              {/* Cliente */}
+              {(r.profiles?.display_name || r.profiles?.email || r.client_phone) && (
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  {r.profiles?.display_name ?? r.profiles?.email ?? r.client_phone}
+                </p>
+              )}
+              {(r.profiles?.phone || r.client_phone) && (r.profiles?.display_name || r.profiles?.email) && (
+                <p className="text-[10px] text-zinc-600">
+                  {r.profiles?.phone ?? r.client_phone}
+                </p>
+              )}
+              <p className="text-[9px] text-zinc-700 mt-0.5">
+                {new Date(r.created_at).toLocaleDateString('pt-BR', {
+                  day: '2-digit', month: '2-digit', year: '2-digit',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+              </p>
+            </div>
+
+            {/* Badge status */}
+            <span className={[
+              'text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border shrink-0',
+              r.status === 'reservado'
+                ? 'text-violet-400 border-violet-500/20 bg-violet-500/10'
+                : r.status === 'retirado'
+                ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10'
+                : 'text-zinc-500 border-white/10 bg-white/5',
+            ].join(' ')}>
+              {r.status}
+            </span>
+          </div>
+
+          {/* Ações */}
+          <div className="flex gap-2 flex-wrap pt-1 border-t border-white/5">
+            {r.status === 'reservado' && (
+              <>
+                <button
+                  disabled={!!loading}
+                  onClick={() => handleStatus(r.id, 'retirado')}
+                  className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                >
+                  Retirado
+                </button>
+                <button
+                  disabled={!!loading}
+                  onClick={() => handleStatus(r.id, 'cancelado')}
+                  className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                >
+                  Cancelar
+                </button>
+              </>
+            )}
+            {r.status === 'cancelado' && (
+              deleteConfirmId === r.id ? (
+                <>
+                  <span className="text-[10px] text-zinc-500 self-center">Confirmar?</span>
+                  <button
+                    disabled={loading === 'del' + r.id}
+                    onClick={() => handleDelete(r.id)}
+                    className="text-[10px] font-black text-white bg-red-600 border border-red-500 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                  >
+                    {loading === 'del' + r.id ? '...' : 'Excluir'}
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirmId(null)}
+                    className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg"
+                  >
+                    Não
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setDeleteConfirmId(r.id)}
+                  className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
+                >
+                  Excluir
+                </button>
+              )
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 

@@ -134,7 +134,7 @@ export interface Product {
 export interface ProductReservation {
   id: string
   product_id: string
-  appointment_id: string
+  appointment_id: string | null
   client_id: string | null
   client_phone: string | null
   quantity: number
@@ -145,4 +145,9 @@ export interface ProductReservation {
   created_at: string
   updated_at: string
   products?: Pick<Product, 'name' | 'cover_image_url' | 'price'>
+  profiles?: {
+    display_name: string | null
+    email: string | null
+    phone: string | null
+  } | null
 }

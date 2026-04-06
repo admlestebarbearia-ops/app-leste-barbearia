@@ -106,6 +106,36 @@ export default async function AdminPage() {
     productReservations = (prData ?? []) as ProductReservation[]
   }
 
+  // Busca reservas standalone da loja (sem agendamento) — inclui canceladas para o admin excluir
+  const { data: standaloneData } = await adminClient
+    .from('product_reservations')
+    .select('*')
+    .is('appointment_id', null)
+    .order('created_at', { ascending: false })
+    .limit(100)
+
+  let standaloneReservations: ProductReservation[] = (standaloneData ?? []) as ProductReservation[]
+
+  // Enriquece com perfis (para mostrar nome/email no painel)
+  if (standaloneReservations.length > 0) {
+    const clientIds = [
+      ...new Set(standaloneReservations.map((r) => r.client_id).filter(Boolean)),
+    ] as string[]
+    if (clientIds.length > 0) {
+      const { data: profilesData } = await adminClient
+        .from('profiles')
+        .select('id, display_name, email, phone')
+        .in('id', clientIds)
+      if (profilesData) {
+        const profilesMap = Object.fromEntries(profilesData.map((p) => [p.id, p]))
+        standaloneReservations = standaloneReservations.map((r) => ({
+          ...r,
+          profiles: r.client_id ? (profilesMap[r.client_id] ?? null) : null,
+        })) as ProductReservation[]
+      }
+    }
+  }
+
   return (
     <main className="min-h-screen bg-background">
       <AdminDashboard
@@ -116,6 +146,7 @@ export default async function AdminPage() {
         appointments={(allAppointments as Appointment[]) ?? []}
         products={(products as Product[]) ?? []}
         initialProductReservations={productReservations}
+        initialStandaloneReservations={standaloneReservations}
         appointmentsError={apptError?.message ?? null}
       />
     </main>
