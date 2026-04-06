@@ -465,3 +465,154 @@ export async function saveUserPhone(phone: string): Promise<{ success: boolean; 
   if (error) return { success: false, error: error.message }
   return { success: true }
 }
+
+// ─── Buscar produtos ativos para vitrine pós-agendamento ───────────────────
+export async function getActiveProducts(appointmentId: string): Promise<{
+  products: import('@/lib/supabase/types').Product[]
+  error?: string
+}> {
+  const supabase = await createClient()
+
+  // Valida que a configuração permite produtos
+  const { data: config } = await supabase
+    .from('business_config')
+    .select('enable_products')
+    .single()
+
+  if (!config?.enable_products) return { products: [] }
+
+  // Valida que o agendamento existe (sem expor dados de outros usuários)
+  const { data: appt } = await supabase
+    .from('appointments')
+    .select('id')
+    .eq('id', appointmentId)
+    .eq('status', 'confirmado')
+    .single()
+
+  if (!appt) return { products: [], error: 'Agendamento nao encontrado.' }
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('is_active', true)
+    .eq('reserve_enabled', true)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+
+  if (error) return { products: [], error: error.message }
+
+  // Filtra produtos com estoque disponivel (stock_quantity -1 = ilimitado)
+  const available = (data ?? []).filter(
+    (p) => p.stock_quantity === -1 || p.stock_quantity > 0
+  )
+
+  return { products: available }
+}
+
+// ─── Criar reserva de produto (pós-agendamento) ────────────────────────────
+export async function createProductReservation(data: {
+  productId: string
+  appointmentId: string
+  clientPhone?: string
+}): Promise<{ success: boolean; reservationId?: string; error?: string }> {
+  const supabase = await createClient()
+  const adminClient = createAdminClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  const signedInWithGoogle = isAuthenticatedUser(user)
+  const cookieStore = await cookies()
+  const guestPhone = normalizePhoneLookup(
+    data.clientPhone ?? cookieStore.get(GUEST_BOOKING_PHONE_COOKIE)?.value
+  )
+
+  // RN: deve haver identidade (login ou telefone)
+  if (!signedInWithGoogle && !guestPhone) {
+    return { success: false, error: 'Identidade nao verificada. Informe seu telefone.' }
+  }
+
+  // RN: valida que o agendamento pertence ao solicitante
+  const ownershipFilter = buildOwnershipFilter(
+    signedInWithGoogle ? user.id : null,
+    guestPhone ? [guestPhone] : []
+  )
+  if (!ownershipFilter) return { success: false, error: 'Acesso negado.' }
+
+  const { data: appt } = await supabase
+    .from('appointments')
+    .select('id, status')
+    .eq('id', data.appointmentId)
+    .or(ownershipFilter)
+    .single()
+
+  if (!appt) return { success: false, error: 'Agendamento nao encontrado.' }
+  if (appt.status !== 'confirmado') return { success: false, error: 'Agendamento nao esta confirmado.' }
+
+  // RN: busca produto e valida disponibilidade (usa admin client para bypass RLS de leitura)
+  const { data: product } = await adminClient
+    .from('products')
+    .select('id, name, price, cover_image_url, stock_quantity, is_active, reserve_enabled')
+    .eq('id', data.productId)
+    .single()
+
+  if (!product) return { success: false, error: 'Produto nao encontrado.' }
+  if (!product.is_active) return { success: false, error: 'Produto indisponivel no momento.' }
+  if (!product.reserve_enabled) return { success: false, error: 'Reserva nao disponivel para este produto.' }
+
+  // RN: verifica estoque em tempo real (evita race condition)
+  if (product.stock_quantity >= 0) {
+    const { count: reservedCount } = await adminClient
+      .from('product_reservations')
+      .select('*', { count: 'exact', head: true })
+      .eq('product_id', data.productId)
+      .eq('status', 'reservado')
+
+    if ((reservedCount ?? 0) >= product.stock_quantity) {
+      return { success: false, error: 'Produto esgotado. Estoque indisponivel.' }
+    }
+  }
+
+  // RN: nao permite reserva duplicada do mesmo produto no mesmo agendamento
+  const { count: existingCount } = await adminClient
+    .from('product_reservations')
+    .select('*', { count: 'exact', head: true })
+    .eq('product_id', data.productId)
+    .eq('appointment_id', data.appointmentId)
+    .eq('status', 'reservado')
+
+  if ((existingCount ?? 0) > 0) {
+    return { success: false, error: 'Voce ja reservou este produto para este agendamento.' }
+  }
+
+  // Insere a reserva
+  const reservationPayload = {
+    product_id: data.productId,
+    appointment_id: data.appointmentId,
+    client_id: signedInWithGoogle ? user.id : null,
+    client_phone: guestPhone,
+    quantity: 1,
+    status: 'reservado' as const,
+    product_name_snapshot: product.name,
+    product_price_snapshot: product.price,
+    product_image_snapshot: product.cover_image_url,
+  }
+
+  const { data: reservation, error } = await adminClient
+    .from('product_reservations')
+    .insert(reservationPayload)
+    .select('id')
+    .single()
+
+  if (error || !reservation) {
+    return { success: false, error: 'Erro ao confirmar reserva do produto. Tente novamente.' }
+  }
+
+  // Decrementa estoque se finito
+  if (product.stock_quantity >= 0) {
+    await adminClient
+      .from('products')
+      .update({ stock_quantity: product.stock_quantity - 1 })
+      .eq('id', data.productId)
+  }
+
+  revalidatePath('/reservas')
+  return { success: true, reservationId: reservation.id }
+}

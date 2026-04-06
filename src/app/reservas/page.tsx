@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { ReservasClient } from './ReservasClient'
 import { dedupeById, GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
-import type { BusinessConfig } from '@/lib/supabase/types'
+import type { BusinessConfig, ProductReservation } from '@/lib/supabase/types'
 
 export const metadata = {
   title: 'Minhas Reservas — Leste Barbearia',
@@ -39,7 +40,15 @@ export default async function ReservasPage() {
 
   const today = new Date().toISOString().split('T')[0]
 
-  const [{ data: appointments }, { data: configRaw }] = await Promise.all([
+  // Usa adminClient para buscar reservas de produtos (evita complexidade de RLS com visitantes)
+  const adminClient = createAdminClient()
+
+  const productOwnershipOrClauses = [
+    ...(user ? [`client_id.eq.${user.id}`] : []),
+    ...lookupPhones.map((phone) => `client_phone.eq.${phone}`),
+  ].join(',')
+
+  const [{ data: appointments }, { data: configRaw }, { data: productReservationsRaw }] = await Promise.all([
     supabase
       .from('appointments')
       .select('*, services(name, price, duration_minutes)')
@@ -49,6 +58,14 @@ export default async function ReservasPage() {
       .order('date', { ascending: true })
       .order('start_time', { ascending: true }),
     supabase.from('business_config').select('cancellation_window_minutes').single(),
+    productOwnershipOrClauses
+      ? adminClient
+          .from('product_reservations')
+          .select('*, products(name, cover_image_url, price)')
+          .or(productOwnershipOrClauses)
+          .neq('status', 'cancelado')
+          .order('created_at', { ascending: false })
+      : Promise.resolve({ data: [] }),
   ])
 
   const config = configRaw as Pick<BusinessConfig, 'cancellation_window_minutes'> | null
@@ -57,6 +74,7 @@ export default async function ReservasPage() {
     <ReservasClient
       appointments={dedupeById(appointments ?? [])}
       cancellationWindowMinutes={config?.cancellation_window_minutes ?? 60}
+      productReservations={(productReservationsRaw ?? []) as ProductReservation[]}
     />
   )
 }

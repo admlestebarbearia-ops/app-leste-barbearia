@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { parseISO, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw } from 'lucide-react'
+import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag } from 'lucide-react'
 import { cancelMyAppointment } from '@/app/agendar/actions'
+import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
 
 interface Appt {
   id: string
@@ -19,9 +20,10 @@ interface Appt {
 interface Props {
   appointments: Appt[]
   cancellationWindowMinutes: number
+  productReservations: ProductReservation[]
 }
 
-export function ReservasClient({ appointments: initial, cancellationWindowMinutes }: Props) {
+export function ReservasClient({ appointments: initial, cancellationWindowMinutes, productReservations }: Props) {
   const router = useRouter()
   const [appointments, setAppointments] = useState<Appt[]>(initial)
   const [cancelling, setCancelling] = useState<string | null>(null)
@@ -183,6 +185,59 @@ export function ReservasClient({ appointments: initial, cancellationWindowMinute
           </div>
         )}
       </div>
+
+      {/* ── Reservas de Produtos ── */}
+      {productReservations.length > 0 && (
+        <div className="max-w-lg mx-auto px-4 pb-10 flex flex-col gap-4 w-full">
+          <div className="flex items-center gap-2">
+            <ShoppingBag size={14} className="text-zinc-500" />
+            <h2 className="text-xs font-extrabold uppercase tracking-widest text-zinc-400">
+              Produtos reservados
+            </h2>
+          </div>
+          <div className="flex flex-col gap-2">
+            {productReservations.map((pr) => {
+              const statusLabel: Record<ProductReservationStatus, string> = {
+                reservado: 'Aguardando retirada',
+                cancelado: 'Cancelado',
+                retirado: 'Retirado',
+              }
+              const statusColor: Record<ProductReservationStatus, string> = {
+                reservado: 'text-emerald-400',
+                cancelado: 'text-zinc-500',
+                retirado: 'text-blue-400',
+              }
+              return (
+                <div
+                  key={pr.id}
+                  className="bg-neutral-900 rounded-2xl border border-white/5 px-4 py-4 flex items-start gap-3"
+                >
+                  {pr.product_image_snapshot && (
+                    <div className="w-12 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/10 shrink-0">
+                      <img
+                        src={pr.product_image_snapshot}
+                        alt={pr.product_name_snapshot}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                    <span className="text-sm font-semibold text-white truncate">
+                      {pr.product_name_snapshot}
+                    </span>
+                    <span className="text-xs text-zinc-400">
+                      R$ {pr.product_price_snapshot.toFixed(2).replace('.', ',')}
+                    </span>
+                    <span className={['text-[10px] font-black uppercase tracking-widest mt-0.5', statusColor[pr.status]].join(' ')}>
+                      {statusLabel[pr.status]}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </main>
   )
 }

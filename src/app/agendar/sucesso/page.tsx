@@ -1,8 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Image from 'next/image'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { ProductVitrine } from './ProductVitrine'
+import { getActiveProducts } from '@/app/agendar/actions'
+import { GUEST_BOOKING_PHONE_COOKIE, normalizePhoneLookup } from '@/lib/auth/session-state'
 import type { BusinessConfig } from '@/lib/supabase/types'
 
 interface Props {
@@ -15,6 +19,7 @@ export default async function SucessoPage({ searchParams }: Props) {
   if (!id) redirect('/agendar')
 
   const supabase = await createClient()
+  const cookieStore = await cookies()
 
   const { data: appt } = await supabase
     .from('appointments')
@@ -24,10 +29,17 @@ export default async function SucessoPage({ searchParams }: Props) {
 
   if (!appt) redirect('/agendar')
 
-  const { data: config } = await supabase
-    .from('business_config')
-    .select('logo_url, barber_name, barber_nickname, display_name_preference, show_agency_brand')
-    .single()
+  const [{ data: config }, { products }] = await Promise.all([
+    supabase
+      .from('business_config')
+      .select('logo_url, barber_name, barber_nickname, display_name_preference, show_agency_brand')
+      .single(),
+    getActiveProducts(id),
+  ])
+
+  const guestPhone = normalizePhoneLookup(
+    cookieStore.get(GUEST_BOOKING_PHONE_COOKIE)?.value
+  )
 
   const typedConfig = config as Pick<
     BusinessConfig,
@@ -103,6 +115,14 @@ export default async function SucessoPage({ searchParams }: Props) {
         >
           Ver minhas reservas
         </a>
+
+        {products.length > 0 && (
+          <ProductVitrine
+            products={products}
+            appointmentId={id}
+            guestPhone={guestPhone}
+          />
+        )}
 
         <a
           href="/"

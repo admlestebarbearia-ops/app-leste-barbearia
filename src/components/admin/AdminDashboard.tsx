@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -41,6 +41,13 @@ import {
   listBarbers,
   upsertBarber,
   toggleBarberActive,
+  listProducts,
+  upsertProduct,
+  toggleProductActive,
+  deleteProduct,
+  uploadProductImage,
+  listProductReservations,
+  updateProductReservationStatus,
 } from '@/app/admin/actions'
 import type {
   BusinessConfig,
@@ -49,11 +56,14 @@ import type {
   Service,
   Appointment,
   Barber,
+  Product,
+  ProductReservation,
+  ProductReservationStatus,
 } from '@/lib/supabase/types'
 
 const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab']
 
-type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'barbeiros' | 'admins' | 'galeria'
+type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'barbeiros' | 'admins' | 'galeria' | 'produtos'
 
 interface Props {
   config: BusinessConfig
@@ -61,6 +71,7 @@ interface Props {
   workingHours: WorkingHours[]
   specialSchedules: SpecialSchedule[]
   services: Service[]
+  products: Product[]
   appointmentsError?: string | null
 }
 
@@ -70,6 +81,7 @@ export function AdminDashboard({
   workingHours,
   specialSchedules,
   services,
+  products,
   appointmentsError,
 }: Props) {
   const router = useRouter()
@@ -126,6 +138,7 @@ export function AdminDashboard({
     { key: 'configuracoes', label: 'PREFERÊNCIAS' },
     { key: 'servicos', label: 'CATÁLOGO' },
     { key: 'barbeiros', label: 'BARBEIROS' },
+    { key: 'produtos', label: 'LOJA' },
     { key: 'galeria', label: 'GALERIA' },
     { key: 'admins', label: 'SEGURANÇA' },
   ]
@@ -178,6 +191,7 @@ export function AdminDashboard({
             { key: 'servicos',      label: 'Catálogo',    icon: Scissors },
             { key: 'barbeiros',     label: 'Barbeiros',   icon: Users },
             { key: 'galeria',       label: 'Galeria',     icon: Images },
+            { key: 'produtos',      label: 'Loja',        icon: Package },
             { key: 'admins',        label: 'Segurança',   icon: ShieldCheck },
           ] as { key: Tab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
             <button
@@ -297,6 +311,13 @@ export function AdminDashboard({
         )}
         {tab === 'admins' && (
           <TabAdmins />
+        )}
+        {tab === 'produtos' && (
+          <TabProdutos
+            config={config}
+            products={products}
+            onRefresh={() => router.refresh()}
+          />
         )}
         </div>
       </main>
@@ -2032,6 +2053,358 @@ function TabBarbeiros() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Tab: Produtos & Loja ────────────────────────────────────────────────────
+function TabProdutos({
+  config,
+  products: initialProducts,
+  onRefresh,
+}: {
+  config: BusinessConfig
+  products: Product[]
+  onRefresh: () => void
+}) {
+  const router = useRouter()
+  const [enableProducts, setEnableProducts] = useState(config.enable_products ?? false)
+  const [toggling, setToggling] = useState(false)
+  const [products, setProducts] = useState<Product[]>(initialProducts)
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [fName, setFName] = useState('')
+  const [fDesc, setFDesc] = useState('')
+  const [fPrice, setFPrice] = useState('')
+  const [fStock, setFStock] = useState('-1')
+  const [fReserve, setFReserve] = useState(true)
+  const [fActive, setFActive] = useState(true)
+  const [fImageUrl, setFImageUrl] = useState<string | null>(null)
+  const [uploadingImg, setUploadingImg] = useState(false)
+  const imgRef = useRef<HTMLInputElement>(null)
+  const [reservations, setReservations] = useState<ProductReservation[]>([])
+  const [loadingReservations, setLoadingReservations] = useState(false)
+  const [reservationsLoaded, setReservationsLoaded] = useState(false)
+  const [showReservations, setShowReservations] = useState(false)
+
+  const loadReservations = async () => {
+    setLoadingReservations(true)
+    const res = await listProductReservations()
+    if (res.data) setReservations(res.data as ProductReservation[])
+    setLoadingReservations(false)
+    setReservationsLoaded(true)
+  }
+
+  const handleToggleReservationsSection = () => {
+    const next = !showReservations
+    setShowReservations(next)
+    if (next && !reservationsLoaded) loadReservations()
+  }
+
+  const handleToggleEnable = async (val: boolean) => {
+    setToggling(true)
+    const result = await saveBusinessConfig({ enable_products: val })
+    setToggling(false)
+    if (result.success) {
+      setEnableProducts(val)
+      toast.success(val ? 'Loja de produtos ativada.' : 'Loja de produtos desativada.')
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao salvar.')
+    }
+  }
+
+  const openNew = () => {
+    setEditingId(null)
+    setFName(''); setFDesc(''); setFPrice(''); setFStock('-1')
+    setFReserve(true); setFActive(true); setFImageUrl(null)
+    setShowForm(true)
+  }
+
+  const openEdit = (p: Product) => {
+    setEditingId(p.id)
+    setFName(p.name)
+    setFDesc(p.short_description ?? '')
+    setFPrice(String(p.price))
+    setFStock(String(p.stock_quantity))
+    setFReserve(p.reserve_enabled)
+    setFActive(p.is_active)
+    setFImageUrl(p.cover_image_url)
+    setShowForm(true)
+  }
+
+  const closeForm = () => { setShowForm(false); setEditingId(null) }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingImg(true)
+    try {
+      const webpDataUrl = await compressImageToWebP(file)
+      const res = await uploadProductImage(webpDataUrl, 'image/webp')
+      if (res.error) { toast.error('Erro ao enviar imagem: ' + res.error); return }
+      setFImageUrl(res.url)
+      toast.success('Imagem enviada!')
+    } catch { toast.error('Erro ao processar imagem.') }
+    setUploadingImg(false)
+  }
+
+  const handleSave = async () => {
+    const price = parseFloat(fPrice)
+    const stock = parseInt(fStock, 10)
+    if (!fName.trim()) { toast.error('Nome é obrigatorio.'); return }
+    if (isNaN(price) || price < 0) { toast.error('Preco invalido.'); return }
+    if (isNaN(stock) || stock < -1) { toast.error('Estoque invalido. Use -1 para ilimitado.'); return }
+    setSaving(true)
+    const result = await upsertProduct({
+      id: editingId ?? undefined,
+      name: fName.trim(),
+      short_description: fDesc.trim() || null,
+      price,
+      stock_quantity: stock,
+      is_active: fActive,
+      reserve_enabled: fReserve,
+      cover_image_url: fImageUrl,
+    })
+    setSaving(false)
+    if (result.success) {
+      toast.success(editingId ? 'Produto atualizado.' : 'Produto criado.')
+      closeForm()
+      const reload = await listProducts()
+      if (reload.data) setProducts(reload.data as Product[])
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao salvar.')
+    }
+  }
+
+  const handleToggleActive = async (p: Product) => {
+    const result = await toggleProductActive(p.id, !p.is_active)
+    if (result.success) {
+      setProducts((prev) => prev.map((x) => x.id === p.id ? { ...x, is_active: !p.is_active } : x))
+    } else {
+      toast.error(result.error ?? 'Erro.')
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Excluir este produto? Esta acao nao pode ser desfeita.')) return
+    const result = await deleteProduct(id)
+    if (result.success) {
+      toast.success('Produto excluido.')
+      setProducts((prev) => prev.filter((p) => p.id !== id))
+    } else {
+      toast.error(result.error ?? 'Erro ao excluir.')
+    }
+  }
+
+  const handleReservationStatus = async (id: string, status: ProductReservationStatus) => {
+    const result = await updateProductReservationStatus(id, status)
+    if (result.success) {
+      setReservations((prev) => prev.map((r) => r.id === id ? { ...r, status } : r))
+      toast.success('Status atualizado.')
+    } else {
+      toast.error(result.error ?? 'Erro.')
+    }
+  }
+
+  const statusLabel: Record<ProductReservationStatus, string> = {
+    reservado: 'Reservado',
+    cancelado: 'Cancelado',
+    retirado: 'Retirado',
+  }
+  const statusColor: Record<ProductReservationStatus, string> = {
+    reservado: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+    cancelado: 'text-red-400 bg-red-400/10 border-red-400/20',
+    retirado: 'text-blue-400 bg-blue-400/10 border-blue-400/20',
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground">Loja &amp; Produtos</h2>
+        {!showForm && (
+          <button
+            onClick={openNew}
+            className="text-[10px] font-black uppercase tracking-widest text-emerald-400 border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 rounded-lg"
+          >
+            + Novo produto
+          </button>
+        )}
+      </div>
+
+      {/* Toggle global */}
+      <div className="flex items-center justify-between gap-4 bg-card border border-border rounded-xl px-4 py-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm text-foreground">Exibir loja de produtos</span>
+          <span className="text-xs text-muted-foreground">Mostra produtos para reserva apos o agendamento.</span>
+        </div>
+        <Switch checked={enableProducts} onCheckedChange={handleToggleEnable} disabled={toggling} />
+      </div>
+
+      {/* Formulario inline */}
+      {showForm && (
+        <div className="bg-card border border-primary/30 rounded-xl p-4 flex flex-col gap-3">
+          <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">
+            {editingId ? 'Editar produto' : 'Novo produto'}
+          </p>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => imgRef.current?.click()}
+              className="w-20 h-20 rounded-xl overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center shrink-0"
+            >
+              {fImageUrl ? (
+                <img src={fImageUrl} alt="Produto" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-[9px] text-muted-foreground text-center px-1">
+                  {uploadingImg ? 'Enviando...' : 'Tocar para foto'}
+                </span>
+              )}
+            </button>
+            <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            <div className="flex flex-col gap-1.5 flex-1">
+              <Label className="text-xs text-muted-foreground">Nome*</Label>
+              <Input value={fName} onChange={(e) => setFName(e.target.value)} placeholder="Ex: Pomada Modeladora" className="h-9" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Descricao curta</Label>
+            <Input value={fDesc} onChange={(e) => setFDesc(e.target.value)} placeholder="Ex: Fixacao forte, perfume amadeirado" className="h-9" />
+          </div>
+          <div className="flex gap-2">
+            <div className="flex flex-col gap-1.5 flex-1">
+              <Label className="text-xs text-muted-foreground">Preco (R$)*</Label>
+              <Input type="number" min="0" step="0.01" value={fPrice} onChange={(e) => setFPrice(e.target.value)} className="h-9" />
+            </div>
+            <div className="flex flex-col gap-1.5 flex-1">
+              <Label className="text-xs text-muted-foreground">Estoque (-1 = ilimitado)</Label>
+              <Input type="number" min="-1" value={fStock} onChange={(e) => setFStock(e.target.value)} className="h-9" />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-foreground">Reserva habilitada</span>
+              <Switch checked={fReserve} onCheckedChange={setFReserve} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-foreground">Produto ativo (visivel na loja)</span>
+              <Switch checked={fActive} onCheckedChange={setFActive} />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleSave} disabled={saving} className="flex-1">
+              {saving ? 'Salvando...' : editingId ? 'Salvar alteracoes' : 'Criar produto'}
+            </Button>
+            <Button size="sm" variant="outline" onClick={closeForm} className="flex-1">Cancelar</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de produtos */}
+      {products.length === 0 && !showForm ? (
+        <div className="text-center py-10 text-muted-foreground">
+          <p className="text-xs">Nenhum produto cadastrado.</p>
+          <p className="text-[10px] mt-1">Clique em &quot;+ Novo produto&quot; para comecar.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {products.map((p) => (
+            <div
+              key={p.id}
+              className={[
+                'bg-card border border-border rounded-xl px-4 py-3 flex items-center gap-3 transition-opacity',
+                !p.is_active ? 'opacity-50' : '',
+              ].join(' ')}
+            >
+              {p.cover_image_url && (
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 border border-white/10 shrink-0">
+                  <img src={p.cover_image_url} alt={p.name} className="w-full h-full object-cover" />
+                </div>
+              )}
+              <div className="flex flex-col flex-1 min-w-0">
+                <span className="text-sm font-semibold text-foreground truncate">{p.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  R&#36; {p.price.toFixed(2).replace('.', ',')}
+                  {' · '}
+                  {p.stock_quantity === -1 ? 'Estoque ilimitado' : `${p.stock_quantity} em estoque`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Switch checked={p.is_active} onCheckedChange={() => handleToggleActive(p)} />
+                <button onClick={() => openEdit(p)} className="text-[10px] uppercase font-extrabold tracking-widest text-muted-foreground border border-white/10 px-2 py-1 rounded-lg">
+                  Editar
+                </button>
+                <button onClick={() => handleDelete(p.id)} className="text-[10px] uppercase font-extrabold tracking-widest text-red-400 border border-red-400/20 bg-red-400/5 px-2 py-1 rounded-lg">
+                  X
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reservas de produtos */}
+      <div className="border border-white/10 rounded-2xl overflow-hidden mt-2">
+        <button
+          onClick={handleToggleReservationsSection}
+          className="w-full flex items-center justify-between px-4 py-4 bg-white/[0.03] hover:bg-white/5 transition-colors text-left"
+        >
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-bold text-white">Reservas de Produtos</span>
+            <span className="text-xs text-zinc-500">Pedidos realizados pelos clientes</span>
+          </div>
+          <ChevronDown size={16} className={`text-zinc-500 transition-transform duration-200 ${showReservations ? 'rotate-180' : ''}`} />
+        </button>
+        {showReservations && (
+          <div className="border-t border-white/5 px-4 py-4">
+            {loadingReservations ? (
+              <p className="text-xs text-muted-foreground text-center py-4">Carregando...</p>
+            ) : reservations.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">Nenhuma reserva registrada.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {reservations.map((r) => (
+                  <div key={r.id} className="bg-white/[0.03] border border-white/5 rounded-xl px-3 py-3 flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-foreground truncate">{r.product_name_snapshot}</span>
+                        <span className="text-xs text-muted-foreground">
+                          R&#36; {r.product_price_snapshot.toFixed(2).replace('.', ',')}
+                          {r.client_phone && ` · ${r.client_phone}`}
+                        </span>
+                        <span className="text-[10px] text-zinc-600">
+                          {new Date(r.created_at).toLocaleDateString('pt-BR')}
+                        </span>
+                      </div>
+                      <span className={['text-[10px] font-black uppercase tracking-widest border px-2 py-0.5 rounded-full shrink-0', statusColor[r.status]].join(' ')}>
+                        {statusLabel[r.status]}
+                      </span>
+                    </div>
+                    {r.status === 'reservado' && (
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => handleReservationStatus(r.id, 'retirado')}
+                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-blue-400 border border-blue-400/20 bg-blue-400/5 py-1.5 rounded-lg"
+                        >
+                          Marcar retirado
+                        </button>
+                        <button
+                          onClick={() => handleReservationStatus(r.id, 'cancelado')}
+                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-400/20 bg-red-400/5 py-1.5 rounded-lg"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

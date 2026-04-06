@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Força transpilação de pacotes modernos para garantir compatibilidade
+  // com iOS 15 (Safari 15), Android Chrome antigo e outros browsers.
+  transpilePackages: ['@base-ui/react', 'lucide-react'],
   images: {
     remotePatterns: [
       {
@@ -8,11 +11,6 @@ const nextConfig: NextConfig = {
         hostname: 'vvpiuprztpvqvlscjkow.supabase.co',
       },
     ],
-  },
-  experimental: {
-    serverActions: {
-      allowedOrigins: ['localhost:3000', '127.0.0.1:3000'],
-    },
   },
 };
 

@@ -460,3 +460,180 @@ export async function toggleBarberActive(id: string, is_active: boolean): Promis
     return { success: false, error: (e as Error).message }
   }
 }
+
+// ─── PRODUTOS ───────────────────────────────────────────────────────────────
+
+export async function listProducts() {
+  const { supabase } = await requireAdmin()
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+  return { success: !error, data: data ?? [], error: error?.message }
+}
+
+export async function upsertProduct(data: {
+  id?: string
+  name: string
+  short_description?: string | null
+  price: number
+  stock_quantity: number
+  is_active: boolean
+  reserve_enabled: boolean
+  cover_image_url?: string | null
+  sort_order?: number
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    // RN: nome obrigatorio e preco >= 0
+    if (!data.name.trim()) return { success: false, error: 'Nome do produto e obrigatorio.' }
+    if (data.price < 0) return { success: false, error: 'Preco nao pode ser negativo.' }
+    if (data.stock_quantity < -1) return { success: false, error: 'Estoque invalido. Use -1 para ilimitado.' }
+
+    const payload = {
+      name: data.name.trim(),
+      short_description: data.short_description?.trim() || null,
+      price: data.price,
+      stock_quantity: data.stock_quantity,
+      is_active: data.is_active,
+      reserve_enabled: data.reserve_enabled,
+      cover_image_url: data.cover_image_url ?? null,
+      sort_order: data.sort_order ?? 0,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (data.id) {
+      const { error } = await supabase.from('products').update(payload).eq('id', data.id)
+      if (error) throw error
+    } else {
+      const { error } = await supabase.from('products').insert(payload)
+      if (error) throw error
+    }
+    revalidatePath('/admin')
+    revalidatePath('/agendar/sucesso')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function toggleProductActive(
+  id: string,
+  is_active: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    const { error } = await supabase
+      .from('products')
+      .update({ is_active, updated_at: new Date().toISOString() })
+      .eq('id', id)
+    if (error) throw error
+    revalidatePath('/admin')
+    revalidatePath('/agendar/sucesso')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function deleteProduct(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    // RN: nao permite excluir se ha reservas ativas (reservado)
+    const { count } = await supabase
+      .from('product_reservations')
+      .select('*', { count: 'exact', head: true })
+      .eq('product_id', id)
+      .eq('status', 'reservado')
+
+    if (count && count > 0) {
+      return { success: false, error: 'Nao e possivel excluir: ha reservas ativas para este produto. Cancele-as primeiro.' }
+    }
+
+    const { error } = await supabase.from('products').delete().eq('id', id)
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function uploadProductImage(
+  base64: string,
+  mimeType: string
+): Promise<{ url: string | null; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    const ext = mimeType.split('/')[1] || 'webp'
+    const filename = `produto-${Date.now()}.${ext}`
+    const buffer = Buffer.from(base64.split(',')[1], 'base64')
+
+    const { error: uploadError } = await supabase.storage
+      .from('produtos')
+      .upload(filename, buffer, { contentType: mimeType, upsert: true })
+
+    if (uploadError) throw uploadError
+    const { data } = supabase.storage.from('produtos').getPublicUrl(filename)
+    return { url: data.publicUrl }
+  } catch (e) {
+    return { url: null, error: (e as Error).message }
+  }
+}
+
+export async function listProductReservations() {
+  const { supabase } = await requireAdmin()
+  const { data, error } = await supabase
+    .from('product_reservations')
+    .select('*, products(name, cover_image_url, price)')
+    .order('created_at', { ascending: false })
+    .limit(200)
+  return { success: !error, data: data ?? [], error: error?.message }
+}
+
+export async function updateProductReservationStatus(
+  id: string,
+  status: 'reservado' | 'cancelado' | 'retirado'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    // RN: ao cancelar, devolve 1 unidade ao estoque (stock_quantity !== -1)
+    if (status === 'cancelado') {
+      const { data: reservation } = await supabase
+        .from('product_reservations')
+        .select('product_id, quantity, status')
+        .eq('id', id)
+        .single()
+
+      if (reservation && reservation.status === 'reservado') {
+        const { data: product } = await supabase
+          .from('products')
+          .select('stock_quantity')
+          .eq('id', reservation.product_id)
+          .single()
+
+        if (product && product.stock_quantity >= 0) {
+          await supabase
+            .from('products')
+            .update({ stock_quantity: product.stock_quantity + reservation.quantity })
+            .eq('id', reservation.product_id)
+        }
+      }
+    }
+
+    const { error } = await supabase
+      .from('product_reservations')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}

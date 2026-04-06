@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { AdminDashboard } from '@/components/admin/AdminDashboard'
 import { OnboardingWizard } from '@/components/admin/OnboardingWizard'
-import type { BusinessConfig, WorkingHours, Service, SpecialSchedule, Appointment } from '@/lib/supabase/types'
+import type { BusinessConfig, WorkingHours, Service, SpecialSchedule, Appointment, Product } from '@/lib/supabase/types'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -26,6 +26,7 @@ export default async function AdminPage() {
     { data: workingHours },
     { data: services },
     { data: specialSchedules },
+    { data: products },
   ] = await Promise.all([
     supabase.from('business_config').select('*').single(),
     supabase.from('working_hours').select('*').order('day_of_week'),
@@ -35,6 +36,7 @@ export default async function AdminPage() {
       .select('*')
       .gte('date', new Date().toISOString().split('T')[0])
       .order('date'),
+    supabase.from('products').select('*').order('sort_order').order('created_at'),
   ])
 
   const typedConfig = config as BusinessConfig | null
@@ -100,6 +102,7 @@ export default async function AdminPage() {
         services={(services as Service[]) ?? []}
         specialSchedules={(specialSchedules as SpecialSchedule[]) ?? []}
         appointments={(allAppointments as Appointment[]) ?? []}
+        products={(products as Product[]) ?? []}
         appointmentsError={apptError?.message ?? null}
       />
     </main>

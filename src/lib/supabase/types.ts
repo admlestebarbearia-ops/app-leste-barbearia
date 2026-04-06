@@ -29,6 +29,7 @@ export interface BusinessConfig {
   pause_return_time: string | null
   enable_gallery: boolean
   allow_client_uploads: boolean
+  enable_products: boolean
   whatsapp_number: string | null
   instagram_url: string | null
   address: string | null
@@ -110,4 +111,37 @@ export interface GalleryPhoto {
   user_name: string | null
   user_id: string | null
   created_at: string
+}
+
+// ─── Produtos ────────────────────────────────────────────────────────────────
+export type ProductReservationStatus = 'reservado' | 'cancelado' | 'retirado'
+
+export interface Product {
+  id: string
+  name: string
+  short_description: string | null
+  price: number
+  stock_quantity: number   // -1 = ilimitado
+  is_active: boolean
+  reserve_enabled: boolean
+  cover_image_url: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProductReservation {
+  id: string
+  product_id: string
+  appointment_id: string
+  client_id: string | null
+  client_phone: string | null
+  quantity: number
+  status: ProductReservationStatus
+  product_name_snapshot: string
+  product_price_snapshot: number
+  product_image_snapshot: string | null
+  created_at: string
+  updated_at: string
+  products?: Pick<Product, 'name' | 'cover_image_url' | 'price'>
 }
