@@ -2364,6 +2364,8 @@ function TabProdutos({
   const [saving, setSaving] = useState(false)
   const [fName, setFName] = useState('')
   const [fDesc, setFDesc] = useState('')
+  const [fFullDesc, setFFullDesc] = useState('')
+  const [fSizeInfo, setFSizeInfo] = useState('')
   const [fPrice, setFPrice] = useState('')
   const [fStock, setFStock] = useState('-1')
   const [fReserve, setFReserve] = useState(true)
@@ -2375,6 +2377,7 @@ function TabProdutos({
   const [loadingReservations, setLoadingReservations] = useState(false)
   const [reservationsLoaded, setReservationsLoaded] = useState(false)
   const [showReservations, setShowReservations] = useState(false)
+  const [deleteResConfirm, setDeleteResConfirm] = useState<string | null>(null)
 
   const loadReservations = async () => {
     setLoadingReservations(true)
@@ -2405,7 +2408,7 @@ function TabProdutos({
 
   const openNew = () => {
     setEditingId(null)
-    setFName(''); setFDesc(''); setFPrice(''); setFStock('-1')
+    setFName(''); setFDesc(''); setFFullDesc(''); setFSizeInfo(''); setFPrice(''); setFStock('-1')
     setFReserve(true); setFActive(true); setFImageUrl(null)
     setShowForm(true)
   }
@@ -2414,6 +2417,8 @@ function TabProdutos({
     setEditingId(p.id)
     setFName(p.name)
     setFDesc(p.short_description ?? '')
+    setFFullDesc(p.full_description ?? '')
+    setFSizeInfo(p.size_info ?? '')
     setFPrice(String(p.price))
     setFStock(String(p.stock_quantity))
     setFReserve(p.reserve_enabled)
@@ -2449,6 +2454,8 @@ function TabProdutos({
       id: editingId ?? undefined,
       name: fName.trim(),
       short_description: fDesc.trim() || null,
+      full_description: fFullDesc.trim() || null,
+      size_info: fSizeInfo.trim() || null,
       price,
       stock_quantity: stock,
       is_active: fActive,
@@ -2558,12 +2565,26 @@ function TabProdutos({
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Descricao curta</Label>
-            <Input value={fDesc} onChange={(e) => setFDesc(e.target.value)} placeholder="Ex: Fixacao forte, perfume amadeirado" className="h-9" />
+            <Label className="text-xs text-muted-foreground">Descrição curta (aparece na vitrine)</Label>
+            <Input value={fDesc} onChange={(e) => setFDesc(e.target.value)} placeholder="Ex: Fixação forte, perfume amadeirado" className="h-9" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Descrição completa (aparece no modal)</Label>
+            <textarea
+              value={fFullDesc}
+              onChange={(e) => setFFullDesc(e.target.value)}
+              placeholder="Descreva o produto em detalhes: composição, benefícios, como usar..."
+              rows={3}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Tamanhos / Variações (opcional)</Label>
+            <Input value={fSizeInfo} onChange={(e) => setFSizeInfo(e.target.value)} placeholder="Ex: 50ml | 100ml | 150ml  ou  P / M / G" className="h-9" />
           </div>
           <div className="flex gap-2">
             <div className="flex flex-col gap-1.5 flex-1">
-              <Label className="text-xs text-muted-foreground">Preco (R$)*</Label>
+              <Label className="text-xs text-muted-foreground">Preço (R$)*</Label>
               <Input type="number" min="0" step="0.01" value={fPrice} onChange={(e) => setFPrice(e.target.value)} className="h-9" />
             </div>
             <div className="flex flex-col gap-1.5 flex-1">
@@ -2651,45 +2672,91 @@ function TabProdutos({
               <p className="text-xs text-muted-foreground text-center py-4">Carregando...</p>
             ) : reservations.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-4">Nenhuma reserva registrada.</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {reservations.map((r) => (
-                  <div key={r.id} className="bg-white/[0.03] border border-white/5 rounded-xl px-3 py-3 flex flex-col gap-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-                        <span className="text-sm font-semibold text-foreground truncate">{r.product_name_snapshot}</span>
-                        <span className="text-xs text-muted-foreground">
-                          R&#36; {r.product_price_snapshot.toFixed(2).replace('.', ',')}
-                          {r.client_phone && ` · ${r.client_phone}`}
-                        </span>
-                        <span className="text-[10px] text-zinc-600">
-                          {new Date(r.created_at).toLocaleDateString('pt-BR')}
-                        </span>
-                      </div>
-                      <span className={['text-[10px] font-black uppercase tracking-widest border px-2 py-0.5 rounded-full shrink-0', statusColor[r.status]].join(' ')}>
-                        {statusLabel[r.status]}
+            ) : (() => {
+              const standaloneRes = reservations.filter(r => !r.appointment_id)
+              const appointmentRes = reservations.filter(r => r.appointment_id)
+              const renderCard = (r: typeof reservations[0]) => (
+                <div key={r.id} className="bg-white/[0.03] border border-white/5 rounded-xl px-3 py-3 flex flex-col gap-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                      <span className="text-sm font-semibold text-foreground truncate">{r.product_name_snapshot}</span>
+                      <span className="text-xs text-muted-foreground">
+                        R&#36; {r.product_price_snapshot.toFixed(2).replace('.', ',')}
+                        {r.quantity && r.quantity > 1 ? ` · ${r.quantity}x` : ''}
+                        {r.client_phone && ` · ${r.client_phone}`}
+                      </span>
+                      <span className="text-[10px] text-zinc-600">
+                        {new Date(r.created_at).toLocaleDateString('pt-BR')}
                       </span>
                     </div>
-                    {r.status === 'reservado' && (
+                    <span className={['text-[10px] font-black uppercase tracking-widest border px-2 py-0.5 rounded-full shrink-0', statusColor[r.status]].join(' ')}>
+                      {statusLabel[r.status]}
+                    </span>
+                  </div>
+                  {r.status === 'reservado' && (
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => handleReservationStatus(r.id, 'retirado')}
+                        className="flex-1 text-[10px] font-black uppercase tracking-widest text-blue-400 border border-blue-400/20 bg-blue-400/5 py-1.5 rounded-lg"
+                      >
+                        Marcar retirado
+                      </button>
+                      <button
+                        onClick={() => handleReservationStatus(r.id, 'cancelado')}
+                        className="flex-1 text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-400/20 bg-red-400/5 py-1.5 rounded-lg"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                  {r.status === 'cancelado' && !r.appointment_id && (
+                    deleteResConfirm === r.id ? (
                       <div className="flex gap-1.5">
                         <button
-                          onClick={() => handleReservationStatus(r.id, 'retirado')}
-                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-blue-400 border border-blue-400/20 bg-blue-400/5 py-1.5 rounded-lg"
+                          onClick={async () => {
+                            await deleteProductReservation(r.id)
+                            setDeleteResConfirm(null)
+                            loadReservations()
+                          }}
+                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-500/30 bg-red-500/10 py-1.5 rounded-lg"
                         >
-                          Marcar retirado
+                          Confirmar exclusão
                         </button>
                         <button
-                          onClick={() => handleReservationStatus(r.id, 'cancelado')}
-                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-400/20 bg-red-400/5 py-1.5 rounded-lg"
+                          onClick={() => setDeleteResConfirm(null)}
+                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-zinc-400 border border-white/10 py-1.5 rounded-lg"
                         >
-                          Cancelar
+                          Não excluir
                         </button>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                    ) : (
+                      <button
+                        onClick={() => setDeleteResConfirm(r.id)}
+                        className="text-[10px] font-black uppercase tracking-widest text-zinc-500 border border-white/5 py-1.5 rounded-lg"
+                      >
+                        Excluir registro
+                      </button>
+                    )
+                  )}
+                </div>
+              )
+              return (
+                <div className="flex flex-col gap-4">
+                  {standaloneRes.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-primary/70">Reservas da Loja</p>
+                      {standaloneRes.map(renderCard)}
+                    </div>
+                  )}
+                  {appointmentRes.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Via Agendamento</p>
+                      {appointmentRes.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>

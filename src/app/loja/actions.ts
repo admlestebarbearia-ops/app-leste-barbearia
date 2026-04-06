@@ -134,3 +134,64 @@ export async function cancelarReservaProduto(
   revalidatePath('/loja')
   return { success: true }
 }
+
+// Atualiza a quantidade de uma reserva standalone ativa.
+// Diferença positiva → debita estoque; negativa → devolve estoque.
+export async function atualizarQuantidadeReserva(
+  reservationId: string,
+  newQuantity: number
+): Promise<{ success?: boolean; error?: string }> {
+  if (newQuantity < 1) return { error: 'Quantidade inválida.' }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: 'Não autorizado.' }
+
+  const admin = createAdminClient()
+
+  const { data: reservation } = await admin
+    .from('product_reservations')
+    .select('id, client_id, product_id, quantity, status')
+    .eq('id', reservationId)
+    .single()
+
+  if (!reservation) return { error: 'Reserva não encontrada.' }
+  if (reservation.client_id !== user.id) return { error: 'Não autorizado.' }
+  if (reservation.status !== 'reservado') return { error: 'Esta reserva não pode ser alterada.' }
+
+  const diff = newQuantity - reservation.quantity
+
+  if (diff !== 0) {
+    const { data: product } = await admin
+      .from('products')
+      .select('stock_quantity')
+      .eq('id', reservation.product_id)
+      .single()
+
+    if (product) {
+      // diff > 0 → precisa de mais estoque
+      if (diff > 0 && product.stock_quantity !== -1 && product.stock_quantity < diff) {
+        return { error: 'Estoque insuficiente para aumentar a quantidade.' }
+      }
+      if (product.stock_quantity !== -1) {
+        await admin
+          .from('products')
+          .update({ stock_quantity: product.stock_quantity - diff })
+          .eq('id', reservation.product_id)
+      }
+    }
+  }
+
+  const { error } = await admin
+    .from('product_reservations')
+    .update({ quantity: newQuantity })
+    .eq('id', reservationId)
+
+  if (error) return { error: 'Erro ao atualizar reserva.' }
+
+  revalidatePath('/loja')
+  return { success: true }
+}
+

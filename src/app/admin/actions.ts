@@ -477,6 +477,8 @@ export async function upsertProduct(data: {
   id?: string
   name: string
   short_description?: string | null
+  full_description?: string | null
+  size_info?: string | null
   price: number
   stock_quantity: number
   is_active: boolean
@@ -495,6 +497,8 @@ export async function upsertProduct(data: {
     const payload = {
       name: data.name.trim(),
       short_description: data.short_description?.trim() || null,
+      full_description: data.full_description?.trim() || null,
+      size_info: data.size_info?.trim() || null,
       price: data.price,
       stock_quantity: data.stock_quantity,
       is_active: data.is_active,

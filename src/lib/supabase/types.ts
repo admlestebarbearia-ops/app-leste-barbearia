@@ -121,6 +121,8 @@ export interface Product {
   id: string
   name: string
   short_description: string | null
+  full_description: string | null   // descrição completa
+  size_info: string | null          // indicação de tamanhos / variações
   price: number
   stock_quantity: number   // -1 = ilimitado
   is_active: boolean
