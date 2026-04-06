@@ -101,5 +101,14 @@ CREATE POLICY "Qualquer um pode inserir reserva produto"
   WITH CHECK (true);
 
 -- ─── 6. Realtime para notificação admin ───────────────────────────────────
--- Habilita realtime na tabela product_reservations
-ALTER PUBLICATION supabase_realtime ADD TABLE public.product_reservations;
+-- Habilita realtime na tabela product_reservations (idempotente)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND tablename = 'product_reservations'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.product_reservations;
+  END IF;
+END $$;
