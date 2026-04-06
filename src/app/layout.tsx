@@ -35,6 +35,8 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Leste Barbearia",
     description: "Agende seu horário na Leste Barbearia",
+    // 192×192 < 300px → WhatsApp exibe como ícone pequeno (estilo app), não thumbnail gigante
+    images: [{ url: "/android-chrome-192x192.png", width: 192, height: 192, alt: "Leste Barbearia" }],
     type: "website",
     locale: "pt_BR",
   },
@@ -42,6 +44,7 @@ export const metadata: Metadata = {
     card: "summary",
     title: "Leste Barbearia",
     description: "Agende seu horário na Leste Barbearia",
+    images: ["/android-chrome-192x192.png"],
   },
   icons: {
     icon: [
