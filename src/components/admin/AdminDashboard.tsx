@@ -179,6 +179,25 @@ export function AdminDashboard({
               audio2.play().catch(() => {})
             }
           } catch {}
+          // Notificação do sistema via Service Worker (funciona em segundo plano / tela de bloqueio)
+          if (typeof window !== 'undefined' && Notification.permission === 'granted') {
+            const swTitle = '🛍 Nova reserva — Barbearia Leste'
+            const swBody = `${productName}${clientPhone ? ` — ${clientPhone}` : ''}`
+            navigator.serviceWorker?.ready.then((reg) => {
+              reg.showNotification(swTitle, {
+                body: swBody,
+                icon: '/android-chrome-192x192.png',
+                badge: '/android-chrome-192x192.png',
+                vibrate: [300, 100, 300, 100, 300],
+                tag: 'barbearia-leste-reserva',
+                renotify: true,
+              }).catch(() => {
+                new Notification(swTitle, { body: swBody, icon: '/android-chrome-192x192.png' })
+              })
+            }).catch(() => {
+              try { new Notification('🛍 Nova reserva — Barbearia Leste', { body: `${productName}` }) } catch {}
+            })
+          }
           // Atualiza estado local para aparecer no card imediatamente
           const newReservation = r as unknown as ProductReservation
           if (newReservation.appointment_id) {
@@ -497,6 +516,7 @@ function TabHoje({
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [newBadge, setNewBadge] = useState(0)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
+  const swRef = useRef<ServiceWorkerRegistration | null>(null)
   const [calMonth, setCalMonth] = useState(() => todayStr.slice(0, 7))
   const [selectedDay, setSelectedDay] = useState<string | null>(todayStr)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
@@ -504,8 +524,13 @@ function TabHoje({
   const [pendingAppts, setPendingAppts] = useState<Appointment[]>([])
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setNotifPermission(Notification.permission)
+    if (typeof window !== 'undefined') {
+      if ('Notification' in window) setNotifPermission(Notification.permission)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').then((reg) => {
+          swRef.current = reg
+        }).catch(() => {})
+      }
     }
   }, [])
 
@@ -513,17 +538,41 @@ function TabHoje({
     if (!('Notification' in window)) return
     const result = await Notification.requestPermission()
     setNotifPermission(result)
-    if (result === 'granted') toast.success('Notificações do navegador ativadas!')
+    if (result === 'granted') {
+      // Garante que o SW está registrado ao conceder permissão
+      if ('serviceWorker' in navigator && !swRef.current) {
+        swRef.current = await navigator.serviceWorker.register('/sw.js').catch(() => null)
+      }
+      toast.success('Notificações ativadas! Você receberá alertas mesmo com a tela bloqueada.')
+    }
   }
 
   const sendBrowserNotif = (dateStr: string, time: string) => {
     if (typeof window === 'undefined' || !('Notification' in window)) return
     if (Notification.permission !== 'granted') return
     const d = dateStr ? dateStr.split('-').reverse().join('/') : ''
-    new Notification('📅 Novo agendamento — Barbearia Leste', {
-      body: `${d} às ${time}`,
-      icon: '/logo-barbearialeste.png',
-    })
+    const title = '📅 Novo agendamento — Barbearia Leste'
+    const body = `${d} às ${time}`
+    const icon = '/android-chrome-192x192.png'
+    // Usa SW showNotification: funciona em segundo plano e na tela de bloqueio
+    const reg = swRef.current
+    if (reg) {
+      reg.showNotification(title, {
+        body,
+        icon,
+        badge: icon,
+        vibrate: [300, 100, 300, 100, 300],
+        requireInteraction: false,
+        tag: 'barbearia-leste-notif',
+        renotify: true,
+      }).catch(() => {
+        new Notification(title, { body, icon })
+      })
+    } else {
+      // Fallback: notificação direta (só funciona com aba ativa)
+      navigator.serviceWorker?.controller?.postMessage({ type: 'SHOW_NOTIFICATION', title, body, icon })
+      new Notification(title, { body, icon })
+    }
   }
 
   useEffect(() => {
@@ -696,10 +745,13 @@ function TabHoje({
       {notifPermission !== 'granted' && (
         <button
           onClick={requestNotifPermission}
-          className="flex items-center gap-2 w-full bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-400 font-semibold"
+          className="flex items-center gap-3 w-full bg-amber-500/15 border border-amber-500/30 rounded-xl px-4 py-3.5 text-left hover:bg-amber-500/20 transition-colors"
         >
-          <span>🔔</span>
-          Ativar notificações de novos agendamentos
+          <span className="text-2xl shrink-0">🔔</span>
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-xs text-amber-300 font-bold">Ativar notificações</span>
+            <span className="text-[11px] text-amber-400/70 leading-tight">Receba alertas de novos agendamentos mesmo com a tela bloqueada</span>
+          </div>
         </button>
       )}
 
