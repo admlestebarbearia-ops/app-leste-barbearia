@@ -144,7 +144,7 @@ body {
 /* react-day-picker v9 — tema escuro */
 .rdp-root {
   --rdp-accent-color: var(--primary);
-  --rdp-accent-background-color: color-mix(in oklch, var(--primary) 15%, transparent);
+  --rdp-accent-background-color: rgba(55, 89, 190, 0.15); /* primary a 15% — fallback para color-mix() */
   color: var(--foreground);
 }
 .animate-shine { animation: shine 3s ease-in-out infinite; }
