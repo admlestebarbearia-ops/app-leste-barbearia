@@ -19,6 +19,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  themeColor: '#161616',
 }
 
 export const metadata: Metadata = {
@@ -27,16 +28,14 @@ export const metadata: Metadata = {
   manifest: "/site.webmanifest",
   icons: {
     icon: [
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48", type: "image/x-icon" },
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
     ],
     apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180" },
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
     ],
-    other: [
-      { rel: "android-chrome", url: "/android-chrome-192x192.png", sizes: "192x192" },
-      { rel: "android-chrome", url: "/android-chrome-512x512.png", sizes: "512x512" },
-    ],
+    // Android/Chrome: ícones fornecidos via site.webmanifest
   },
 };
 
