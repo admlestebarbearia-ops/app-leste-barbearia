@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
-import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut } from 'lucide-react'
+import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag } from 'lucide-react'
 
 // Ícones SVG customizados da pasta public/barber-icon
 const SERVICE_ICON_PATHS: Record<string, string> = {
@@ -719,9 +719,12 @@ const handleConfirm = async () => {
              </div>
          </button>
 
-        <button onClick={handleOpenProfile} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
-            <User size={24} strokeWidth={2} />
-          <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Perfil</span>
+        <button
+           onClick={() => router.push('/loja')}
+           className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1"
+         >
+           <ShoppingBag size={24} strokeWidth={2} />
+           <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Loja</span>
         </button>
 
          <button
@@ -818,6 +821,12 @@ const handleConfirm = async () => {
 
             {isAdmin && (
               <MenuLink href="/admin" icon={<Menu size={18} />} label="Painel Admin" />
+            )}
+
+            {isAuthenticatedUser ? (
+              <MenuLink href="/perfil" icon={<User size={18} />} label="Meu Perfil" />
+            ) : (
+              <MenuLink href="/?next=/perfil" icon={<User size={18} />} label="Entrar" />
             )}
 
             {isAuthenticatedUser && (

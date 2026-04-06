@@ -72,6 +72,7 @@ interface Props {
   specialSchedules: SpecialSchedule[]
   services: Service[]
   products: Product[]
+  initialProductReservations?: ProductReservation[]
   appointmentsError?: string | null
 }
 
@@ -82,6 +83,7 @@ export function AdminDashboard({
   specialSchedules,
   services,
   products,
+  initialProductReservations = [],
   appointmentsError,
 }: Props) {
   const router = useRouter()
@@ -133,6 +135,18 @@ export function AdminDashboard({
     }
   }
 
+  // Estado local das reservas de produtos (atualizado via realtime)
+  const [productReservations, setProductReservations] = React.useState<ProductReservation[]>(initialProductReservations)
+
+  const productReservationsByAppt = React.useMemo(() => {
+    const map: Record<string, ProductReservation[]> = {}
+    for (const pr of productReservations) {
+      if (!map[pr.appointment_id]) map[pr.appointment_id] = []
+      map[pr.appointment_id].push(pr)
+    }
+    return map
+  }, [productReservations])
+
   // Notificação realtime para reservas de produtos (visível em qualquer aba)
   useEffect(() => {
     const supabase = createSupabaseBrowser()
@@ -152,6 +166,11 @@ export function AdminDashboard({
             audio.volume = 0.5
             audio.play().catch(() => {})
           } catch {}
+          // Atualiza estado local para aparecer no card imediatamente
+          setProductReservations(prev => {
+            if (prev.some(pr => pr.id === r.id)) return prev
+            return [...prev, r as unknown as ProductReservation]
+          })
         })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -314,6 +333,7 @@ export function AdminDashboard({
             displayPref={config.display_name_preference}
             onRefresh={() => router.refresh()}
             queryError={appointmentsError}
+            productReservationsByAppt={productReservationsByAppt}
           />
         )}
         {tab === 'configuracoes' && (
@@ -429,11 +449,13 @@ function TabHoje({
   displayPref,
   onRefresh,
   queryError,
+  productReservationsByAppt = {},
 }: {
   appointments: Appointment[]
   displayPref: string
   onRefresh: () => void
   queryError?: string | null
+  productReservationsByAppt?: Record<string, ProductReservation[]>
 }) {
   const todayStr = new Date().toISOString().split('T')[0]
   const [loading, setLoading] = useState<string | null>(null)
@@ -800,6 +822,15 @@ function TabHoje({
                           R$ {appt.services.price.toFixed(2).replace('.', ',')}
                         </span>
                       )}
+                      {(productReservationsByAppt[appt.id] ?? []).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {productReservationsByAppt[appt.id].map((pr) => (
+                            <span key={pr.id} className="text-[9px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/20 px-1.5 py-0.5 rounded-full">
+                              🛍 {pr.product_name_snapshot}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     {/* Badge de status */}
@@ -948,6 +979,29 @@ function TabHoje({
                 </span>
               )}
             </div>
+
+            {/* Produtos reservados */}
+            {(productReservationsByAppt[selectedAppt.id] ?? []).length > 0 && (
+              <div className="bg-white/5 rounded-xl px-4 py-3 flex flex-col gap-2">
+                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-1">Produtos reservados</span>
+                {productReservationsByAppt[selectedAppt.id].map((pr) => (
+                  <div key={pr.id} className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-base">🛍</span>
+                      <span className="text-sm text-white/90 truncate">{pr.product_name_snapshot}</span>
+                      {pr.quantity > 1 && (
+                        <span className="text-[10px] text-zinc-500">×{pr.quantity}</span>
+                      )}
+                    </div>
+                    {pr.product_price_snapshot != null && (
+                      <span className="text-xs font-bold text-emerald-400 shrink-0">
+                        R$ {(pr.product_price_snapshot * pr.quantity).toFixed(2).replace('.', ',')}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Botão WhatsApp */}
             {(selectedAppt.client_phone || selectedAppt.profiles?.phone) && (

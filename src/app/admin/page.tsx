@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { AdminDashboard } from '@/components/admin/AdminDashboard'
 import { OnboardingWizard } from '@/components/admin/OnboardingWizard'
-import type { BusinessConfig, WorkingHours, Service, SpecialSchedule, Appointment, Product } from '@/lib/supabase/types'
+import type { BusinessConfig, WorkingHours, Service, SpecialSchedule, Appointment, Product, ProductReservation } from '@/lib/supabase/types'
 
 export default async function AdminPage() {
   const supabase = await createClient()
@@ -94,6 +94,18 @@ export default async function AdminPage() {
     console.error('[admin] Erro ao buscar agendamentos:', apptError.message)
   }
 
+  // Busca reservas de produtos vinculadas aos agendamentos do período
+  let productReservations: ProductReservation[] = []
+  const apptIds = (allAppointments ?? []).map((a) => a.id).filter(Boolean)
+  if (apptIds.length > 0) {
+    const { data: prData } = await adminClient
+      .from('product_reservations')
+      .select('*')
+      .in('appointment_id', apptIds)
+      .in('status', ['reservado', 'retirado'])
+    productReservations = (prData ?? []) as ProductReservation[]
+  }
+
   return (
     <main className="min-h-screen bg-background">
       <AdminDashboard
@@ -103,6 +115,7 @@ export default async function AdminPage() {
         specialSchedules={(specialSchedules as SpecialSchedule[]) ?? []}
         appointments={(allAppointments as Appointment[]) ?? []}
         products={(products as Product[]) ?? []}
+        initialProductReservations={productReservations}
         appointmentsError={apptError?.message ?? null}
       />
     </main>
