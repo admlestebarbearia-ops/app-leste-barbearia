@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
-import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield } from 'lucide-react'
+import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut } from 'lucide-react'
 
 // Ícones SVG customizados da pasta public/barber-icon
 const SERVICE_ICON_PATHS: Record<string, string> = {
@@ -47,6 +47,8 @@ interface Props {
   userId: string | null
   userPhone: string | null
   isAdmin?: boolean
+  isAuthenticatedUser: boolean
+  canViewAppointments: boolean
 }
 
 export function BookingForm({
@@ -59,6 +61,8 @@ export function BookingForm({
   userId,
   userPhone,
   isAdmin = false,
+  isAuthenticatedUser,
+  canViewAppointments,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -113,9 +117,13 @@ export function BookingForm({
     }
   }
 
-  const isLoggedIn = !!userId
   const requireLogin = config?.require_google_login ?? true
-  const showFreeMode = !isLoggedIn && !requireLogin
+  const showFreeMode = !isAuthenticatedUser && !requireLogin
+
+  useEffect(() => {
+    if (isAuthenticatedUser || !userPhone || clientPhone) return
+    setClientPhone(formatPhone(userPhone))
+  }, [clientPhone, isAuthenticatedUser, userPhone])
 
   // Ref sempre aponta para a versão mais recente do refetch — evita stale closure
   const refetchRef = useRef<() => Promise<void>>(async () => {})
@@ -307,19 +315,9 @@ const handleConfirm = async () => {
     }
 
     // Se logado mas sem WhatsApp salvo, exige captura antes de prosseguir
-    if (isLoggedIn && !savedPhone) {
+    if (isAuthenticatedUser && !savedPhone) {
       setShowWhatsCapture(true)
       return
-    }
-
-    if (!isLoggedIn) {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signInAnonymously()
-      if (error) {
-        // Sign-in anônimo desabilitado ou falhou — prossegue sem sessão.
-        // O server action trata usuários não autenticados corretamente.
-        console.warn('[BookingForm] signInAnonymously falhou:', error.message)
-      }
     }
 
     submitBooking()
@@ -359,7 +357,7 @@ const handleConfirm = async () => {
         startTime: selectedTime + ':00',
         clientName: showFreeMode ? clientName : undefined,
         clientPhone: showFreeMode ? clientPhone : undefined,
-        loggedUserPhone: isLoggedIn ? (overridePhone ?? savedPhone ?? undefined) : undefined,
+        loggedUserPhone: isAuthenticatedUser ? (overridePhone ?? savedPhone ?? undefined) : undefined,
       })
 
       if (result.success && result.appointmentId) {
@@ -368,6 +366,16 @@ const handleConfirm = async () => {
         toast.error(result.error ?? 'Erro ao confirmar agendamento.')
       }
     })
+  }
+
+  const handleOpenProfile = () => {
+    if (isAuthenticatedUser) {
+      router.push('/reservas')
+      return
+    }
+
+    toast('Faça login com Google para abrir seu perfil.')
+    router.push('/?next=/reservas')
   }
 
   const canConfirm =
@@ -401,7 +409,7 @@ const handleConfirm = async () => {
         <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">
           SELECIONE O SERVIÇO
         </h1>
-        {isLoggedIn && isAdmin && (
+        {isAuthenticatedUser && isAdmin && (
           <a href="/admin" className="text-[10px] text-primary font-bold mt-3 tracking-widest uppercase py-1 px-3 bg-primary/10 rounded-full">Painel Admin</a>
         )}
       </header>
@@ -421,17 +429,17 @@ const handleConfirm = async () => {
                 className={[
                   'w-full h-[110px] flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all duration-200',
                   isSelected
-                    ? 'border-white/30 bg-[#252525] shadow-[0_0_20px_rgba(255,255,255,0.05)]'
-                    : 'border-white/[0.06] bg-[#1a1a1a] active:bg-[#222]',
+                    ? 'border-primary bg-primary/20 ring-2 ring-primary/40 shadow-[0_0_20px_rgba(80,100,255,0.25)] scale-[1.04]'
+                    : 'border-white/[0.06] bg-[#1a1a1a] active:bg-[#222] active:scale-[0.97]',
                 ].join(' ')}
               >
                 <img
                   src={iconPath}
                   alt={service.name}
-                  className={['w-8 h-8 object-contain select-none', isSelected ? 'invert opacity-95' : 'invert opacity-40'].join(' ')}
+                  className={['w-8 h-8 object-contain select-none transition-opacity', isSelected ? 'invert opacity-100' : 'invert opacity-40'].join(' ')}
                   draggable={false}
                 />
-                <span className="text-[10px] uppercase tracking-wider text-center leading-tight px-2 text-white/75 font-medium">
+                <span className={['text-[10px] uppercase tracking-wider text-center leading-tight px-2 font-medium', isSelected ? 'text-white' : 'text-white/60'].join(' ')}>
                   {service.name}
                 </span>
               </button>
@@ -618,8 +626,8 @@ const handleConfirm = async () => {
           </section>
         )}
 
-        {/* Meus agendamentos (logado) */}
-        {isLoggedIn && (
+        {/* Meus agendamentos */}
+        {canViewAppointments && (
           <div id="meus-agendamentos" className="mt-8 mb-[100px] max-w-[340px] mx-auto w-full scroll-mt-24">
             <MyAppointments
               cancellationWindowMinutes={config?.cancellation_window_minutes ?? 120}
@@ -669,7 +677,7 @@ const handleConfirm = async () => {
          </button>
 
          <button
-           onClick={() => isLoggedIn ? router.push('/reservas') : toast('Faça login para ver suas reservas')}
+           onClick={() => canViewAppointments ? router.push('/reservas') : toast('Faça login com Google para ver seu perfil e reservas')}
            className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1"
          >
             <CalendarDays size={24} strokeWidth={2} />
@@ -689,10 +697,10 @@ const handleConfirm = async () => {
              </div>
          </button>
 
-         <a href={isLoggedIn ? '/api/auth/signout' : '/'} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
+        <button onClick={handleOpenProfile} className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1">
             <User size={24} strokeWidth={2} />
-            <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">{isLoggedIn ? 'Sair' : 'Perfil'}</span>
-         </a>
+          <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Perfil</span>
+        </button>
 
          <button
            onClick={() => setMenuOpen(true)}
@@ -788,6 +796,10 @@ const handleConfirm = async () => {
 
             {isAdmin && (
               <MenuLink href="/admin" icon={<Menu size={18} />} label="Painel Admin" />
+            )}
+
+            {isAuthenticatedUser && (
+              <MenuLink href="/api/auth/signout" icon={<LogOut size={18} />} label="Sair da conta" />
             )}
 
             {config?.whatsapp_number && (

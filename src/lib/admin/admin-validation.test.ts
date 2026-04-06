@@ -4,6 +4,7 @@ import type { BusinessConfig, WorkingHours } from '@/lib/supabase/types'
 import {
   normalizeTimeValue,
   validateBusinessConfigPatch,
+  validateServicePayload,
   validateSpecialSchedulePayload,
   validateWorkingHoursRow,
 } from './admin-validation'
@@ -51,5 +52,24 @@ describe('admin validation helpers', () => {
     assert.equal(validateBusinessConfigPatch(invalidWindow), 'A janela de cancelamento não pode ser negativa.')
     assert.equal(validateBusinessConfigPatch(invalidInterval), 'Intervalo de grade inválido. Use 5, 10, 15, 20, 30 ou 60 minutos.')
     assert.equal(validateBusinessConfigPatch(validPatch), null)
+  })
+
+  it('bloqueia serviços com duração inválida', () => {
+    assert.equal(
+      validateServicePayload({ name: '', price: 30, duration_minutes: 30 }),
+      'O nome do serviço é obrigatório.'
+    )
+    assert.equal(
+      validateServicePayload({ name: 'Corte', price: -1, duration_minutes: 30 }),
+      'O preço do serviço deve ser zero ou maior.'
+    )
+    assert.equal(
+      validateServicePayload({ name: 'Corte', price: 30, duration_minutes: 0 }),
+      'A duração do serviço deve ser um número inteiro maior que zero.'
+    )
+    assert.equal(
+      validateServicePayload({ name: 'Corte', price: 30, duration_minutes: 45 }),
+      null
+    )
   })
 })

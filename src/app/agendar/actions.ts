@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
 import {
   buildBlockedDeviceLookup,
   getCreateAppointmentStateError,
@@ -12,9 +13,48 @@ import { getCancellationPolicyError } from '@/lib/booking/cancellation-policy'
 import {
   calculateAvailableSlots,
 } from '@/lib/scheduling/availability-engine'
+import {
+  dedupeById,
+  GUEST_BOOKING_PHONE_COOKIE,
+  isAuthenticatedUser,
+  normalizePhoneLookup,
+} from '@/lib/auth/session-state'
 import { revalidatePath } from 'next/cache'
 import { format } from 'date-fns'
 import type { WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
+
+function buildOwnershipFilter(userId: string | null, lookupPhones: string[]) {
+  return [
+    ...(userId ? [`client_id.eq.${userId}`] : []),
+    ...lookupPhones.map((phone) => `client_phone.eq.${phone}`),
+  ].join(',')
+}
+
+async function getAppointmentLookupContext() {
+  const supabase = await createClient()
+  const cookieStore = await cookies()
+  const { data: { user } } = await supabase.auth.getUser()
+  const signedInWithGoogle = isAuthenticatedUser(user)
+  const guestPhone = normalizePhoneLookup(cookieStore.get(GUEST_BOOKING_PHONE_COOKIE)?.value)
+
+  let profilePhone: string | null = null
+  if (signedInWithGoogle) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('phone')
+      .eq('id', user.id)
+      .single()
+
+    profilePhone = normalizePhoneLookup(profile?.phone)
+  }
+
+  return {
+    supabase,
+    userId: user?.id ?? null,
+    signedInWithGoogle,
+    lookupPhones: [...new Set([guestPhone, profilePhone].filter((phone): phone is string => Boolean(phone)))],
+  }
+}
 
 // ─── Calcular slots disponíveis ────────────────────────────────────────────
 export async function getAvailableSlots(
@@ -32,6 +72,9 @@ export async function getAvailableSlots(
 
   if (!service) return { slots: [], error: 'Servico nao encontrado.' }
   if (!service.is_active) return { slots: [], error: 'Servico indisponivel no momento.' }
+  if (!Number.isFinite(service.duration_minutes) || service.duration_minutes <= 0) {
+    return { slots: [], error: 'Servico indisponivel no momento.' }
+  }
 
   // Busca configurações da barbearia (pausa + intervalo de slots)
   const { data: configData } = await supabase
@@ -147,9 +190,11 @@ export async function createAppointment(data: {
 }): Promise<{ success: boolean; appointmentId?: string; error?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  const signedInWithGoogle = isAuthenticatedUser(user)
+  const effectivePhone = normalizePhoneLookup(data.loggedUserPhone ?? data.clientPhone)
 
   // Rate limiting: max 3 agendamentos confirmados por user_id por dia
-  if (user) {
+  if (signedInWithGoogle) {
     const { count } = await supabase
       .from('appointments')
       .select('*', { count: 'exact', head: true })
@@ -171,12 +216,23 @@ export async function createAppointment(data: {
     if (profile?.is_blocked) {
       return { success: false, error: 'Seu acesso esta suspenso. Entre em contato com a barbearia.' }
     }
+  } else if (effectivePhone) {
+    const { count } = await supabase
+      .from('appointments')
+      .select('*', { count: 'exact', head: true })
+      .eq('client_phone', effectivePhone)
+      .eq('date', data.date)
+      .eq('status', 'confirmado')
+
+    if (count !== null && count >= 3) {
+      return { success: false, error: 'Limite de 3 agendamentos por dia atingido para este telefone.' }
+    }
   }
 
   // Verifica na tabela blocked_devices por session_id ou telefone
   const blockedLookup = buildBlockedDeviceLookup({
-    userId: user?.id ?? null,
-    phone: data.loggedUserPhone ?? data.clientPhone ?? null,
+    userId: signedInWithGoogle ? user.id : null,
+    phone: effectivePhone,
   })
 
   let blockedMatch: { id: string } | null = null
@@ -214,6 +270,10 @@ export async function createAppointment(data: {
     return { success: false, error: 'Servico indisponivel. Foi desativado recentemente.' }
   }
 
+  if (!Number.isFinite(serviceSnapshot.duration_minutes) || serviceSnapshot.duration_minutes <= 0) {
+    return { success: false, error: 'Servico indisponivel no momento. Atualize a pagina e tente novamente.' }
+  }
+
   const { data: barberSnapshot, error: barberSnapshotError } = await supabase
     .from('barbers')
     .select('is_active')
@@ -237,12 +297,12 @@ export async function createAppointment(data: {
     return { success: false, error: createAppointmentStateError }
   }
 
-  const appointmentData = user
+  const appointmentData = signedInWithGoogle
     ? {
         client_id: user.id,
         client_name: (user.user_metadata?.full_name as string | undefined) ?? data.clientName ?? user.email ?? null,
         client_email: user.email ?? null,
-        client_phone: data.loggedUserPhone ?? data.clientPhone ?? null,
+        client_phone: effectivePhone,
         barber_id: data.barberId,
         service_id: data.serviceId,
         service_name_snapshot: serviceSnapshot.name,
@@ -255,7 +315,7 @@ export async function createAppointment(data: {
     : {
         client_name: data.clientName,
         client_email: null,
-        client_phone: data.clientPhone,
+      client_phone: effectivePhone,
         barber_id: data.barberId,
         service_id: data.serviceId,
         service_name_snapshot: serviceSnapshot.name,
@@ -299,6 +359,17 @@ export async function createAppointment(data: {
     return { success: false, error: 'Erro ao confirmar agendamento: resposta invalida do banco.' }
   }
 
+  if (!signedInWithGoogle && effectivePhone) {
+    const cookieStore = await cookies()
+    cookieStore.set(GUEST_BOOKING_PHONE_COOKIE, effectivePhone, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 120,
+    })
+  }
+
   revalidatePath('/agendar')
   return { success: true, appointmentId: appointment.id }
 }
@@ -307,17 +378,17 @@ export async function createAppointment(data: {
 export async function cancelMyAppointment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
 
-  if (!user) return { success: false, error: 'Nao autenticado.' }
+  if (!ownershipFilter) return { success: false, error: 'Identificacao da reserva nao encontrada neste aparelho.' }
 
   // Busca o agendamento e valida a janela de cancelamento
   const { data: appt } = await supabase
     .from('appointments')
     .select('date, start_time, status')
     .eq('id', appointmentId)
-    .eq('client_id', user.id)
+    .or(ownershipFilter)
     .single()
 
   if (!appt) return { success: false, error: 'Agendamento nao encontrado.' }
@@ -347,7 +418,7 @@ export async function cancelMyAppointment(
     .from('appointments')
     .update({ status: 'cancelado' })
     .eq('id', appointmentId)
-    .eq('client_id', user.id)
+    .or(ownershipFilter)
 
   if (error) return { success: false, error: 'Erro ao cancelar. Tente novamente.' }
 
@@ -357,23 +428,23 @@ export async function cancelMyAppointment(
 
 // ─── Buscar meus agendamentos futuros ──────────────────────────────────────
 export async function getMyAppointments() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
 
-  if (!user) return { appointments: [] }
+  if (!ownershipFilter) return { appointments: [] }
 
   const today = format(new Date(), 'yyyy-MM-dd')
 
   const { data } = await supabase
     .from('appointments')
     .select('*, services(name, price, duration_minutes)')
-    .eq('client_id', user.id)
     .eq('status', 'confirmado')
     .gte('date', today)
+    .or(ownershipFilter)
     .order('date', { ascending: true })
     .order('start_time', { ascending: true })
 
-  return { appointments: data ?? [] }
+  return { appointments: dedupeById(data ?? []) }
 }
 
 // ─── Salvar WhatsApp do usuário no perfil ──────────────────────────────────

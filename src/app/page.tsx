@@ -2,13 +2,20 @@ import Image from 'next/image'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { LoginButton } from '@/components/auth/LoginButton'
+import { isAuthenticatedUser } from '@/lib/auth/session-state'
 import type { BusinessConfig } from '@/lib/supabase/types'
 
-export default async function LoginPage() {
+interface Props {
+  searchParams: Promise<{ next?: string }>
+}
+
+export default async function LoginPage({ searchParams }: Props) {
   const supabase = await createClient()
+  const { next } = await searchParams
+  const nextPath = typeof next === 'string' && next.startsWith('/') ? next : '/agendar'
 
   const { data: { user } } = await supabase.auth.getUser()
-  if (user) {
+  if (isAuthenticatedUser(user)) {
     // Verifica se é admin para redirecionar ao painel correto
     const { data: profile } = await supabase
       .from('profiles')
@@ -48,7 +55,7 @@ export default async function LoginPage() {
         </p>
 
         <div className="w-full flex flex-col gap-3">
-          <LoginButton />
+          <LoginButton nextPath={nextPath} />
 
           {typedConfig?.require_google_login === false && (
             <a

@@ -3,10 +3,10 @@
 import { signInWithGoogle } from '@/lib/auth-actions'
 import { Button } from '@/components/ui/button'
 
-export function LoginButton() {
+export function LoginButton({ nextPath = '/agendar' }: { nextPath?: string }) {
   return (
     <Button
-      onClick={signInWithGoogle}
+      onClick={() => signInWithGoogle(nextPath)}
       variant="outline"
       className="w-full h-11 flex items-center justify-center gap-3 border-border text-sm font-medium"
     >

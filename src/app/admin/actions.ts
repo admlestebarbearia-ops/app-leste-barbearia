@@ -1,6 +1,7 @@
 'use server'
 
 import {
+  validateServicePayload,
   validateBusinessConfigPatch,
   validateSpecialSchedulePayload,
   validateWorkingHoursRow,
@@ -220,6 +221,11 @@ export async function upsertService(data: {
 }): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
+    const validationError = validateServicePayload(data)
+    if (validationError) {
+      return { success: false, error: validationError }
+    }
+
     if (data.id) {
       const { error } = await supabase.from('services').update(data).eq('id', data.id)
       if (error) throw error

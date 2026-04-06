@@ -73,3 +73,23 @@ export function validateBusinessConfigPatch(data: Partial<BusinessConfig>) {
 
   return null
 }
+
+export function validateServicePayload(data: {
+  name: string
+  price: number
+  duration_minutes: number
+}) {
+  if (!data.name.trim()) {
+    return 'O nome do serviço é obrigatório.'
+  }
+
+  if (!Number.isFinite(data.price) || data.price < 0) {
+    return 'O preço do serviço deve ser zero ou maior.'
+  }
+
+  if (!Number.isInteger(data.duration_minutes) || data.duration_minutes <= 0) {
+    return 'A duração do serviço deve ser um número inteiro maior que zero.'
+  }
+
+  return null
+}

@@ -1642,7 +1642,7 @@ function TabAdmins() {
     setLoading(false)
   }
 
-  useState(() => { load() })
+  useEffect(() => { load() }, [])
 
   const handleToggleAdmin = async (userId: string, currentIsAdmin: boolean) => {
     setTogglingId(userId)
