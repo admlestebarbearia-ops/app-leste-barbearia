@@ -167,6 +167,8 @@ export function AdminDashboard({
             `🛍 Nova reserva: ${productName}${clientPhone ? ` — ${clientPhone}` : ''}`,
             { duration: 12000 }
           )
+          // Vibração (Android Chrome; iOS e PC ignoram silenciosamente)
+          try { navigator.vibrate?.([150, 80, 150]) } catch {}
           try {
             const audio = new Audio('/bell.mp3')
             audio.volume = 0.5
@@ -531,6 +533,8 @@ function TabHoje({
           toast.success(`Novo agendamento! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '📅' })
           sendBrowserNotif(d, t)
           // Som de notificação
+          // Vibração (Android Chrome; iOS e PC ignoram silenciosamente)
+          try { navigator.vibrate?.([200, 100, 200]) } catch {}
           try {
             const audio = new Audio('/bell.mp3')
             audio.volume = 0.6
