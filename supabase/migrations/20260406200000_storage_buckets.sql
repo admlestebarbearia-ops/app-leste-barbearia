@@ -8,6 +8,17 @@ VALUES
   ('galeria',       'galeria',       true, 10485760, ARRAY['image/jpeg','image/jpg','image/png','image/webp'])
 ON CONFLICT (id) DO NOTHING;
 
+-- Remove policies anteriores para recriar sem conflito
+DROP POLICY IF EXISTS "Leitura pública logo"        ON storage.objects;
+DROP POLICY IF EXISTS "Leitura pública barbeiro-foto" ON storage.objects;
+DROP POLICY IF EXISTS "Leitura pública galeria"     ON storage.objects;
+DROP POLICY IF EXISTS "Admin upload logo"            ON storage.objects;
+DROP POLICY IF EXISTS "Admin upload barbeiro-foto"   ON storage.objects;
+DROP POLICY IF EXISTS "Admin upload galeria"         ON storage.objects;
+DROP POLICY IF EXISTS "Admin delete logo"            ON storage.objects;
+DROP POLICY IF EXISTS "Admin delete barbeiro-foto"   ON storage.objects;
+DROP POLICY IF EXISTS "Admin delete galeria"         ON storage.objects;
+
 -- Política: leitura pública (qualquer um pode ver as imagens)
 CREATE POLICY "Leitura pública logo"
   ON storage.objects FOR SELECT

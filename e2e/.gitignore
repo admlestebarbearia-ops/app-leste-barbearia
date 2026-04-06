@@ -1,0 +1,4 @@
+# Sessões de autenticação do Playwright — contêm cookies reais, não commitar
+e2e/.auth/
+playwright-report/
+test-results/
