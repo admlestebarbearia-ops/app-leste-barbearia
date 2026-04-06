@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
-import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag, Images } from 'lucide-react'
+import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag, Images, Download, Share } from 'lucide-react'
 
 // Ícones SVG customizados da pasta public/barber-icon
 const SERVICE_ICON_PATHS: Record<string, string> = {
@@ -67,6 +67,46 @@ export function BookingForm({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // PWA Install
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null)
+  const [isIOS, setIsIOS] = useState(false)
+  const [isInstalled, setIsInstalled] = useState(false)
+  const [showIOSTip, setShowIOSTip] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    // Verifica se já está instalado (mode standalone)
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true)
+      return
+    }
+    // Detecta iOS Safari (sem beforeinstallprompt)
+    const ua = navigator.userAgent
+    if (/iphone|ipad|ipod/i.test(ua) && !/crios|fxios/i.test(ua)) {
+      setIsIOS(true)
+    }
+    // Captura o evento de instalação (Android/Chrome/Edge)
+    const handler = (e: Event) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstallClick = async () => {
+    if (isIOS) {
+      setShowIOSTip(true)
+      return
+    }
+    if (!installPrompt) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (installPrompt as any).prompt?.()
+    if (result?.outcome === 'accepted' || !result) {
+      setInstallPrompt(null)
+    }
+  }
 
   // WhatsApp obrigatório
   const [savedPhone, setSavedPhone] = useState<string | null>(userPhone)
@@ -872,12 +912,67 @@ const handleConfirm = async () => {
               />
             )}
 
+            {/* Instalar App */}
+            {!isInstalled && (installPrompt || isIOS) && (
+              <button
+                onClick={handleInstallClick}
+                className="flex items-center gap-3 px-3 py-3 rounded-xl transition-colors text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/8 w-full text-left"
+              >
+                <span className="text-emerald-500"><Download size={18} /></span>
+                <div className="flex flex-col gap-0 flex-1 min-w-0">
+                  <span className="text-sm font-semibold leading-tight">Instalar App</span>
+                  <span className="text-[11px] text-emerald-400/60 leading-tight">Adicionar à tela inicial</span>
+                </div>
+              </button>
+            )}
+
             <div className="h-px bg-white/5 my-2" />
 
             <MenuLink href="/termos" icon={<FileText size={16} />} label="Termos de Uso" subtle />
             <MenuLink href="/privacidade" icon={<Shield size={16} />} label="Política de Privacidade" subtle />
 
             <div className="pb-6" />
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL iOS: instrução "Adicionar à tela inicial" ── */}
+      {showIOSTip && (
+        <div className="fixed inset-0 z-[70] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowIOSTip(false)} />
+          <div className="relative bg-[#111] border-t border-white/8 rounded-t-3xl px-5 pb-safe pt-5 flex flex-col gap-4">
+            <div className="w-10 h-1 bg-white/20 rounded-full mx-auto" />
+            <button
+              onClick={() => setShowIOSTip(false)}
+              className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-zinc-400 hover:text-white"
+            >
+              <X size={15} />
+            </button>
+            <div className="flex flex-col gap-1 pt-1">
+              <span className="text-base font-bold text-white">Adicionar à tela inicial</span>
+              <span className="text-xs text-zinc-400">Siga os passos abaixo no Safari:</span>
+            </div>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">1</span>
+                <span className="text-sm text-zinc-300 leading-snug">Toque no ícone de compartilhar <span className="inline-flex items-center gap-1 align-middle bg-white/10 px-1.5 py-0.5 rounded text-white"><Share size={12} /> Compartilhar</span> na barra inferior do Safari</span>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">2</span>
+                <span className="text-sm text-zinc-300 leading-snug">Role para baixo e toque em <strong className="text-white">"Adicionar à Tela de Início"</strong></span>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">3</span>
+                <span className="text-sm text-zinc-300 leading-snug">Toque em <strong className="text-white">"Adicionar"</strong> no canto superior direito</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowIOSTip(false)}
+              className="w-full bg-white/8 hover:bg-white/12 text-white font-semibold rounded-xl py-3 text-sm transition-colors mt-1"
+            >
+              Entendido
+            </button>
+            <div className="pb-4" />
           </div>
         </div>
       )}
