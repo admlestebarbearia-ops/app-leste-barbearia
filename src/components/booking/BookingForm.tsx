@@ -20,7 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
-import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag } from 'lucide-react'
+import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag, Images } from 'lucide-react'
 
 // Ícones SVG customizados da pasta public/barber-icon
 const SERVICE_ICON_PATHS: Record<string, string> = {
@@ -719,13 +719,24 @@ const handleConfirm = async () => {
              </div>
          </button>
 
-        <button
-           onClick={() => router.push('/loja')}
-           className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1"
-         >
-           <ShoppingBag size={24} strokeWidth={2} />
-           <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Loja</span>
-        </button>
+        {/* Slot 4: Galeria (prioritário) ou Loja */}
+        {config?.enable_gallery ? (
+          <button
+            onClick={() => router.push('/galeria')}
+            className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1"
+          >
+            <Images size={24} strokeWidth={2} />
+            <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Galeria</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => router.push('/loja')}
+            className="flex flex-col items-center gap-1 min-w-[50px] text-muted-foreground hover:text-foreground transition-all hover:-translate-y-1"
+          >
+            <ShoppingBag size={24} strokeWidth={2} />
+            <span className="text-[9px] uppercase tracking-[0.15em] font-extrabold mt-0.5">Loja</span>
+          </button>
+        )}
 
          <button
            onClick={() => setMenuOpen(true)}
@@ -831,6 +842,11 @@ const handleConfirm = async () => {
 
             {isAuthenticatedUser && (
               <MenuLink href="/api/auth/signout" icon={<LogOut size={18} />} label="Sair da conta" />
+            )}
+
+            {/* Loja aparece no menu quando Galeria ocupa o slot do nav */}
+            {config?.enable_gallery && config?.enable_products && (
+              <MenuLink href="/loja" icon={<ShoppingBag size={18} />} label="Loja" />
             )}
 
             {config?.whatsapp_number && (
