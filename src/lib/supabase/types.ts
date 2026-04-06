@@ -4,6 +4,7 @@ export type GalleryPhotoStatus = 'pending' | 'approved'
 
 export interface Profile {
   id: string
+  display_name: string | null
   email: string | null
   phone: string | null
   is_admin: boolean

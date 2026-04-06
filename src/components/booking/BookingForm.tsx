@@ -381,12 +381,12 @@ const handleConfirm = async () => {
 
   const handleOpenProfile = () => {
     if (isAuthenticatedUser) {
-      router.push('/reservas')
+      router.push('/perfil')
       return
     }
 
     toast('Faça login com Google para abrir seu perfil.')
-    router.push('/?next=/reservas')
+    router.push('/?next=/perfil')
   }
 
   const canConfirm =

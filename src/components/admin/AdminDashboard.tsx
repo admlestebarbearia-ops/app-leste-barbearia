@@ -133,6 +133,30 @@ export function AdminDashboard({
     }
   }
 
+  // Notificação realtime para reservas de produtos (visível em qualquer aba)
+  useEffect(() => {
+    const supabase = createSupabaseBrowser()
+    const channel = supabase
+      .channel('admin-product-reservations')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'product_reservations' },
+        (payload: { new: Record<string, unknown> }) => {
+          const r = payload.new
+          const productName = (r.product_name_snapshot as string | null) ?? 'Produto'
+          const clientPhone = (r.client_phone as string | null)
+          toast.success(
+            `🛍 Nova reserva: ${productName}${clientPhone ? ` — ${clientPhone}` : ''}`,
+            { duration: 12000 }
+          )
+          try {
+            const audio = new Audio('/bell.mp3')
+            audio.volume = 0.5
+            audio.play().catch(() => {})
+          } catch {}
+        })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
   const TABS: { key: Tab; label: string }[] = [
     { key: 'hoje', label: 'AGENDA' },
     { key: 'configuracoes', label: 'PREFERÊNCIAS' },

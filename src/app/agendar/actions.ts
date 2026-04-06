@@ -401,11 +401,16 @@ export async function cancelMyAppointment(
     .single()
 
   const windowMinutes = config?.cancellation_window_minutes ?? 120
+  // Bug fix: Vercel roda em UTC. Horários armazenados são São Paulo (UTC-3).
+  // parseISO("09:00") no servidor = 09:00 UTC (deveria ser 12:00 UTC).
+  // Ajustamos 'now' -3h para o mesmo espaço temporal naive dos horários armazenados.
+  const SP_OFFSET_MS = 3 * 60 * 60 * 1000
   const cancellationError = getCancellationPolicyError({
     status: appt.status,
     appointmentDate: appt.date,
     appointmentStartTime: appt.start_time,
     cancellationWindowMinutes: windowMinutes,
+    now: new Date(Date.now() - SP_OFFSET_MS),
   })
 
   if (cancellationError) {
@@ -466,23 +471,47 @@ export async function saveUserPhone(phone: string): Promise<{ success: boolean; 
   return { success: true }
 }
 
+// ─── Salvar perfil do usuário (nome e/ou telefone) ─────────────────────────
+export async function saveUserProfile(data: {
+  displayName?: string
+  phone?: string
+}): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { success: false, error: 'Não autenticado.' }
+
+  const updates: Record<string, string | null> = {}
+  if (data.displayName !== undefined) updates.display_name = data.displayName.trim() || null
+  if (data.phone !== undefined) updates.phone = data.phone
+
+  const { error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('id', user.id)
+
+  if (error) return { success: false, error: error.message }
+  revalidatePath('/perfil')
+  return { success: true }
+}
+
 // ─── Buscar produtos ativos para vitrine pós-agendamento ───────────────────
 export async function getActiveProducts(appointmentId: string): Promise<{
   products: import('@/lib/supabase/types').Product[]
   error?: string
 }> {
-  const supabase = await createClient()
+  // Usa adminClient: visitantes (sem sessão) não podem ler via RLS normal
+  const adminClient = createAdminClient()
 
   // Valida que a configuração permite produtos
-  const { data: config } = await supabase
+  const { data: config } = await adminClient
     .from('business_config')
     .select('enable_products')
     .single()
 
   if (!config?.enable_products) return { products: [] }
 
-  // Valida que o agendamento existe (sem expor dados de outros usuários)
-  const { data: appt } = await supabase
+  // Valida que o agendamento existe
+  const { data: appt } = await adminClient
     .from('appointments')
     .select('id')
     .eq('id', appointmentId)
@@ -491,7 +520,7 @@ export async function getActiveProducts(appointmentId: string): Promise<{
 
   if (!appt) return { products: [], error: 'Agendamento nao encontrado.' }
 
-  const { data, error } = await supabase
+  const { data, error } = await adminClient
     .from('products')
     .select('*')
     .eq('is_active', true)
