@@ -168,11 +168,16 @@ export function AdminDashboard({
             { duration: 12000 }
           )
           // Vibração (Android Chrome; iOS e PC ignoram silenciosamente)
-          try { navigator.vibrate?.([150, 80, 150]) } catch {}
+          try { navigator.vibrate?.([300, 100, 300, 100, 300]) } catch {}
           try {
             const audio = new Audio('/bell.mp3')
-            audio.volume = 0.5
+            audio.volume = 1.0
             audio.play().catch(() => {})
+            audio.onended = () => {
+              const audio2 = new Audio('/bell.mp3')
+              audio2.volume = 1.0
+              audio2.play().catch(() => {})
+            }
           } catch {}
           // Atualiza estado local para aparecer no card imediatamente
           const newReservation = r as unknown as ProductReservation
@@ -534,10 +539,10 @@ function TabHoje({
           sendBrowserNotif(d, t)
           // Som de notificação
           // Vibração (Android Chrome; iOS e PC ignoram silenciosamente)
-          try { navigator.vibrate?.([200, 100, 200]) } catch {}
+          try { navigator.vibrate?.([300, 100, 300, 100, 300]) } catch {}
           try {
             const audio = new Audio('/bell.mp3')
-            audio.volume = 0.6
+            audio.volume = 1.0
             audio.play().catch(() => {
               const ctx = new AudioContext()
               const osc = ctx.createOscillator()
@@ -550,6 +555,11 @@ function TabHoje({
               osc.start(ctx.currentTime)
               osc.stop(ctx.currentTime + 0.6)
             })
+            audio.onended = () => {
+              const audio2 = new Audio('/bell.mp3')
+              audio2.volume = 1.0
+              audio2.play().catch(() => {})
+            }
           } catch {}
           // Adicionar ao estado local imediatamente (com services buscados)
           try {
