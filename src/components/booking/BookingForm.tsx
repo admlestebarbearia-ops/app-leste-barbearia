@@ -86,6 +86,15 @@ export function BookingForm({
   const [nameError, setNameError] = useState('')
   const [phoneError, setPhoneError] = useState('')
 
+  // Pré-preenche nome salvo localmente (só visitante, nunca dados sensíveis)
+  useEffect(() => {
+    if (isAuthenticatedUser) return
+    try {
+      const saved = localStorage.getItem('guest_name')
+      if (saved) setClientName(saved)
+    } catch {}
+  }, [isAuthenticatedUser])
+
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     if (/\d/.test(value)) {
@@ -93,7 +102,9 @@ export function BookingForm({
     } else {
       setNameError('')
     }
-    setClientName(value.replace(/\d/g, ''))
+    const sanitized = value.replace(/\d/g, '')
+    setClientName(sanitized)
+    try { if (!isAuthenticatedUser) localStorage.setItem('guest_name', sanitized) } catch {}
   }
 
   const formatPhone = (raw: string) => {
@@ -623,6 +634,17 @@ const handleConfirm = async () => {
                 <p className="text-[10px] text-destructive font-bold px-1 uppercase tracking-wider">{phoneError}</p>
               )}
             </div>
+
+            {/* Nudge discreto — login Google */}
+            <p className="text-[10px] text-zinc-600 text-center pt-1 leading-relaxed">
+              Entre com Google e nunca preencha esses dados de novo.{' '}
+              <a
+                href={`/?next=/agendar`}
+                className="text-zinc-500 underline underline-offset-2 hover:text-zinc-300 transition-colors"
+              >
+                Fazer login
+              </a>
+            </p>
           </section>
         )}
 

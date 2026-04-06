@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { cookies } from 'next/headers'
 import {
   buildBlockedDeviceLookup,
@@ -414,11 +415,14 @@ export async function cancelMyAppointment(
     }
   }
 
-  const { error } = await supabase
+  // Usa adminClient para o UPDATE porque a RLS exige auth.uid() = client_id,
+  // o que bloquearia agendamentos de visitante (client_id = NULL).
+  // A posse já foi validada pela query acima com o client normal.
+  const adminClient = createAdminClient()
+  const { error } = await adminClient
     .from('appointments')
     .update({ status: 'cancelado' })
     .eq('id', appointmentId)
-    .or(ownershipFilter)
 
   if (error) return { success: false, error: 'Erro ao cancelar. Tente novamente.' }
 
