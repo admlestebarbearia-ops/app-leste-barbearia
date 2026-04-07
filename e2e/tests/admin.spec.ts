@@ -284,7 +284,7 @@ test.describe('Configurações', () => {
 
     const selectTipo = page.getByRole('combobox').or(page.locator('select')).first()
     if (await selectTipo.isVisible().catch(() => false)) {
-      await selectTipo.selectOption({ label: /fechado|closed/i })
+      await selectTipo.selectOption({ label: 'fechado' }).catch(() => selectTipo.selectOption({ label: 'Fechado' }))
     }
 
     const btnSalvar = page.getByRole('button', { name: /salvar|confirmar/i }).last()

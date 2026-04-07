@@ -188,10 +188,11 @@ export function AdminDashboard({
                 body: swBody,
                 icon: '/android-chrome-192x192.png',
                 badge: '/android-chrome-192x192.png',
-                vibrate: [300, 100, 300, 100, 300],
+                // vibrate não está nos tipos TS mas é suportado pelo SW spec
+                ...({ vibrate: [300, 100, 300, 100, 300] } as object),
                 tag: 'barbearia-leste-reserva',
                 renotify: true,
-              }).catch(() => {
+              } as NotificationOptions).catch(() => {
                 new Notification(swTitle, { body: swBody, icon: '/android-chrome-192x192.png' })
               })
             }).catch(() => {
@@ -561,11 +562,12 @@ function TabHoje({
         body,
         icon,
         badge: icon,
-        vibrate: [300, 100, 300, 100, 300],
+        // vibrate não está nos tipos TS mas é suportado pelo SW spec
+        ...({ vibrate: [300, 100, 300, 100, 300] } as object),
         requireInteraction: false,
         tag: 'barbearia-leste-notif',
         renotify: true,
-      }).catch(() => {
+      } as NotificationOptions).catch(() => {
         new Notification(title, { body, icon })
       })
     } else {
