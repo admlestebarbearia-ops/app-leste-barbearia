@@ -1271,32 +1271,30 @@ function StandaloneReservasSection({
                 </button>
               </>
             )}
-            {r.status === 'cancelado' && (
-              deleteConfirmId === r.id ? (
-                <>
-                  <span className="text-[10px] text-zinc-500 self-center">Confirmar?</span>
-                  <button
-                    disabled={loading === 'del' + r.id}
-                    onClick={() => handleDelete(r.id)}
-                    className="text-[10px] font-black text-white bg-red-600 border border-red-500 px-2.5 py-1 rounded-lg disabled:opacity-40"
-                  >
-                    {loading === 'del' + r.id ? '...' : 'Excluir'}
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirmId(null)}
-                    className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg"
-                  >
-                    Não
-                  </button>
-                </>
-              ) : (
+            {deleteConfirmId === r.id ? (
+              <>
+                <span className="text-[10px] text-zinc-500 self-center">Confirmar?</span>
                 <button
-                  onClick={() => setDeleteConfirmId(r.id)}
-                  className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
+                  disabled={loading === 'del' + r.id}
+                  onClick={() => handleDelete(r.id)}
+                  className="text-[10px] font-black text-white bg-red-600 border border-red-500 px-2.5 py-1 rounded-lg disabled:opacity-40"
                 >
-                  Excluir
+                  {loading === 'del' + r.id ? '...' : 'Excluir'}
                 </button>
-              )
+                <button
+                  onClick={() => setDeleteConfirmId(null)}
+                  className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg"
+                >
+                  Não
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setDeleteConfirmId(r.id)}
+                className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
+              >
+                Excluir
+              </button>
             )}
           </div>
         </div>
@@ -3055,34 +3053,37 @@ function TabProdutos({
                       </button>
                     </div>
                   )}
-                  {r.status === 'cancelado' && !r.appointment_id && (
-                    deleteResConfirm === r.id ? (
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={async () => {
-                            await deleteProductReservation(r.id)
+                  {deleteResConfirm === r.id ? (
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={async () => {
+                          const result = await deleteProductReservation(r.id)
+                          if (result.success) {
+                            toast.success('Reserva excluida.')
                             setDeleteResConfirm(null)
                             loadReservations()
-                          }}
-                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-500/30 bg-red-500/10 py-1.5 rounded-lg"
-                        >
-                          Confirmar exclusão
-                        </button>
-                        <button
-                          onClick={() => setDeleteResConfirm(null)}
-                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-zinc-400 border border-white/10 py-1.5 rounded-lg"
-                        >
-                          Não excluir
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setDeleteResConfirm(r.id)}
-                        className="text-[10px] font-black uppercase tracking-widest text-zinc-500 border border-white/5 py-1.5 rounded-lg"
+                          } else {
+                            toast.error(result.error ?? 'Erro ao excluir reserva.')
+                          }
+                        }}
+                        className="flex-1 text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-500/30 bg-red-500/10 py-1.5 rounded-lg"
                       >
-                        Excluir registro
+                        Confirmar exclusão
                       </button>
-                    )
+                      <button
+                        onClick={() => setDeleteResConfirm(null)}
+                        className="flex-1 text-[10px] font-black uppercase tracking-widest text-zinc-400 border border-white/10 py-1.5 rounded-lg"
+                      >
+                        Não excluir
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeleteResConfirm(r.id)}
+                      className="text-[10px] font-black uppercase tracking-widest text-zinc-500 border border-white/5 py-1.5 rounded-lg"
+                    >
+                      Excluir registro
+                    </button>
                   )}
                 </div>
               )

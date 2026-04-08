@@ -651,13 +651,25 @@ export async function deleteProductReservation(
 
     const { data: reservation } = await supabase
       .from('product_reservations')
-      .select('status')
+      .select('product_id, quantity, status')
       .eq('id', id)
       .single()
 
     if (!reservation) return { success: false, error: 'Reserva não encontrada.' }
-    if (reservation.status !== 'cancelado') {
-      return { success: false, error: 'Só é possível excluir reservas canceladas.' }
+
+    if (reservation.status === 'reservado') {
+      const { data: product } = await supabase
+        .from('products')
+        .select('stock_quantity')
+        .eq('id', reservation.product_id)
+        .single()
+
+      if (product && product.stock_quantity >= 0) {
+        await supabase
+          .from('products')
+          .update({ stock_quantity: product.stock_quantity + reservation.quantity })
+          .eq('id', reservation.product_id)
+      }
     }
 
     const { error } = await supabase.from('product_reservations').delete().eq('id', id)
@@ -702,14 +714,27 @@ export async function deleteUser(
 
     // Cria client com service role para poder deletar da auth.users
     const adminSupabase = createAdminClient()
+    const { data: profileSnapshot } = await adminSupabase
+      .from('profiles')
+      .select('email')
+      .eq('id', userId)
+      .maybeSingle()
+
+    const fallbackClientName = profileSnapshot?.email ?? 'Cliente excluido'
 
     // Evita violação da CHECK constraint client_identifier: ao excluir o usuário,
-    // o PostgreSQL faz SET NULL em appointments.client_id. Se client_phone também for
-    // NULL (comum em contas Google sem telefone cadastrado), a constraint falha.
-    // Preenchemos client_phone com 'excluído' nos registros afetados antes da exclusão.
+    // o PostgreSQL faz SET NULL em appointments.client_id. Nesse caso, a constraint
+    // exige client_name e client_phone preenchidos. Em contas antigas/teste, um ou
+    // ambos podem estar nulos, então garantimos os snapshots antes da exclusão.
     await adminSupabase
       .from('appointments')
-      .update({ client_phone: 'excluído' })
+      .update({ client_name: fallbackClientName })
+      .eq('client_id', userId)
+      .is('client_name', null)
+
+    await adminSupabase
+      .from('appointments')
+      .update({ client_phone: 'excluido' })
       .eq('client_id', userId)
       .is('client_phone', null)
 
