@@ -1329,6 +1329,13 @@ function TabConfiguracoes({
   const [allowClientUploads, setAllowClientUploads] = useState(config.allow_client_uploads)
   const [savingConfig, setSavingConfig] = useState(false)
 
+  // Fase 2: Controles de Agenda
+  const [maxPerDay, setMaxPerDay] = useState(String(config.max_appointments_per_day ?? ''))
+  const [blockMultiDay, setBlockMultiDay] = useState(config.block_multi_day_booking ?? false)
+  const [maxDaysAhead, setMaxDaysAhead] = useState(String(config.calendar_max_days_ahead ?? 30))
+  const [openUntilDate, setOpenUntilDate] = useState(config.calendar_open_until_date ?? '')
+  const [savingAgenda, setSavingAgenda] = useState(false)
+
   // Contatos e localização
   const [whatsapp, setWhatsapp] = useState(config.whatsapp_number ?? '')
   const [instagram, setInstagram] = useState(config.instagram_url ?? '')
@@ -1425,6 +1432,33 @@ function TabConfiguracoes({
     setSavingConfig(false)
     if (result.success) {
       toast.success('Configuracoes salvas.')
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao salvar.')
+    }
+  }
+
+  const handleSaveAgenda = async () => {
+    const maxPerDayParsed = maxPerDay.trim() === '' ? null : parseInt(maxPerDay, 10)
+    const maxDaysAheadParsed = parseInt(maxDaysAhead, 10)
+    if (maxPerDayParsed !== null && (isNaN(maxPerDayParsed) || maxPerDayParsed < 1)) {
+      toast.error('Limite por dia inválido. Use um número maior que 0 ou deixe em branco para sem limite.')
+      return
+    }
+    if (isNaN(maxDaysAheadParsed) || maxDaysAheadParsed < 1) {
+      toast.error('Dias de antecedência inválido.')
+      return
+    }
+    setSavingAgenda(true)
+    const result = await saveBusinessConfig({
+      max_appointments_per_day: maxPerDayParsed,
+      block_multi_day_booking: blockMultiDay,
+      calendar_max_days_ahead: maxDaysAheadParsed,
+      calendar_open_until_date: openUntilDate.trim() || null,
+    })
+    setSavingAgenda(false)
+    if (result.success) {
+      toast.success('Controles de agenda salvos.')
       onRefresh()
     } else {
       toast.error(result.error ?? 'Erro ao salvar.')
@@ -1774,6 +1808,93 @@ function TabConfiguracoes({
               )}
             </section>
 
+          </div>
+        )}
+      </div>
+
+      {/* ── ACCORDION: Controles de Agenda ── */}
+      <div className="border border-white/10 rounded-2xl overflow-hidden">
+        <button
+          onClick={() => toggleSection('agenda')}
+          className="w-full flex items-center justify-between px-4 py-4 bg-white/[0.03] hover:bg-white/5 transition-colors text-left"
+        >
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-bold text-white">Controles de Agenda</span>
+            <span className="text-xs text-zinc-500">Limites de agendamento e janela do calendário</span>
+          </div>
+          <ChevronDown size={16} className={`text-zinc-500 transition-transform duration-200 ${openSection === 'agenda' ? 'rotate-180' : ''}`} />
+        </button>
+        {openSection === 'agenda' && (
+          <div className="border-t border-white/5 px-4 py-5 flex flex-col gap-5">
+
+            {/* Limite global por dia */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Máximo de agendamentos por dia (global)</Label>
+              <p className="text-[11px] text-muted-foreground/70">Quando atingido, o dia fica indisponível para novos clientes. Deixe em branco para sem limite.</p>
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  type="number"
+                  min="1"
+                  placeholder="Sem limite"
+                  value={maxPerDay}
+                  onChange={(e) => setMaxPerDay(e.target.value)}
+                  className="h-9 w-28"
+                />
+                <span className="text-xs text-muted-foreground">agendamentos</span>
+              </div>
+            </div>
+
+            {/* Bloquear multi-dia */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col gap-0.5 flex-1">
+                <span className="text-sm text-foreground">Bloquear agendamento em múltiplas datas</span>
+                <span className="text-xs text-muted-foreground">Cliente com agendamento confirmado não pode marcar em outra data simultaneamente.</span>
+              </div>
+              <Switch checked={blockMultiDay} onCheckedChange={setBlockMultiDay} />
+            </div>
+
+            {/* Dias de antecedência */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Dias de antecedência do calendário</Label>
+              <p className="text-[11px] text-muted-foreground/70">Clientes só conseguem agendar dentro deste número de dias a partir de hoje.</p>
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={maxDaysAhead}
+                  onChange={(e) => setMaxDaysAhead(e.target.value)}
+                  className="h-9 w-24"
+                />
+                <span className="text-xs text-muted-foreground">dias</span>
+              </div>
+            </div>
+
+            {/* Data limite absoluta */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Data limite do calendário (opcional)</Label>
+              <p className="text-[11px] text-muted-foreground/70">Quando definida, o calendário fecha após esta data. Tem prioridade sobre os dias de antecedência.</p>
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  type="date"
+                  value={openUntilDate}
+                  onChange={(e) => setOpenUntilDate(e.target.value)}
+                  className="h-9 w-44"
+                />
+                {openUntilDate && (
+                  <button
+                    onClick={() => setOpenUntilDate('')}
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <Button onClick={handleSaveAgenda} disabled={savingAgenda} size="sm">
+              {savingAgenda ? 'Salvando...' : 'Salvar controles de agenda'}
+            </Button>
           </div>
         )}
       </div>

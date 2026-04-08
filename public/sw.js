@@ -28,18 +28,43 @@ self.addEventListener('message', (event) => {
   }
 })
 
-// Ao clicar na notificação, abre ou foca o painel admin
+// ─── Web Push (lembretes do servidor) ────────────────────────────────────
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Leste Barbearia', body: 'Você tem um lembrete.', url: '/agendar', tag: 'lembrete' }
+
+  try {
+    if (event.data) {
+      const parsed = event.data.json()
+      payload = { ...payload, ...parsed }
+    }
+  } catch (_) { /* ignora erro de parse */ }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/android-chrome-192x192.png',
+      badge: '/android-chrome-192x192.png',
+      vibrate: [300, 100, 300],
+      tag: payload.tag || 'lembrete',
+      renotify: true,
+      data: { url: payload.url || '/agendar' },
+    })
+  )
+})
+
+// Ao clicar na notificação, abre ou foca a URL correta
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
+  const targetUrl = event.notification.data?.url || '/agendar'
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
-        if (client.url.includes('/admin') && 'focus' in client) {
+        if (client.url.includes(targetUrl) && 'focus' in client) {
           return client.focus()
         }
       }
       if (clients.openWindow) {
-        return clients.openWindow('/admin')
+        return clients.openWindow(targetUrl)
       }
     })
   )

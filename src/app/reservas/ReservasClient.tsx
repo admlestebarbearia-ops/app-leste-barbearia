@@ -9,6 +9,7 @@ import { ptBR } from 'date-fns/locale'
 import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag } from 'lucide-react'
 import { cancelMyAppointment } from '@/app/agendar/actions'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
+import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
 
 interface Appt {
   id: string
@@ -69,6 +70,9 @@ export function ReservasClient({ appointments: initial, cancellationWindowMinute
             <RefreshCw size={15} />
           </button>
         </div>
+
+        {/* Toggle lembretes push */}
+        <PushNotificationToggle />
 
         {/* Lista vazia */}
         {appointments.length === 0 ? (

@@ -230,6 +230,60 @@ export async function createAppointment(data: {
     }
   }
 
+  // ─── Regras de agenda (Fase 2) ────────────────────────────────────────────
+  const { data: agendaConfig } = await supabase
+    .from('business_config')
+    .select('max_appointments_per_day, block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date')
+    .single()
+
+  if (agendaConfig) {
+    // 1. Limite global de agendamentos por dia
+    if (agendaConfig.max_appointments_per_day !== null) {
+      const { count: dayCount } = await supabase
+        .from('appointments')
+        .select('*', { count: 'exact', head: true })
+        .eq('date', data.date)
+        .eq('status', 'confirmado')
+
+      if ((dayCount ?? 0) >= agendaConfig.max_appointments_per_day) {
+        return { success: false, error: 'A agenda deste dia já está lotada. Por favor, escolha outro dia.' }
+      }
+    }
+
+    // 2. Bloquear agendamento multi-dia (cliente com confirmado em outra data)
+    if (agendaConfig.block_multi_day_booking && signedInWithGoogle) {
+      const { data: otherDayAppt } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('client_id', user.id)
+        .eq('status', 'confirmado')
+        .neq('date', data.date)
+        .limit(1)
+
+      if (otherDayAppt && otherDayAppt.length > 0) {
+        return { success: false, error: 'Você já possui um agendamento confirmado em outro dia. Cancele primeiro para agendar em outra data.' }
+      }
+    }
+
+    // 3. Validar data dentro da janela permitida
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const requestedDate = new Date(data.date + 'T00:00:00')
+
+    if (agendaConfig.calendar_open_until_date) {
+      const limitDate = new Date(agendaConfig.calendar_open_until_date + 'T00:00:00')
+      if (requestedDate > limitDate) {
+        return { success: false, error: 'Esta data está fora do período de agendamento disponível.' }
+      }
+    } else {
+      const maxDate = new Date(today)
+      maxDate.setDate(maxDate.getDate() + (agendaConfig.calendar_max_days_ahead ?? 30))
+      if (requestedDate > maxDate) {
+        return { success: false, error: 'Esta data está fora do período de agendamento disponível.' }
+      }
+    }
+  }
+
   // Verifica na tabela blocked_devices por session_id ou telefone
   const blockedLookup = buildBlockedDeviceLookup({
     userId: signedInWithGoogle ? user.id : null,
