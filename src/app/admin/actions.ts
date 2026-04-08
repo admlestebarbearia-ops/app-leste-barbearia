@@ -7,6 +7,7 @@ import {
   validateWorkingHoursRow,
 } from '@/lib/admin/admin-validation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import type { BusinessConfig, WorkingHours } from '@/lib/supabase/types'
 
@@ -661,6 +662,49 @@ export async function deleteProductReservation(
 
     const { error } = await supabase.from('product_reservations').delete().eq('id', id)
     if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+// ─── Excluir usuário ───────────────────────────────────────────────────────
+// Regra: só permite excluir usuários SEM histórico de serviços (nenhum
+// agendamento com status diferente de 'cancelado' que tenha preço registrado).
+// Isso preserva integridade do financeiro e do histórico da barbearia.
+export async function deleteUser(
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase, user: adminUser } = await requireAdmin()
+
+    if (userId === adminUser.id) {
+      return { success: false, error: 'Você não pode excluir sua própria conta pelo painel.' }
+    }
+
+    // Verifica se o usuário tem agendamentos com histórico (confirmado ou faltou)
+    const { data: history, error: histError } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('client_id', userId)
+      .in('status', ['confirmado', 'faltou'])
+      .limit(1)
+
+    if (histError) throw histError
+
+    if (history && history.length > 0) {
+      return {
+        success: false,
+        error: 'Este usuário possui histórico de serviços e não pode ser excluído. Utilize o bloqueio para impedir novos agendamentos.',
+      }
+    }
+
+    // Cria client com service role para poder deletar da auth.users
+    const adminSupabase = createAdminClient()
+    const { error: deleteError } = await adminSupabase.auth.admin.deleteUser(userId)
+    if (deleteError) throw deleteError
+
     revalidatePath('/admin')
     return { success: true }
   } catch (e) {

@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -49,6 +49,7 @@ import {
   listProductReservations,
   updateProductReservationStatus,
   deleteProductReservation,
+  deleteUser,
 } from '@/app/admin/actions'
 import type {
   BusinessConfig,
@@ -2011,6 +2012,8 @@ function TabAdmins() {
   >([])
   const [loading, setLoading] = useState(true)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -2033,6 +2036,20 @@ function TabAdmins() {
     setTogglingId(null)
   }
 
+  const handleDeleteUser = async () => {
+    if (!deleteConfirmId) return
+    setDeleting(true)
+    const result = await deleteUser(deleteConfirmId)
+    if (result.success) {
+      toast.success('Usuário excluído com sucesso.')
+      setDeleteConfirmId(null)
+      await load()
+    } else {
+      toast.error(result.error ?? 'Erro ao excluir usuário.')
+    }
+    setDeleting(false)
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col gap-3 pt-2">
@@ -2045,6 +2062,8 @@ function TabAdmins() {
 
   const admins = users.filter((u) => u.is_admin)
   const others = users.filter((u) => !u.is_admin)
+
+  const deleteTarget = users.find((u) => u.id === deleteConfirmId)
 
   return (
     <div className="flex flex-col gap-6 pt-2">
@@ -2093,19 +2112,66 @@ function TabAdmins() {
               key={u.id}
               className="flex items-center justify-between gap-3 bg-card border border-border rounded-xl p-4"
             >
-              <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                 <span className="text-sm text-foreground truncate">
                   {u.email ?? 'Email nao disponivel'}
                 </span>
                 <span className="text-xs text-muted-foreground">Cliente</span>
               </div>
-              <Switch
-                checked={false}
-                onCheckedChange={() => handleToggleAdmin(u.id, false)}
-                disabled={togglingId === u.id}
-              />
+              <div className="flex items-center gap-2 shrink-0">
+                <Switch
+                  checked={false}
+                  onCheckedChange={() => handleToggleAdmin(u.id, false)}
+                  disabled={togglingId === u.id}
+                />
+                <button
+                  onClick={() => setDeleteConfirmId(u.id)}
+                  className="p-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
+                  title="Excluir usuário"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal de confirmação de exclusão */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full flex flex-col gap-4 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-red-500/10 shrink-0">
+                <Trash2 size={20} className="text-red-500" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="font-semibold text-foreground">Excluir usuário</p>
+                <p className="text-sm text-muted-foreground break-all">
+                  {deleteTarget?.email ?? deleteConfirmId}
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-red-400 font-medium leading-snug">
+              ⚠️ Esta ação é permanente. O usuário precisará criar uma nova conta do zero. Usuários com histórico de serviços não podem ser excluídos.
+            </p>
+            <div className="flex gap-3 mt-1">
+              <button
+                onClick={() => setDeleteConfirmId(null)}
+                disabled={deleting}
+                className="flex-1 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/20 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteUser}
+                disabled={deleting}
+                className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+              >
+                {deleting ? 'Excluindo...' : 'Confirmar exclusão'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -68,6 +68,17 @@ export function BookingForm({
   const [isPending, startTransition] = useTransition()
   const [menuOpen, setMenuOpen] = useState(false)
 
+  // Refs de scroll para navegação automática entre etapas
+  const barberSectionRef = useRef<HTMLElement>(null)
+  const calendarSectionRef = useRef<HTMLElement>(null)
+  const slotsSectionRef = useRef<HTMLElement>(null)
+
+  const scrollToRef = (ref: React.RefObject<HTMLElement | null>) => {
+    setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 120)
+  }
+
   // PWA Install
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null)
   const [isIOS, setIsIOS] = useState(false)
@@ -92,8 +103,25 @@ export function BookingForm({
       setInstallPrompt(e)
     }
     window.addEventListener('beforeinstallprompt', handler)
+
+    // Banner de instalação: exibe 1× por sessão após 5s (apenas se não instalado)
+    const alreadyShown = sessionStorage.getItem('pwa-banner-shown')
+    if (!alreadyShown) {
+      const timer = setTimeout(() => {
+        sessionStorage.setItem('pwa-banner-shown', '1')
+        // será lido pelo componente via estado
+        setPwaBannerVisible(true)
+      }, 5000)
+      return () => {
+        clearTimeout(timer)
+        window.removeEventListener('beforeinstallprompt', handler)
+      }
+    }
+
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
+
+  const [pwaBannerVisible, setPwaBannerVisible] = useState(false)
 
   const handleInstallClick = async () => {
     if (isIOS) {
@@ -319,6 +347,7 @@ export function BookingForm({
     setSelectedDate(undefined)
     setAvailableSlots([])
     setSelectedTime(null)
+    scrollToRef(barberSectionRef)
   }
 
   const handleDateSelect = useCallback(
@@ -453,8 +482,8 @@ const handleConfirm = async () => {
         <Image
             src={config?.logo_url ?? '/logo-barbearialeste.png'}
             alt="Leste Barbearia"
-            width={172}
-            height={172}
+            width={140}
+            height={140}
             className="object-contain mb-6 animate-logo-glow"
           />
         <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">
@@ -499,7 +528,7 @@ const handleConfirm = async () => {
 
         {/* Secao 2: Barbeiro */}
         {selectedService && (
-          <section className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+          <section ref={barberSectionRef} className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
             <div className="flex items-center gap-4 w-full mb-6 max-w-[250px] mx-auto opacity-70">
                <div className="h-[1px] flex-1 bg-border"></div>
                <Scissors size={18} className="text-muted-foreground rotate-90" />
@@ -545,7 +574,7 @@ const handleConfirm = async () => {
 
         {/* Secao 3: Data */}
         {selectedService && (
-          <section className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <section ref={calendarSectionRef} className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
              <div className="flex items-center gap-4 w-full mb-8 max-w-[250px] mx-auto opacity-70">
                <div className="h-[1px] flex-1 bg-border"></div>
                <CalendarDays size={18} className="text-muted-foreground" />
@@ -556,7 +585,10 @@ const handleConfirm = async () => {
               <DayPicker
                 mode="single"
                 selected={selectedDate}
-                onSelect={handleDateSelect}
+                onSelect={(date) => {
+                handleDateSelect(date)
+                if (date) scrollToRef(slotsSectionRef)
+              }}
                 locale={ptBR}
                 disabled={isDateDisabled}
                 classNames={{
@@ -591,7 +623,7 @@ const handleConfirm = async () => {
 
         {/* Secao 4: Horarios */}
         {selectedDate && (
-          <section className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <section ref={slotsSectionRef} className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h2 className="text-[10px] tracking-[0.2em] font-bold uppercase text-foreground mb-5 text-center mt-6">
                Horários disponíveis em {format(selectedDate, 'dd/MM')}
             </h2>
@@ -728,6 +760,32 @@ const handleConfirm = async () => {
             </Button>
          </div>
       </div>
+
+      {/* Banner PWA — aparece 1× por sessão, 5s após carregar */}
+      {pwaBannerVisible && !isInstalled && (installPrompt || isIOS) && (
+        <div className="fixed bottom-[72px] left-3 right-3 z-40 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-[#18181b] border border-white/10 rounded-2xl px-4 py-3 flex items-center gap-3 shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
+            <span className="text-2xl shrink-0">📲</span>
+            <div className="flex flex-col gap-0 flex-1 min-w-0">
+              <span className="text-xs font-bold text-white leading-tight">Instale o app no celular</span>
+              <span className="text-[11px] text-zinc-400 leading-tight">Acesse mais rápido, com notificações</span>
+            </div>
+            <button
+              onClick={() => { setPwaBannerVisible(false); handleInstallClick() }}
+              className="shrink-0 bg-primary text-white text-[11px] font-bold px-3 py-1.5 rounded-xl"
+            >
+              Instalar
+            </button>
+            <button
+              onClick={() => setPwaBannerVisible(false)}
+              className="shrink-0 text-zinc-500 hover:text-zinc-300 p-1"
+              aria-label="Fechar"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Bottom Nav (App-like) */}
       <nav className="fixed bottom-0 left-0 right-0 bg-[#09090b]/95 backdrop-blur-xl border-t border-white/5 px-6 py-2 pb-safe z-50">
