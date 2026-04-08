@@ -441,7 +441,12 @@ const handleConfirm = async () => {
       })
 
       if (result.success && result.appointmentId) {
-        router.push(`/agendar/sucesso?id=${result.appointmentId}`)
+        if (result.mpInitPoint) {
+          // Modo pagamento online: redireciona para o checkout do Mercado Pago
+          window.location.href = result.mpInitPoint
+        } else {
+          router.push(`/agendar/sucesso?id=${result.appointmentId}`)
+        }
       } else {
         toast.error(result.error ?? 'Erro ao confirmar agendamento.')
       }

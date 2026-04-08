@@ -23,6 +23,7 @@ import {
 import { revalidatePath } from 'next/cache'
 import { format } from 'date-fns'
 import type { WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
+import { createMpPreference } from '@/lib/mercadopago/create-preference'
 
 function buildOwnershipFilter(userId: string | null, lookupPhones: string[]) {
   return [
@@ -134,12 +135,12 @@ export async function getAvailableSlots(
   const lunchStart = typedWH?.lunch_start ?? null
   const lunchEnd = typedWH?.lunch_end ?? null
 
-  // Busca agendamentos confirmados do dia para cruzamento
+  // Busca agendamentos que ocupam slot (confirmado ou aguardando pagamento MP)
   const { data: existingAppointmentsWithSnapshots, error: existingAppointmentsError } = await supabase
     .from('appointments')
     .select('start_time, status, deleted_at, service_duration_minutes_snapshot, services(duration_minutes)')
     .eq('date', date)
-    .eq('status', 'confirmado')
+    .in('status', ['confirmado', 'aguardando_pagamento'])
     .is('deleted_at', null)
 
   let normalizedExistingAppointments = normalizeAppointmentWindows(
@@ -157,7 +158,7 @@ export async function getAvailableSlots(
       .from('appointments')
       .select('start_time, services(duration_minutes)')
       .eq('date', date)
-      .eq('status', 'confirmado')
+      .in('status', ['confirmado', 'aguardando_pagamento'])
 
     if (legacyExistingAppointmentsError) {
       return { slots: [], error: `Erro ao consultar disponibilidade: ${legacyExistingAppointmentsError.message}` }
@@ -188,7 +189,7 @@ export async function createAppointment(data: {
   clientName?: string
   clientPhone?: string
   loggedUserPhone?: string
-}): Promise<{ success: boolean; appointmentId?: string; error?: string }> {
+}): Promise<{ success: boolean; appointmentId?: string; error?: string; mpInitPoint?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const signedInWithGoogle = isAuthenticatedUser(user)
@@ -197,7 +198,7 @@ export async function createAppointment(data: {
   // Busca configs de agenda (limite diário + controles) em uma única query
   const { data: agendaConfig } = await supabase
     .from('business_config')
-    .select('max_appointments_per_day, block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date')
+    .select('max_appointments_per_day, block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date, payment_mode, mp_access_token, payment_expiry_minutes')
     .single()
   const dailyLimit = agendaConfig?.max_appointments_per_day ?? 3
 
@@ -207,7 +208,7 @@ export async function createAppointment(data: {
       .select('*', { count: 'exact', head: true })
       .eq('client_id', user.id)
       .eq('date', data.date)
-      .eq('status', 'confirmado')
+      .in('status', ['confirmado', 'aguardando_pagamento'])
 
     if (count !== null && count >= dailyLimit) {
       return { success: false, error: `Limite de ${dailyLimit} agendamento${dailyLimit !== 1 ? 's' : ''} por dia atingido.` }
@@ -229,7 +230,7 @@ export async function createAppointment(data: {
       .select('*', { count: 'exact', head: true })
       .eq('client_phone', effectivePhone)
       .eq('date', data.date)
-      .eq('status', 'confirmado')
+      .in('status', ['confirmado', 'aguardando_pagamento'])
 
     if (count !== null && count >= dailyLimit) {
       return { success: false, error: `Limite de ${dailyLimit} agendamento${dailyLimit !== 1 ? 's' : ''} por dia atingido.` }
@@ -245,7 +246,7 @@ export async function createAppointment(data: {
         .from('appointments')
         .select('id')
         .eq('client_id', user.id)
-        .eq('status', 'confirmado')
+        .in('status', ['confirmado', 'aguardando_pagamento'])
         .neq('date', data.date)
         .limit(1)
 
@@ -341,6 +342,12 @@ export async function createAppointment(data: {
     return { success: false, error: createAppointmentStateError }
   }
 
+  // ─── Determinar status inicial baseado no modo de pagamento ──────────────
+  const paymentMode = agendaConfig?.payment_mode ?? 'presencial'
+  const mpToken = agendaConfig?.mp_access_token ?? null
+  const isOnlinePayment = paymentMode === 'online_obrigatorio' && !!mpToken
+  const appointmentStatus = isOnlinePayment ? 'aguardando_pagamento' as const : 'confirmado' as const
+
   const appointmentData = signedInWithGoogle
     ? {
         client_id: user.id,
@@ -354,12 +361,12 @@ export async function createAppointment(data: {
         service_duration_minutes_snapshot: serviceSnapshot.duration_minutes,
         date: data.date,
         start_time: data.startTime,
-        status: 'confirmado' as const,
+        status: appointmentStatus,
       }
     : {
         client_name: data.clientName,
         client_email: null,
-      client_phone: effectivePhone,
+        client_phone: effectivePhone,
         barber_id: data.barberId,
         service_id: data.serviceId,
         service_name_snapshot: serviceSnapshot.name,
@@ -367,7 +374,7 @@ export async function createAppointment(data: {
         service_duration_minutes_snapshot: serviceSnapshot.duration_minutes,
         date: data.date,
         start_time: data.startTime,
-        status: 'confirmado' as const,
+        status: appointmentStatus,
       }
 
   let { data: appointment, error } = await supabase
@@ -412,6 +419,48 @@ export async function createAppointment(data: {
       path: '/',
       maxAge: 60 * 60 * 24 * 120,
     })
+  }
+
+  // ─── Bifurcar por payment_mode ────────────────────────────────────────────
+  if (isOnlinePayment) {
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
+        ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+      const expiryMinutes = agendaConfig?.payment_expiry_minutes ?? 15
+
+      const mpResult = await createMpPreference({
+        accessToken: mpToken!,
+        appointmentId: appointment.id,
+        serviceName: serviceSnapshot.name,
+        servicePrice: Number(serviceSnapshot.price),
+        clientEmail: signedInWithGoogle ? (user.email ?? null) : null,
+        baseUrl,
+        expiryMinutes,
+      })
+
+      // Registra o payment_intent no banco para rastreamento e cron de expiração
+      const adminForMp = createAdminClient()
+      await adminForMp.from('payment_intents').insert({
+        appointment_id: appointment.id,
+        mp_preference_id: mpResult.preferenceId,
+        status: 'pending',
+        amount: Number(serviceSnapshot.price),
+        expires_at: new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString(),
+      })
+
+      revalidatePath('/agendar')
+      return { success: true, appointmentId: appointment.id, mpInitPoint: mpResult.initPoint }
+    } catch (mpError) {
+      // Reverter: cancela o agendamento criado para não bloquear o slot indefinidamente
+      const adminForRevert = createAdminClient()
+      await adminForRevert
+        .from('appointments')
+        .update({ status: 'cancelado' })
+        .eq('id', appointment.id)
+
+      console.error('Erro ao criar preferência MP:', mpError)
+      return { success: false, error: 'Erro ao iniciar pagamento online. Tente novamente.' }
+    }
   }
 
   revalidatePath('/agendar')
@@ -490,7 +539,7 @@ export async function getMyAppointments() {
   const { data } = await supabase
     .from('appointments')
     .select('*, services(name, price, duration_minutes)')
-    .eq('status', 'confirmado')
+    .in('status', ['confirmado', 'aguardando_pagamento'])
     .gte('date', today)
     .or(ownershipFilter)
     .order('date', { ascending: true })

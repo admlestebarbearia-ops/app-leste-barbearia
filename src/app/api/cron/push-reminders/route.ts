@@ -37,6 +37,32 @@ export async function GET(request: Request) {
       return `${h}:${m}:00`
     }
 
+    // ─── Expirar payment_intents vencidos ────────────────────────────────────
+    const nowIso = now.toISOString()
+    const { data: expiredIntents } = await adminSupabase
+      .from('payment_intents')
+      .select('id, appointment_id')
+      .eq('status', 'pending')
+      .lt('expires_at', nowIso)
+
+    if (expiredIntents && expiredIntents.length > 0) {
+      const expiredIds = expiredIntents.map((e) => e.id)
+      const expiredApptIds = expiredIntents.map((e) => e.appointment_id)
+
+      await adminSupabase
+        .from('payment_intents')
+        .update({ status: 'expired', updated_at: nowIso })
+        .in('id', expiredIds)
+
+      await adminSupabase
+        .from('appointments')
+        .update({ status: 'cancelado' })
+        .in('id', expiredApptIds)
+        .eq('status', 'aguardando_pagamento')
+
+      console.log(`[cron] ${expiredIntents.length} payment_intents expirados processados.`)
+    }
+
     // Busca agendamentos confirmados de hoje com client_id (usuários logados)
     const { data: appointments, error } = await adminSupabase
       .from('appointments')
@@ -106,6 +132,7 @@ export async function GET(request: Request) {
       sent1h,
       sent30min: sent30,
       failed,
+      expiredIntents: expiredIntents?.length ?? 0,
     })
   } catch (e) {
     console.error('[cron/push-reminders]', e)

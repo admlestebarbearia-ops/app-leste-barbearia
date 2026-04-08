@@ -57,6 +57,7 @@ import {
   deleteManualFinancialEntry,
   saveCardRates,
   listClientStats,
+  saveMercadoPagoConfig,
 } from '@/app/admin/actions'
 import type { PaymentMethod } from '@/lib/supabase/types'
 import type {
@@ -1539,6 +1540,15 @@ function TabConfiguracoes({
   const [openUntilDate, setOpenUntilDate] = useState(config.calendar_open_until_date ?? '')
   const [savingAgenda, setSavingAgenda] = useState(false)
 
+  // Fase 4: Mercado Pago
+  const [paymentMode, setPaymentMode] = useState<'presencial' | 'online_obrigatorio'>(config.payment_mode ?? 'presencial')
+  const [mpAccessToken, setMpAccessToken] = useState(config.mp_access_token ?? '')
+  const [mpWebhookSecret, setMpWebhookSecret] = useState(config.mp_webhook_secret ?? '')
+  const [mpExpiryMinutes, setMpExpiryMinutes] = useState(String(config.payment_expiry_minutes ?? 15))
+  const [showMpToken, setShowMpToken] = useState(false)
+  const [showMpSecret, setShowMpSecret] = useState(false)
+  const [savingMp, setSavingMp] = useState(false)
+
   // Contatos e localização
   const [whatsapp, setWhatsapp] = useState(config.whatsapp_number ?? '')
   const [instagram, setInstagram] = useState(config.instagram_url ?? '')
@@ -1662,6 +1672,32 @@ function TabConfiguracoes({
     setSavingAgenda(false)
     if (result.success) {
       toast.success('Controles de agenda salvos.')
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao salvar.')
+    }
+  }
+
+  const handleSaveMercadoPago = async () => {
+    const expiryParsed = parseInt(mpExpiryMinutes, 10)
+    if (isNaN(expiryParsed) || expiryParsed < 1 || expiryParsed > 60) {
+      toast.error('Tempo de expiração deve ser entre 1 e 60 minutos.')
+      return
+    }
+    if (paymentMode === 'online_obrigatorio' && !mpAccessToken.trim()) {
+      toast.error('Informe o Access Token do Mercado Pago antes de ativar pagamento online.')
+      return
+    }
+    setSavingMp(true)
+    const result = await saveMercadoPagoConfig({
+      payment_mode: paymentMode,
+      mp_access_token: mpAccessToken.trim() || null,
+      mp_webhook_secret: mpWebhookSecret.trim() || null,
+      payment_expiry_minutes: expiryParsed,
+    })
+    setSavingMp(false)
+    if (result.success) {
+      toast.success('Configurações do Mercado Pago salvas.')
       onRefresh()
     } else {
       toast.error(result.error ?? 'Erro ao salvar.')
@@ -2101,6 +2137,113 @@ function TabConfiguracoes({
             </Button>
           </div>
         )}
+      </div>
+
+      {/* Seção: Integrações — Mercado Pago */}
+      <div className="w-full max-w-lg mx-auto flex flex-col gap-0 border border-border rounded-xl overflow-hidden">
+        <button
+          className="flex items-center justify-between px-4 py-3 bg-card hover:bg-muted/50 transition-colors"
+          onClick={() => {}}
+        >
+          <span className="text-sm font-semibold text-foreground">Integrações — Mercado Pago</span>
+        </button>
+        <div className="flex flex-col gap-5 px-4 py-4 border-t border-border bg-background">
+
+          {/* Modo de pagamento */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Modo de pagamento</Label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPaymentMode('presencial')}
+                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${paymentMode === 'presencial' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted/50'}`}
+              >
+                Pagar na barbearia
+              </button>
+              <button
+                onClick={() => setPaymentMode('online_obrigatorio')}
+                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${paymentMode === 'online_obrigatorio' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted/50'}`}
+              >
+                Pagamento online obrigatório
+              </button>
+            </div>
+            {paymentMode === 'online_obrigatorio' && (
+              <p className="text-xs text-yellow-500">
+                ⚠️ Agendamentos só serão confirmados após pagamento via Mercado Pago.
+              </p>
+            )}
+          </div>
+
+          {/* Access Token */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Access Token (Produção)</Label>
+            <div className="relative">
+              <Input
+                type={showMpToken ? 'text' : 'password'}
+                placeholder="APP_USR-..."
+                value={mpAccessToken}
+                onChange={(e) => setMpAccessToken(e.target.value)}
+                className="h-9 pr-16 font-mono text-xs"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                onClick={() => setShowMpToken(!showMpToken)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showMpToken ? 'Ocultar' : 'Mostrar'}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Encontre em: mercadopago.com.br → Suas integrações → Credenciais de produção
+            </p>
+          </div>
+
+          {/* Webhook Secret */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Assinatura secreta (Webhook)</Label>
+            <div className="relative">
+              <Input
+                type={showMpSecret ? 'text' : 'password'}
+                placeholder="Cole a assinatura secreta do MP..."
+                value={mpWebhookSecret}
+                onChange={(e) => setMpWebhookSecret(e.target.value)}
+                className="h-9 pr-16 font-mono text-xs"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                onClick={() => setShowMpSecret(!showMpSecret)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showMpSecret ? 'Ocultar' : 'Mostrar'}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Configure o webhook no MP apontando para:{' '}
+              <code className="text-xs bg-muted px-1 rounded">/api/webhooks/mercadopago</code>
+            </p>
+          </div>
+
+          {/* Tempo de expiração */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Expiração do link de pagamento</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min="1"
+                max="60"
+                value={mpExpiryMinutes}
+                onChange={(e) => setMpExpiryMinutes(e.target.value)}
+                className="h-9 w-24"
+              />
+              <span className="text-xs text-muted-foreground">minutos (recomendado: 15)</span>
+            </div>
+          </div>
+
+          <Button onClick={handleSaveMercadoPago} disabled={savingMp} size="sm">
+            {savingMp ? 'Salvando...' : 'Salvar configurações do Mercado Pago'}
+          </Button>
+        </div>
       </div>
 
       {/* Footer */}

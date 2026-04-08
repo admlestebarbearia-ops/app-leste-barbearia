@@ -1,4 +1,6 @@
-export type AppointmentStatus = 'confirmado' | 'cancelado' | 'faltou' | 'concluido'
+export type AppointmentStatus = 'confirmado' | 'cancelado' | 'faltou' | 'concluido' | 'aguardando_pagamento'
+export type PaymentMode = 'presencial' | 'online_obrigatorio'
+export type PaymentIntentStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired'
 export type DisplayNamePreference = 'name' | 'nickname'
 export type GalleryPhotoStatus = 'pending' | 'approved'
 export type PaymentMethod = 'dinheiro' | 'pix' | 'debito' | 'credito'
@@ -46,6 +48,11 @@ export interface BusinessConfig {
   default_card_rate_pct: number             // legado — mantido por compatibilidade
   debit_rate_pct: number                    // taxa cartão de débito (%)
   credit_rate_pct: number                   // taxa cartão de crédito (%)
+  // ─── Fase 4: Mercado Pago ─────────────────────────────────────────────
+  payment_mode: PaymentMode                 // 'presencial' | 'online_obrigatorio'
+  mp_access_token: string | null            // token de acesso MP (null = não configurado)
+  mp_webhook_secret: string | null          // assinatura secreta de webhook MP
+  payment_expiry_minutes: number            // minutos para expirar payment_intent (padrão 15)
   updated_at: string
 }
 
@@ -193,4 +200,17 @@ export interface ProductReservation {
     email: string | null
     phone: string | null
   } | null
+}
+
+// ─── Fase 4: Mercado Pago ────────────────────────────────────────────────────
+export interface PaymentIntent {
+  id: string
+  appointment_id: string
+  mp_preference_id: string
+  mp_payment_id: string | null
+  status: PaymentIntentStatus
+  amount: number
+  expires_at: string
+  created_at: string
+  updated_at: string
 }
