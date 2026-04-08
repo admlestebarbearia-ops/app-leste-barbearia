@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToUser } from '@/app/api/push/actions'
 
-// Roda a cada 15 minutos via Vercel Cron
+// Roda a cada 15 minutos via scheduler externo (GitHub Actions)
 // Envia lembretes push 1h antes e 30min antes do horário do agendamento
 
 export async function GET(request: Request) {
-  // Segurança: verifica secret do cron (Vercel envia automaticamente)
+  // Segurança: verifica secret enviado pelo agendador
   const authHeader = request.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
