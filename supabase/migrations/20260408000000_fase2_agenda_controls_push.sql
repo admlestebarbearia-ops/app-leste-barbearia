@@ -36,19 +36,23 @@ CREATE TABLE IF NOT EXISTS public.push_subscriptions (
 -- RLS: cada usuário só vê e gerencia suas próprias subscriptions
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "push_subscriptions_own_select" ON public.push_subscriptions;
 CREATE POLICY "push_subscriptions_own_select"
   ON public.push_subscriptions FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "push_subscriptions_own_insert" ON public.push_subscriptions;
 CREATE POLICY "push_subscriptions_own_insert"
   ON public.push_subscriptions FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "push_subscriptions_own_delete" ON public.push_subscriptions;
 CREATE POLICY "push_subscriptions_own_delete"
   ON public.push_subscriptions FOR DELETE
   USING (auth.uid() = user_id);
 
 -- Service role pode SELECT/INSERT/DELETE (necessário para cron de lembretes)
+DROP POLICY IF EXISTS "push_subscriptions_service_role" ON public.push_subscriptions;
 CREATE POLICY "push_subscriptions_service_role"
   ON public.push_subscriptions FOR ALL
   USING (auth.role() = 'service_role')
