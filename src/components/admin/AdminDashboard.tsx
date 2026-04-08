@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package, Trash2 } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package, Trash2, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -50,6 +50,7 @@ import {
   updateProductReservationStatus,
   deleteProductReservation,
   deleteUser,
+  getUserDetails,
 } from '@/app/admin/actions'
 import type {
   BusinessConfig,
@@ -1330,7 +1331,6 @@ function TabConfiguracoes({
   const [savingConfig, setSavingConfig] = useState(false)
 
   // Fase 2: Controles de Agenda
-  const [maxPerDay, setMaxPerDay] = useState(String(config.max_appointments_per_day ?? ''))
   const [blockMultiDay, setBlockMultiDay] = useState(config.block_multi_day_booking ?? false)
   const [maxDaysAhead, setMaxDaysAhead] = useState(String(config.calendar_max_days_ahead ?? 30))
   const [openUntilDate, setOpenUntilDate] = useState(config.calendar_open_until_date ?? '')
@@ -1439,19 +1439,13 @@ function TabConfiguracoes({
   }
 
   const handleSaveAgenda = async () => {
-    const maxPerDayParsed = maxPerDay.trim() === '' ? null : parseInt(maxPerDay, 10)
     const maxDaysAheadParsed = parseInt(maxDaysAhead, 10)
-    if (maxPerDayParsed !== null && (isNaN(maxPerDayParsed) || maxPerDayParsed < 1)) {
-      toast.error('Limite por dia inválido. Use um número maior que 0 ou deixe em branco para sem limite.')
-      return
-    }
     if (isNaN(maxDaysAheadParsed) || maxDaysAheadParsed < 1) {
       toast.error('Dias de antecedência inválido.')
       return
     }
     setSavingAgenda(true)
     const result = await saveBusinessConfig({
-      max_appointments_per_day: maxPerDayParsed,
       block_multi_day_booking: blockMultiDay,
       calendar_max_days_ahead: maxDaysAheadParsed,
       calendar_open_until_date: openUntilDate.trim() || null,
@@ -1827,23 +1821,6 @@ function TabConfiguracoes({
         {openSection === 'agenda' && (
           <div className="border-t border-white/5 px-4 py-5 flex flex-col gap-5">
 
-            {/* Limite global por dia */}
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Máximo de agendamentos por dia (global)</Label>
-              <p className="text-[11px] text-muted-foreground/70">Quando atingido, o dia fica indisponível para novos clientes. Deixe em branco para sem limite.</p>
-              <div className="flex items-center gap-2 mt-1">
-                <Input
-                  type="number"
-                  min="1"
-                  placeholder="Sem limite"
-                  value={maxPerDay}
-                  onChange={(e) => setMaxPerDay(e.target.value)}
-                  className="h-9 w-28"
-                />
-                <span className="text-xs text-muted-foreground">agendamentos</span>
-              </div>
-            </div>
-
             {/* Bloquear multi-dia */}
             <div className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-0.5 flex-1">
@@ -2135,6 +2112,13 @@ function TabAdmins() {
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [detailUserId, setDetailUserId] = useState<string | null>(null)
+  const [detailData, setDetailData] = useState<{
+    profile: { email: string | null; is_admin: boolean; is_blocked: boolean; created_at: string }
+    appointments: { id: string; date: string; start_time: string; status: string; service_name_snapshot: string | null; service_price_snapshot: number | null }[]
+    totalAppointments: number
+  } | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -2169,6 +2153,17 @@ function TabAdmins() {
       toast.error(result.error ?? 'Erro ao excluir usuário.')
     }
     setDeleting(false)
+  }
+
+  const handleOpenDetail = async (userId: string) => {
+    setDetailUserId(userId)
+    setDetailData(null)
+    setLoadingDetail(true)
+    const result = await getUserDetails(userId)
+    setLoadingDetail(false)
+    if (result.success && result.data) {
+      setDetailData(result.data)
+    }
   }
 
   if (loading) {
@@ -2209,17 +2204,26 @@ function TabAdmins() {
               key={u.id}
               className="flex items-center justify-between gap-3 bg-primary/5 border border-primary/20 rounded-xl p-4"
             >
-              <div className="flex flex-col gap-0.5 min-w-0">
+              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                 <span className="text-sm font-medium text-foreground truncate">
                   {u.email ?? 'Email nao disponivel'}
                 </span>
                 <span className="text-xs text-primary">Admin</span>
               </div>
-              <Switch
-                checked={true}
-                onCheckedChange={() => handleToggleAdmin(u.id, true)}
-                disabled={togglingId === u.id}
-              />
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => handleOpenDetail(u.id)}
+                  className="p-2 rounded-lg text-muted-foreground hover:bg-muted/20 transition-colors"
+                  title="Ver detalhes"
+                >
+                  <Eye size={15} />
+                </button>
+                <Switch
+                  checked={true}
+                  onCheckedChange={() => handleToggleAdmin(u.id, true)}
+                  disabled={togglingId === u.id}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -2245,6 +2249,13 @@ function TabAdmins() {
                   onCheckedChange={() => handleToggleAdmin(u.id, false)}
                   disabled={togglingId === u.id}
                 />
+                <button
+                  onClick={() => handleOpenDetail(u.id)}
+                  className="p-2 rounded-lg text-muted-foreground hover:bg-muted/20 transition-colors"
+                  title="Ver detalhes"
+                >
+                  <Eye size={15} />
+                </button>
                 <button
                   onClick={() => setDeleteConfirmId(u.id)}
                   className="p-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
@@ -2292,6 +2303,86 @@ function TabAdmins() {
                 {deleting ? 'Excluindo...' : 'Confirmar exclusão'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de detalhes do usuário */}
+      {detailUserId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-card border border-border rounded-2xl max-w-sm w-full flex flex-col shadow-2xl max-h-[85vh] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+              <p className="font-semibold text-foreground text-sm">Detalhes do usuário</p>
+              <button
+                onClick={() => setDetailUserId(null)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {loadingDetail ? (
+              <div className="flex flex-col gap-3 p-5">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-8 rounded-lg bg-muted/40 animate-pulse" />
+                ))}
+              </div>
+            ) : detailData ? (
+              <div className="flex flex-col gap-5 p-5 overflow-y-auto">
+                {/* Perfil */}
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm text-foreground font-medium break-all">
+                      {detailData.profile.email ?? 'Email não disponível'}
+                    </span>
+                    {detailData.profile.is_admin && (
+                      <span className="text-[10px] bg-primary/15 text-primary px-2 py-0.5 rounded-full font-medium">Admin</span>
+                    )}
+                    {detailData.profile.is_blocked && (
+                      <span className="text-[10px] bg-red-500/15 text-red-400 px-2 py-0.5 rounded-full font-medium">Bloqueado</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    Cliente desde {new Date(detailData.profile.created_at).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                  </span>
+                </div>
+
+                {/* Histórico de agendamentos */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Agendamentos ({detailData.totalAppointments})
+                  </p>
+                  {detailData.appointments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum agendamento registrado.</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {detailData.appointments.map((a) => (
+                        <div key={a.id} className="flex items-start justify-between gap-2 bg-background/50 border border-border rounded-xl p-3">
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <span className="text-xs font-medium text-foreground">
+                              {new Date(a.date + 'T00:00:00').toLocaleDateString('pt-BR')} às {a.start_time.slice(0, 5)}
+                            </span>
+                            <span className="text-xs text-muted-foreground truncate">
+                              {a.service_name_snapshot ?? 'Serviço não registrado'}
+                              {a.service_price_snapshot != null && ` · R$ ${a.service_price_snapshot.toFixed(2).replace('.', ',')}`}
+                            </span>
+                          </div>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${
+                            a.status === 'confirmado' ? 'bg-green-500/15 text-green-400' :
+                            a.status === 'faltou' ? 'bg-red-500/15 text-red-400' :
+                            'bg-zinc-500/15 text-zinc-400'
+                          }`}>
+                            {a.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground p-5">Erro ao carregar dados do usuário.</p>
+            )}
           </div>
         </div>
       )}

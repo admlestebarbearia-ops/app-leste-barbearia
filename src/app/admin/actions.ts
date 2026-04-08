@@ -702,11 +702,73 @@ export async function deleteUser(
 
     // Cria client com service role para poder deletar da auth.users
     const adminSupabase = createAdminClient()
+
+    // Evita violação da CHECK constraint client_identifier: ao excluir o usuário,
+    // o PostgreSQL faz SET NULL em appointments.client_id. Se client_phone também for
+    // NULL (comum em contas Google sem telefone cadastrado), a constraint falha.
+    // Preenchemos client_phone com 'excluído' nos registros afetados antes da exclusão.
+    await adminSupabase
+      .from('appointments')
+      .update({ client_phone: 'excluído' })
+      .eq('client_id', userId)
+      .is('client_phone', null)
+
     const { error: deleteError } = await adminSupabase.auth.admin.deleteUser(userId)
     if (deleteError) throw deleteError
 
     revalidatePath('/admin')
     return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+// ─── Detalhes de um usuário (perfil + histórico de agendamentos) ───────────
+export async function getUserDetails(userId: string): Promise<{
+  success: boolean
+  data?: {
+    profile: { email: string | null; is_admin: boolean; is_blocked: boolean; created_at: string }
+    appointments: {
+      id: string
+      date: string
+      start_time: string
+      status: string
+      service_name_snapshot: string | null
+      service_price_snapshot: number | null
+    }[]
+    totalAppointments: number
+  }
+  error?: string
+}> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('email, is_admin, is_blocked, created_at')
+      .eq('id', userId)
+      .single()
+
+    if (profileError) throw profileError
+
+    const { data: appointments, error: apptError } = await supabase
+      .from('appointments')
+      .select('id, date, start_time, status, service_name_snapshot, service_price_snapshot')
+      .eq('client_id', userId)
+      .order('date', { ascending: false })
+      .order('start_time', { ascending: false })
+      .limit(50)
+
+    if (apptError) throw apptError
+
+    return {
+      success: true,
+      data: {
+        profile,
+        appointments: appointments ?? [],
+        totalAppointments: appointments?.length ?? 0,
+      },
+    }
   } catch (e) {
     return { success: false, error: (e as Error).message }
   }

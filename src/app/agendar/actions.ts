@@ -233,23 +233,10 @@ export async function createAppointment(data: {
   // ─── Regras de agenda (Fase 2) ────────────────────────────────────────────
   const { data: agendaConfig } = await supabase
     .from('business_config')
-    .select('max_appointments_per_day, block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date')
+    .select('block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date')
     .single()
 
   if (agendaConfig) {
-    // 1. Limite global de agendamentos por dia
-    if (agendaConfig.max_appointments_per_day !== null) {
-      const { count: dayCount } = await supabase
-        .from('appointments')
-        .select('*', { count: 'exact', head: true })
-        .eq('date', data.date)
-        .eq('status', 'confirmado')
-
-      if ((dayCount ?? 0) >= agendaConfig.max_appointments_per_day) {
-        return { success: false, error: 'A agenda deste dia já está lotada. Por favor, escolha outro dia.' }
-      }
-    }
-
     // 2. Bloquear agendamento multi-dia (cliente com confirmado em outra data)
     if (agendaConfig.block_multi_day_booking && signedInWithGoogle) {
       const { data: otherDayAppt } = await supabase
