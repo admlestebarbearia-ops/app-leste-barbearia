@@ -2143,66 +2143,91 @@ function TabConfiguracoes({
       </div>
 
       {/* Seção: Integrações — Mercado Pago */}
-      <div className="w-full max-w-lg mx-auto flex flex-col gap-0 border border-border rounded-xl overflow-hidden">
-        <button
-          className="flex items-center justify-between px-4 py-3 bg-card hover:bg-muted/50 transition-colors"
-          onClick={() => {}}
-        >
-          <span className="text-sm font-semibold text-foreground">Integrações — Mercado Pago</span>
-        </button>
-        <div className="flex flex-col gap-5 px-4 py-4 border-t border-border bg-background">
+      <div className="w-full max-w-lg mx-auto rounded-xl border border-border overflow-hidden">
+
+        {/* Header com branding MP */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border" style={{ background: 'linear-gradient(135deg, rgba(0,158,227,0.12) 0%, rgba(0,158,227,0.04) 100%)' }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm" style={{ backgroundColor: '#009EE3' }}>
+            <span className="text-white text-xs font-black tracking-tight select-none">MP</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-foreground">Mercado Pago</p>
+            <p className="text-xs text-muted-foreground">Processamento de pagamentos online</p>
+          </div>
+          {config.mp_access_token && (
+            <span className="text-xs font-medium text-green-400 bg-green-400/10 border border-green-400/25 rounded-full px-2.5 py-1 shrink-0">
+              ● Ativo
+            </span>
+          )}
+        </div>
+
+        {/* Corpo */}
+        <div className="flex flex-col gap-5 p-5">
+
+          {/* Status de conexão */}
+          {config.mp_access_token ? (
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-green-500/20 bg-green-500/8">
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full bg-green-400" style={{ boxShadow: '0 0 6px rgba(74,222,128,0.6)' }} />
+                <span className="text-sm text-green-400 font-medium">Conta do vendedor vinculada</span>
+              </div>
+              <button
+                onClick={handleDisconnectMP}
+                disabled={savingMp}
+                className="text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 underline decoration-dotted underline-offset-2"
+              >
+                Desvincular
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-muted/30 border border-border">
+                <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />
+                <span className="text-sm text-muted-foreground">Nenhuma conta vinculada</span>
+              </div>
+              <button
+                onClick={() => { window.location.href = '/api/auth/mercadopago' }}
+                className="w-full py-3 px-4 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.99] flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#009EE3' }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                Conectar conta do Mercado Pago
+              </button>
+              <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                Você será redirecionado para autorizar a integração na sua conta MP
+              </p>
+            </div>
+          )}
+
+          <div className="border-t border-border" />
 
           {/* Modo de pagamento */}
           <div className="flex flex-col gap-2">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Modo de pagamento</Label>
-            <div className="flex gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Modo de pagamento</Label>
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => setPaymentMode('presencial')}
-                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${paymentMode === 'presencial' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted/50'}`}
+                className={`py-2.5 px-3 rounded-xl border text-sm font-medium transition-colors ${paymentMode === 'presencial' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted/50'}`}
               >
                 Pagar na barbearia
               </button>
               <button
                 onClick={() => setPaymentMode('online_obrigatorio')}
-                className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${paymentMode === 'online_obrigatorio' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted/50'}`}
+                className={`py-2.5 px-3 rounded-xl border text-sm font-medium transition-colors ${paymentMode === 'online_obrigatorio' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted/50'}`}
               >
-                Pagamento online obrigatório
+                Online obrigatório
               </button>
             </div>
             {paymentMode === 'online_obrigatorio' && (
               <p className="text-xs text-yellow-500">
-                ⚠️ Agendamentos só serão confirmados após pagamento via Mercado Pago.
+                ⚠️ Agendamentos só confirmados após pagamento via Mercado Pago.
               </p>
-            )}
-          </div>
-
-          {/* Conexão OAuth com Mercado Pago */}
-          <div className="flex flex-col gap-2">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Conexão com Mercado Pago</Label>
-            {config.mp_access_token ? (
-              <div className="flex items-center justify-between p-3 rounded-lg border border-green-500/30 bg-green-500/10">
-                <span className="text-green-400 text-sm">&#10003; Conta conectada</span>
-                <button
-                  onClick={handleDisconnectMP}
-                  disabled={savingMp}
-                  className="text-xs text-red-400 hover:text-red-300 underline disabled:opacity-50"
-                >
-                  Desconectar
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => { window.location.href = '/api/auth/mercadopago' }}
-                className="w-full py-2.5 px-4 rounded-lg border border-border bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-              >
-                Conectar com Mercado Pago
-              </button>
             )}
           </div>
 
           {/* Tempo de expiração */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Expiração do link de pagamento</Label>
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Expiração do link de pagamento</Label>
             <div className="flex items-center gap-2">
               <Input
                 type="number"
@@ -2217,7 +2242,7 @@ function TabConfiguracoes({
           </div>
 
           <Button onClick={handleSaveMercadoPago} disabled={savingMp} size="sm">
-            {savingMp ? 'Salvando...' : 'Salvar configurações do Mercado Pago'}
+            {savingMp ? 'Salvando...' : 'Salvar configurações'}
           </Button>
         </div>
       </div>

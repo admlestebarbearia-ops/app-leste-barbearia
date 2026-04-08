@@ -39,6 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# documentação local / referências externas
+MercadoPago/
 "CONVERSA COPILOT ANTERIOTES.md"  
 "CONVERSA COPILOT ANTERIOTES.md" 
 "CONVERSA COPILOT ANTERIOTES.md"  
