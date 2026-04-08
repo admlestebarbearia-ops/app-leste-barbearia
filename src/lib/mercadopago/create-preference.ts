@@ -58,6 +58,7 @@ export async function createMpPreference(
         installments: 1, // apenas à vista (sem parcelamento em barbearia)
       },
       statement_descriptor: 'BARBEARIA LESTE',
+      notification_url: `${baseUrl}/api/webhooks/mercadopago`,
     },
   })
 

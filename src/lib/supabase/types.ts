@@ -51,7 +51,8 @@ export interface BusinessConfig {
   // ─── Fase 4: Mercado Pago ─────────────────────────────────────────────
   payment_mode: PaymentMode                 // 'presencial' | 'online_obrigatorio'
   mp_access_token: string | null            // token de acesso MP (null = não configurado)
-  mp_webhook_secret: string | null          // assinatura secreta de webhook MP
+  mp_refresh_token: string | null           // refresh token OAuth MP
+  mp_webhook_secret: string | null          // assinatura secreta de webhook MP (legado)
   payment_expiry_minutes: number            // minutos para expirar payment_intent (padrão 15)
   updated_at: string
 }

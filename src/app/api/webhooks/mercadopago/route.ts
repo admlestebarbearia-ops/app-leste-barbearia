@@ -1,37 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import crypto from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
-
-// ─── Verificação de assinatura HMAC do Mercado Pago ──────────────────────────
-function verifyMpSignature(
-  xSignature: string | null,
-  xRequestId: string | null,
-  dataId: string | null,
-  secret: string
-): boolean {
-  if (!xSignature) return false
-
-  let ts: string | null = null
-  let v1: string | null = null
-
-  for (const part of xSignature.split(',')) {
-    const [key, value] = part.split('=')
-    if (key?.trim() === 'ts') ts = value?.trim() ?? null
-    if (key?.trim() === 'v1') v1 = value?.trim() ?? null
-  }
-
-  if (!ts || !v1) return false
-
-  // Monta o template conforme documentação MP
-  const parts: string[] = []
-  if (dataId) parts.push(`id:${dataId}`)
-  if (xRequestId) parts.push(`request-id:${xRequestId}`)
-  parts.push(`ts:${ts}`)
-  const manifest = parts.join(';') + ';'
-
-  const expected = crypto.createHmac('sha256', secret).update(manifest).digest('hex')
-  return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(v1, 'hex'))
-}
 
 // ─── Fetch estado do pagamento na API do MP ───────────────────────────────────
 async function fetchMpPaymentStatus(paymentId: string, accessToken: string) {
@@ -53,8 +21,6 @@ export async function POST(request: NextRequest) {
   try {
     const url = new URL(request.url)
     const dataId = url.searchParams.get('data.id')       // ID do evento (pagamento)
-    const xSignature = request.headers.get('x-signature')
-    const xRequestId = request.headers.get('x-request-id')
 
     // Lê o body para determinar tipo do evento
     const body = await request.json() as {
@@ -76,10 +42,10 @@ export async function POST(request: NextRequest) {
 
     const adminClient = createAdminClient()
 
-    // Busca o access token e webhook secret no business_config
+    // Busca o access token no business_config
     const { data: config } = await adminClient
       .from('business_config')
-      .select('mp_access_token, mp_webhook_secret')
+      .select('mp_access_token')
       .eq('id', 1)
       .single()
 
@@ -88,16 +54,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true })
     }
 
-    // Verifica assinatura (apenas se o secret estiver configurado)
-    if (config.mp_webhook_secret) {
-      const valid = verifyMpSignature(xSignature, xRequestId, dataId, config.mp_webhook_secret)
-      if (!valid) {
-        console.warn('[MP Webhook] Assinatura HMAC inválida.')
-        return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 })
-      }
-    }
-
-    // Consulta os detalhes do pagamento na API do MP
+    // Consulta os detalhes do pagamento na API do MP (verifica autenticidade indiretamente)
     const payment = await fetchMpPaymentStatus(paymentId, config.mp_access_token)
 
     const appointmentId = payment.external_reference

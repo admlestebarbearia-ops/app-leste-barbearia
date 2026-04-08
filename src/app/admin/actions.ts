@@ -1213,8 +1213,6 @@ export async function listClientStats(dormantDays = 30): Promise<{
 // ─── Salvar configurações do Mercado Pago ───────────────────────────────────
 export async function saveMercadoPagoConfig(data: {
   payment_mode: 'presencial' | 'online_obrigatorio'
-  mp_access_token: string | null
-  mp_webhook_secret: string | null
   payment_expiry_minutes: number
 }): Promise<{ success: boolean; error?: string }> {
   try {
@@ -1224,23 +1222,33 @@ export async function saveMercadoPagoConfig(data: {
       return { success: false, error: 'Tempo de expiração deve ser entre 1 e 60 minutos.' }
     }
 
-    if (data.payment_mode === 'online_obrigatorio' && !data.mp_access_token) {
-      return { success: false, error: 'Access Token é obrigatório para pagamento online.' }
-    }
-
     const adminClient = createAdminClient()
     const { error } = await adminClient
       .from('business_config')
       .update({
         payment_mode: data.payment_mode,
-        mp_access_token: data.mp_access_token,
-        mp_webhook_secret: data.mp_webhook_secret,
         payment_expiry_minutes: data.payment_expiry_minutes,
       })
       .eq('id', 1)
 
     if (error) throw error
 
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function disconnectMercadoPago(): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    const adminClient = createAdminClient()
+    const { error } = await adminClient
+      .from('business_config')
+      .update({ mp_access_token: null, mp_refresh_token: null })
+      .eq('id', 1)
+    if (error) throw error
     revalidatePath('/admin')
     return { success: true }
   } catch (e) {

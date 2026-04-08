@@ -58,6 +58,7 @@ import {
   saveCardRates,
   listClientStats,
   saveMercadoPagoConfig,
+  disconnectMercadoPago,
 } from '@/app/admin/actions'
 import type { PaymentMethod } from '@/lib/supabase/types'
 import type {
@@ -1542,11 +1543,7 @@ function TabConfiguracoes({
 
   // Fase 4: Mercado Pago
   const [paymentMode, setPaymentMode] = useState<'presencial' | 'online_obrigatorio'>(config.payment_mode ?? 'presencial')
-  const [mpAccessToken, setMpAccessToken] = useState(config.mp_access_token ?? '')
-  const [mpWebhookSecret, setMpWebhookSecret] = useState(config.mp_webhook_secret ?? '')
   const [mpExpiryMinutes, setMpExpiryMinutes] = useState(String(config.payment_expiry_minutes ?? 15))
-  const [showMpToken, setShowMpToken] = useState(false)
-  const [showMpSecret, setShowMpSecret] = useState(false)
   const [savingMp, setSavingMp] = useState(false)
 
   // Contatos e localização
@@ -1684,15 +1681,9 @@ function TabConfiguracoes({
       toast.error('Tempo de expiração deve ser entre 1 e 60 minutos.')
       return
     }
-    if (paymentMode === 'online_obrigatorio' && !mpAccessToken.trim()) {
-      toast.error('Informe o Access Token do Mercado Pago antes de ativar pagamento online.')
-      return
-    }
     setSavingMp(true)
     const result = await saveMercadoPagoConfig({
       payment_mode: paymentMode,
-      mp_access_token: mpAccessToken.trim() || null,
-      mp_webhook_secret: mpWebhookSecret.trim() || null,
       payment_expiry_minutes: expiryParsed,
     })
     setSavingMp(false)
@@ -1701,6 +1692,18 @@ function TabConfiguracoes({
       onRefresh()
     } else {
       toast.error(result.error ?? 'Erro ao salvar.')
+    }
+  }
+
+  const handleDisconnectMP = async () => {
+    setSavingMp(true)
+    const result = await disconnectMercadoPago()
+    setSavingMp(false)
+    if (result.success) {
+      toast.success('Mercado Pago desconectado.')
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao desconectar.')
     }
   }
 
@@ -2173,55 +2176,28 @@ function TabConfiguracoes({
             )}
           </div>
 
-          {/* Access Token */}
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Access Token (Produção)</Label>
-            <div className="relative">
-              <Input
-                type={showMpToken ? 'text' : 'password'}
-                placeholder="APP_USR-..."
-                value={mpAccessToken}
-                onChange={(e) => setMpAccessToken(e.target.value)}
-                className="h-9 pr-16 font-mono text-xs"
-                autoComplete="off"
-              />
+          {/* Conexão OAuth com Mercado Pago */}
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Conexão com Mercado Pago</Label>
+            {config.mp_access_token ? (
+              <div className="flex items-center justify-between p-3 rounded-lg border border-green-500/30 bg-green-500/10">
+                <span className="text-green-400 text-sm">&#10003; Conta conectada</span>
+                <button
+                  onClick={handleDisconnectMP}
+                  disabled={savingMp}
+                  className="text-xs text-red-400 hover:text-red-300 underline disabled:opacity-50"
+                >
+                  Desconectar
+                </button>
+              </div>
+            ) : (
               <button
-                type="button"
-                onClick={() => setShowMpToken(!showMpToken)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => { window.location.href = '/api/auth/mercadopago' }}
+                className="w-full py-2.5 px-4 rounded-lg border border-border bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
               >
-                {showMpToken ? 'Ocultar' : 'Mostrar'}
+                Conectar com Mercado Pago
               </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Encontre em: mercadopago.com.br → Suas integrações → Credenciais de produção
-            </p>
-          </div>
-
-          {/* Webhook Secret */}
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider">Assinatura secreta (Webhook)</Label>
-            <div className="relative">
-              <Input
-                type={showMpSecret ? 'text' : 'password'}
-                placeholder="Cole a assinatura secreta do MP..."
-                value={mpWebhookSecret}
-                onChange={(e) => setMpWebhookSecret(e.target.value)}
-                className="h-9 pr-16 font-mono text-xs"
-                autoComplete="off"
-              />
-              <button
-                type="button"
-                onClick={() => setShowMpSecret(!showMpSecret)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                {showMpSecret ? 'Ocultar' : 'Mostrar'}
-              </button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Configure o webhook no MP apontando para:{' '}
-              <code className="text-xs bg-muted px-1 rounded">/api/webhooks/mercadopago</code>
-            </p>
+            )}
           </div>
 
           {/* Tempo de expiração */}
