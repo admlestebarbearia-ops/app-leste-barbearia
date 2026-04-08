@@ -79,6 +79,14 @@ export function validateBusinessConfigPatch(data: Partial<BusinessConfig>) {
     return 'Data limite inválida. Use o formato AAAA-MM-DD.'
   }
 
+  if (data.debit_rate_pct != null && (data.debit_rate_pct < 0 || data.debit_rate_pct > 50)) {
+    return 'Taxa de débito deve ser entre 0 e 50%.'
+  }
+
+  if (data.credit_rate_pct != null && (data.credit_rate_pct < 0 || data.credit_rate_pct > 50)) {
+    return 'Taxa de crédito deve ser entre 0 e 50%.'
+  }
+
   return null
 }
 

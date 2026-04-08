@@ -835,6 +835,7 @@ export async function getUserDetails(userId: string): Promise<{
 // CA: Ao concluir → cria financial_entry automaticamente.
 export async function concludeAppointment(
   appointmentId: string,
+  paymentMethod: import('@/lib/supabase/types').PaymentMethod,
   rating?: { score: number; note?: string }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -852,12 +853,14 @@ export async function concludeAppointment(
     if (appt.status !== 'confirmado') return { success: false, error: 'Só é possível concluir agendamentos confirmados.' }
     if (appt.date !== today) return { success: false, error: 'Só é possível concluir agendamentos do dia atual.' }
 
-    // Busca taxa padrão da maquininha
+    // Busca taxas por tipo de pagamento
     const { data: configData } = await supabase
       .from('business_config')
-      .select('default_card_rate_pct')
+      .select('debit_rate_pct, credit_rate_pct')
       .single()
-    const cardRate = configData?.default_card_rate_pct ?? 0
+    const cardRate =
+      paymentMethod === 'debito'  ? (configData?.debit_rate_pct  ?? 0) :
+      paymentMethod === 'credito' ? (configData?.credit_rate_pct ?? 0) : 0
 
     const amount = appt.service_price_snapshot ?? 0
     const netAmount = amount * (1 - cardRate / 100)
@@ -877,6 +880,7 @@ export async function concludeAppointment(
         source: 'agendamento',
         amount,
         description: appt.service_name_snapshot ?? 'Serviço',
+        payment_method: paymentMethod,
         card_rate_pct: cardRate,
         net_amount: netAmount,
         reference_id: appointmentId,
@@ -894,6 +898,54 @@ export async function concludeAppointment(
         note: rating.note?.trim() || null,
       })
     }
+
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function estornarAgendamento(
+  appointmentId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    // Busca a entrada financeira original do agendamento
+    const { data: entry, error: entryError } = await supabase
+      .from('financial_entries')
+      .select('*')
+      .eq('source', 'agendamento')
+      .eq('reference_id', appointmentId)
+      .single()
+
+    if (entryError || !entry) return { success: false, error: 'Entrada financeira não encontrada.' }
+
+    const { data: { user } } = await supabase.auth.getUser()
+    const today = new Date().toISOString().split('T')[0]
+
+    // Cria entrada de estorno (tipo despesa, valor negativo)
+    const { error: insertError } = await supabase.from('financial_entries').insert({
+      type: 'despesa',
+      source: 'estorno',
+      amount: entry.amount,
+      description: `Estorno: ${entry.description}`,
+      payment_method: entry.payment_method ?? null,
+      card_rate_pct: 0,
+      net_amount: -(entry.net_amount ?? entry.amount),
+      reference_id: appointmentId,
+      date: today,
+      created_by: user?.id ?? null,
+    })
+    if (insertError) throw insertError
+
+    // Reverte status do agendamento para confirmado
+    const { error: revertError } = await supabase
+      .from('appointments')
+      .update({ status: 'confirmado' })
+      .eq('id', appointmentId)
+    if (revertError) throw revertError
 
     revalidatePath('/admin')
     return { success: true }
@@ -928,10 +980,9 @@ export async function listFinancialEntries(filters?: {
 
 export async function addManualFinancialEntry(data: {
   type: 'receita' | 'despesa'
-  source: 'maquininha' | 'manual'
   amount: number
   description: string
-  payment_method?: string
+  payment_method?: import('@/lib/supabase/types').PaymentMethod
   card_rate_pct?: number
   date: string
 }): Promise<{ success: boolean; error?: string }> {
@@ -946,10 +997,10 @@ export async function addManualFinancialEntry(data: {
 
     const { error } = await supabase.from('financial_entries').insert({
       type: data.type,
-      source: data.source,
+      source: 'manual',
       amount: data.amount,
       description: data.description.trim(),
-      payment_method: data.payment_method?.trim() || null,
+      payment_method: data.payment_method ?? null,
       card_rate_pct: cardRate,
       net_amount: netAmount,
       reference_id: null,
@@ -1037,16 +1088,23 @@ export async function deleteManualFinancialEntry(
   }
 }
 
-// ─── FASE 3: Taxa da maquininha ──────────────────────────────────────────────
-export async function saveCardRate(
-  ratePct: number
+// ─── FASE 3: Taxas da maquininha ─────────────────────────────────────────────
+export async function saveCardRates(
+  debitPct: number,
+  creditPct: number
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
-    if (ratePct < 0 || ratePct > 50) return { success: false, error: 'Taxa inválida (0–50%).' }
+    if (debitPct < 0 || debitPct > 50) return { success: false, error: 'Taxa débito inválida (0–50%).' }
+    if (creditPct < 0 || creditPct > 50) return { success: false, error: 'Taxa crédito inválida (0–50%).' }
     const { error } = await supabase
       .from('business_config')
-      .update({ default_card_rate_pct: ratePct, updated_at: new Date().toISOString() })
+      .update({
+        debit_rate_pct: debitPct,
+        credit_rate_pct: creditPct,
+        default_card_rate_pct: debitPct, // compat legado
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', 1)
     if (error) throw error
     revalidatePath('/admin')

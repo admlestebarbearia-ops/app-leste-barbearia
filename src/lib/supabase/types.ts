@@ -1,6 +1,7 @@
 export type AppointmentStatus = 'confirmado' | 'cancelado' | 'faltou' | 'concluido'
 export type DisplayNamePreference = 'name' | 'nickname'
 export type GalleryPhotoStatus = 'pending' | 'approved'
+export type PaymentMethod = 'dinheiro' | 'pix' | 'debito' | 'credito'
 
 export interface Profile {
   id: string
@@ -41,7 +42,9 @@ export interface BusinessConfig {
   calendar_open_until_date: string | null   // data limite absoluta (YYYY-MM-DD) ou null
   // ─── Fase 3: Financeiro ───────────────────────────────────────────────
   has_card_machine: boolean                 // o estabelecimento usa maquininha?
-  default_card_rate_pct: number             // taxa da maquininha (%)
+  default_card_rate_pct: number             // legado — mantido por compatibilidade
+  debit_rate_pct: number                    // taxa cartão de débito (%)
+  credit_rate_pct: number                   // taxa cartão de crédito (%)
   updated_at: string
 }
 
@@ -124,7 +127,7 @@ export interface GalleryPhoto {
 
 // ─── Fase 3: Rating e Financeiro ────────────────────────────────────────────
 export type FinancialEntryType = 'receita' | 'despesa'
-export type FinancialEntrySource = 'agendamento' | 'produto' | 'maquininha' | 'manual'
+export type FinancialEntrySource = 'agendamento' | 'produto' | 'estorno' | 'manual'
 
 export interface ClientRating {
   id: string
@@ -141,7 +144,7 @@ export interface FinancialEntry {
   source: FinancialEntrySource
   amount: number
   description: string
-  payment_method: string | null
+  payment_method: PaymentMethod | null
   card_rate_pct: number
   net_amount: number
   reference_id: string | null
