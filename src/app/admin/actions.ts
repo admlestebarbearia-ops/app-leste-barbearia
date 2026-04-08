@@ -1214,6 +1214,7 @@ export async function listClientStats(dormantDays = 30): Promise<{
 export async function saveMercadoPagoConfig(data: {
   payment_mode: 'presencial' | 'online_obrigatorio'
   payment_expiry_minutes: number
+  aceita_dinheiro: boolean
 }): Promise<{ success: boolean; error?: string }> {
   try {
     await requireAdmin()
@@ -1228,6 +1229,7 @@ export async function saveMercadoPagoConfig(data: {
       .update({
         payment_mode: data.payment_mode,
         payment_expiry_minutes: data.payment_expiry_minutes,
+        aceita_dinheiro: data.aceita_dinheiro,
       })
       .eq('id', 1)
 

@@ -189,6 +189,7 @@ export async function createAppointment(data: {
   clientName?: string
   clientPhone?: string
   loggedUserPhone?: string
+  payCash?: boolean
 }): Promise<{ success: boolean; appointmentId?: string; error?: string; mpInitPoint?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -198,7 +199,7 @@ export async function createAppointment(data: {
   // Busca configs de agenda (limite diário + controles) em uma única query
   const { data: agendaConfig } = await supabase
     .from('business_config')
-    .select('max_appointments_per_day, block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date, payment_mode, mp_access_token, payment_expiry_minutes')
+    .select('max_appointments_per_day, block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date, payment_mode, aceita_dinheiro, mp_access_token, payment_expiry_minutes')
     .single()
   const dailyLimit = agendaConfig?.max_appointments_per_day ?? 3
 
@@ -345,7 +346,9 @@ export async function createAppointment(data: {
   // ─── Determinar status inicial baseado no modo de pagamento ──────────────
   const paymentMode = agendaConfig?.payment_mode ?? 'presencial'
   const mpToken = agendaConfig?.mp_access_token ?? null
-  const isOnlinePayment = paymentMode === 'online_obrigatorio' && !!mpToken
+  const aceitaDinheiroConfig = agendaConfig?.aceita_dinheiro ?? true
+  // Cliente escolheu pagar em dinheiro E a barbearia permite → não exige MP
+  const isOnlinePayment = paymentMode === 'online_obrigatorio' && !!mpToken && !(data.payCash && aceitaDinheiroConfig)
   const appointmentStatus = isOnlinePayment ? 'aguardando_pagamento' as const : 'confirmado' as const
 
   const appointmentData = signedInWithGoogle

@@ -148,6 +148,7 @@ export function BookingForm({
   const [availableSlots, setAvailableSlots] = useState<string[]>([])
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [loadingSlots, setLoadingSlots] = useState(false)
+  const [payCash, setPayCash] = useState(false)
 
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
@@ -438,6 +439,7 @@ const handleConfirm = async () => {
         clientName: showFreeMode ? clientName : undefined,
         clientPhone: showFreeMode ? clientPhone : undefined,
         loggedUserPhone: isAuthenticatedUser ? (overridePhone ?? savedPhone ?? undefined) : undefined,
+        payCash: payCash,
       })
 
       if (result.success && result.appointmentId) {
@@ -749,6 +751,25 @@ const handleConfirm = async () => {
 
       {/* Barra de confirmacao flutuante (CTA) */}
       <div className={`fixed bottom-[90px] left-0 right-0 px-4 z-40 transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] ${selectedTime ? 'translate-y-0 opacity-100 pointer-events-auto scale-100' : 'translate-y-full opacity-0 pointer-events-none scale-95'}`}>
+        {/* Escolha de forma de pagamento (modo online com dinheiro permitido) */}
+        {config?.payment_mode === 'online_obrigatorio' && config?.aceita_dinheiro && (
+          <div className="max-w-[340px] mx-auto w-full mb-2">
+            <div className="flex gap-1.5 p-1 bg-[#09090b]/95 backdrop-blur-xl border border-white/10 rounded-2xl">
+              <button
+                onClick={() => setPayCash(false)}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${!payCash ? 'bg-primary text-primary-foreground' : 'text-white/40 hover:text-white/70'}`}
+              >
+                Pagar online (MP)
+              </button>
+              <button
+                onClick={() => setPayCash(true)}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${payCash ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'}`}
+              >
+                Pagar em dinheiro
+              </button>
+            </div>
+          </div>
+        )}
          <div className="max-w-[340px] mx-auto w-full flex gap-2">
             <button
               onClick={() => setSelectedTime(null)}

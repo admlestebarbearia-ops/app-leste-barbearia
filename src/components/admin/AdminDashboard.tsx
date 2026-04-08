@@ -1543,6 +1543,7 @@ function TabConfiguracoes({
 
   // Fase 4: Mercado Pago
   const [paymentMode, setPaymentMode] = useState<'presencial' | 'online_obrigatorio'>(config.payment_mode ?? 'presencial')
+  const [aceitaDinheiro, setAceitaDinheiro] = useState<boolean>(config.aceita_dinheiro ?? true)
   const [mpExpiryMinutes, setMpExpiryMinutes] = useState(String(config.payment_expiry_minutes ?? 15))
   const [savingMp, setSavingMp] = useState(false)
 
@@ -1685,6 +1686,7 @@ function TabConfiguracoes({
     const result = await saveMercadoPagoConfig({
       payment_mode: paymentMode,
       payment_expiry_minutes: expiryParsed,
+      aceita_dinheiro: aceitaDinheiro,
     })
     setSavingMp(false)
     if (result.success) {
@@ -2224,6 +2226,21 @@ function TabConfiguracoes({
               </p>
             )}
           </div>
+
+          {/* Toggle: aceitar dinheiro (só visível no modo online) */}
+          {paymentMode === 'online_obrigatorio' && (
+            <div className="flex items-center justify-between px-3.5 py-3 rounded-xl border border-border bg-muted/20">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm text-foreground font-medium">Aceitar pagamento em dinheiro</span>
+                <span className="text-xs text-muted-foreground">Cliente poderá escolher pagar na barbearia ao invés do Mercado Pago</span>
+              </div>
+              <Switch
+                checked={aceitaDinheiro}
+                onCheckedChange={setAceitaDinheiro}
+                className="shrink-0 ml-3"
+              />
+            </div>
+          )}
 
           {/* Tempo de expiração */}
           <div className="flex flex-col gap-1.5">
