@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package, Trash2, Eye } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -51,6 +51,12 @@ import {
   deleteProductReservation,
   deleteUser,
   getUserDetails,
+  concludeAppointment,
+  listFinancialEntries,
+  addManualFinancialEntry,
+  deleteManualFinancialEntry,
+  saveCardRate,
+  listClientStats,
 } from '@/app/admin/actions'
 import type {
   BusinessConfig,
@@ -62,11 +68,12 @@ import type {
   Product,
   ProductReservation,
   ProductReservationStatus,
+  FinancialEntry,
 } from '@/lib/supabase/types'
 
 const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab']
 
-type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'barbeiros' | 'admins' | 'galeria' | 'produtos'
+type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'barbeiros' | 'admins' | 'galeria' | 'produtos' | 'financeiro' | 'clientes'
 
 interface Props {
   config: BusinessConfig
@@ -226,6 +233,8 @@ export function AdminDashboard({
     { key: 'barbeiros', label: 'BARBEIROS' },
     { key: 'produtos', label: 'LOJA' },
     { key: 'galeria', label: 'GALERIA' },
+    { key: 'financeiro', label: 'FINANCEIRO' },
+    { key: 'clientes', label: 'CLIENTES' },
     { key: 'admins', label: 'SEGURANÇA' },
   ]
 
@@ -278,6 +287,8 @@ export function AdminDashboard({
             { key: 'barbeiros',     label: 'Barbeiros',   icon: Users },
             { key: 'galeria',       label: 'Galeria',     icon: Images },
             { key: 'produtos',      label: 'Loja',        icon: Package },
+            { key: 'financeiro',    label: 'Financeiro',  icon: DollarSign },
+            { key: 'clientes',      label: 'Clientes',    icon: UserCheck },
             { key: 'admins',        label: 'Segurança',   icon: ShieldCheck },
           ] as { key: Tab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
             <button
@@ -416,6 +427,12 @@ export function AdminDashboard({
             onRefresh={() => router.refresh()}
           />
         )}
+        {tab === 'financeiro' && (
+          <TabFinanceiro config={config} onRefresh={() => router.refresh()} />
+        )}
+        {tab === 'clientes' && (
+          <TabClientes />
+        )}
         </div>
       </main>
 
@@ -517,6 +534,11 @@ function TabHoje({
   const todayStr = new Date().toISOString().split('T')[0]
   const [loading, setLoading] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  // Modal Concluir Agendamento
+  const [concludeAppt, setConcludeAppt] = useState<Appointment | null>(null)
+  const [concludeLoading, setConcludeLoading] = useState(false)
+  const [ratingScore, setRatingScore] = useState(0)
+  const [ratingNote, setRatingNote] = useState('')
   const [newBadge, setNewBadge] = useState(0)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   const swRef = useRef<ServiceWorkerRegistration | null>(null)
@@ -724,6 +746,23 @@ function TabHoje({
       toast.error(result.error ?? 'Erro ao excluir.')
     }
     setLoading(null)
+  }
+
+  const handleConclude = async () => {
+    if (!concludeAppt) return
+    setConcludeLoading(true)
+    const rating = ratingScore > 0 ? { score: ratingScore, note: ratingNote.trim() || undefined } : undefined
+    const result = await concludeAppointment(concludeAppt.id, rating)
+    setConcludeLoading(false)
+    if (result.success) {
+      toast.success('Agendamento concluído!')
+      setConcludeAppt(null)
+      setRatingScore(0)
+      setRatingNote('')
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao concluir.')
+    }
   }
 
   const formatSelectedDay = (dateStr: string) => {
@@ -937,6 +976,7 @@ function TabHoje({
                         'text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border',
                         appt.status === 'confirmado' ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' :
                         appt.status === 'cancelado'  ? 'text-zinc-500 border-white/10 bg-white/5' :
+                        appt.status === 'concluido'  ? 'text-blue-400 border-blue-500/20 bg-blue-500/10' :
                                                         'text-amber-400 border-amber-500/20 bg-amber-500/10',
                       ].join(' ')}>
                         {appt.status}
@@ -957,6 +997,15 @@ function TabHoje({
                           >
                             WhatsApp
                           </a>
+                        )}
+                        {appt.date === todayStr && (
+                          <button
+                            disabled={!!loading}
+                            onClick={() => { setConcludeAppt(appt); setRatingScore(0); setRatingNote('') }}
+                            className="text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                          >
+                            ✓ Concluir
+                          </button>
                         )}
                         <button
                           disabled={!!loading}
@@ -1038,8 +1087,7 @@ function TabHoje({
     </div>
 
     {/* ── Modal: Detalhes do Cliente ── */}
-    <Dialog open={!!selectedAppt} onOpenChange={(open) => { if (!open) setSelectedAppt(null) }}>
-      <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
+    <Dialog open={!!selectedAppt} onOpenChange={(open) => { if (!open) setSelectedAppt(null) }}>      <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-white">Detalhes do Agendamento</DialogTitle>
         </DialogHeader>
@@ -1125,6 +1173,62 @@ function TabHoje({
             )}
           </div>
         )}
+      </DialogContent>
+    </Dialog>
+
+    {/* ── Modal: Concluir Agendamento + Rating ── */}
+    <Dialog open={!!concludeAppt} onOpenChange={(open) => { if (!open) { setConcludeAppt(null); setRatingScore(0); setRatingNote('') } }}>
+      <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-white">Concluir Atendimento</DialogTitle>
+          <DialogDescription className="text-zinc-400">
+            {concludeAppt && (
+              <>
+                {concludeAppt.service_name_snapshot ?? concludeAppt.services?.name ?? 'Serviço'}
+                {concludeAppt.service_price_snapshot != null && (
+                  <> — <span className="text-emerald-400 font-bold">R$ {concludeAppt.service_price_snapshot.toFixed(2).replace('.', ',')}</span></>
+                )}
+              </>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-2">
+          <div className="flex flex-col gap-2">
+            <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Avaliação (opcional)</span>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setRatingScore(ratingScore === star ? 0 : star)}
+                  className={`text-2xl transition-all ${star <= ratingScore ? 'opacity-100' : 'opacity-30 hover:opacity-60'}`}
+                >
+                  ⭐
+                </button>
+              ))}
+            </div>
+            {ratingScore > 0 && (
+              <input
+                type="text"
+                placeholder="Observação (opcional)"
+                value={ratingNote}
+                onChange={(e) => setRatingNote(e.target.value)}
+                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
+              />
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setConcludeAppt(null); setRatingScore(0); setRatingNote('') }} disabled={concludeLoading}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleConclude}
+            disabled={concludeLoading}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {concludeLoading ? 'Salvando...' : 'Confirmar Conclusão'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
     </>
@@ -3107,6 +3211,418 @@ function TabProdutos({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------
+// Tab: Financeiro
+// ------------------------------------------------------------------
+function TabFinanceiro({
+  config,
+  onRefresh,
+}: {
+  config: BusinessConfig
+  onRefresh: () => void
+}) {
+  const today = new Date().toISOString().split('T')[0]
+  const firstOfMonth = today.slice(0, 8) + '01'
+
+  const [entries, setEntries] = useState<FinancialEntry[]>([])
+  const [loadingEntries, setLoadingEntries] = useState(true)
+  const [dateFrom, setDateFrom] = useState(firstOfMonth)
+  const [dateTo, setDateTo] = useState(today)
+
+  // Form nova entrada
+  const [showForm, setShowForm] = useState(false)
+  const [formType, setFormType] = useState<'receita' | 'despesa'>('despesa')
+  const [formSource, setFormSource] = useState<'maquininha' | 'manual'>('manual')
+  const [formDesc, setFormDesc] = useState('')
+  const [formAmount, setFormAmount] = useState('')
+  const [formDate, setFormDate] = useState(today)
+  const [formCardRate, setFormCardRate] = useState<string>('')
+  const [savingForm, setSavingForm] = useState(false)
+
+  // Taxa padrão maquininha
+  const [cardRate, setCardRate] = useState(String(config.default_card_rate_pct ?? 0))
+  const [savingCardRate, setSavingCardRate] = useState(false)
+
+  // Delete confirm
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+
+  const loadEntries = async () => {
+    setLoadingEntries(true)
+    const result = await listFinancialEntries({ dateFrom, dateTo })
+    setEntries(result.entries)
+    setLoadingEntries(false)
+  }
+
+  useEffect(() => { loadEntries() }, [dateFrom, dateTo])
+
+  const totalReceitas = entries.filter(e => e.type === 'receita').reduce((s, e) => s + (e.net_amount ?? e.amount), 0)
+  const totalDespesas = entries.filter(e => e.type === 'despesa').reduce((s, e) => s + e.amount, 0)
+  const saldo = totalReceitas - totalDespesas
+
+  const todayEntries = entries.filter(e => e.date === today)
+  const todayReceitas = todayEntries.filter(e => e.type === 'receita').reduce((s, e) => s + (e.net_amount ?? e.amount), 0)
+  const todayDespesas = todayEntries.filter(e => e.type === 'despesa').reduce((s, e) => s + e.amount, 0)
+
+  const handleSaveCardRate = async () => {
+    setSavingCardRate(true)
+    const rate = parseFloat(cardRate)
+    if (isNaN(rate)) { toast.error('Taxa inválida.'); setSavingCardRate(false); return }
+    const result = await saveCardRate(rate)
+    setSavingCardRate(false)
+    if (result.success) { toast.success('Taxa da maquininha salva.'); onRefresh() }
+    else toast.error(result.error ?? 'Erro.')
+  }
+
+  const handleAddEntry = async () => {
+    const amount = parseFloat(formAmount.replace(',', '.'))
+    if (isNaN(amount) || amount <= 0) { toast.error('Valor inválido.'); return }
+    if (!formDesc.trim()) { toast.error('Descrição obrigatória.'); return }
+    setSavingForm(true)
+    const result = await addManualFinancialEntry({
+      type: formType,
+      source: formSource,
+      amount,
+      description: formDesc,
+      card_rate_pct: formSource === 'maquininha' ? parseFloat(formCardRate || '0') : 0,
+      date: formDate,
+    })
+    setSavingForm(false)
+    if (result.success) {
+      toast.success('Entrada adicionada.')
+      setShowForm(false)
+      setFormDesc('')
+      setFormAmount('')
+      setFormCardRate('')
+      loadEntries()
+    } else {
+      toast.error(result.error ?? 'Erro ao salvar.')
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    const result = await deleteManualFinancialEntry(id)
+    if (result.success) {
+      toast.success('Entrada excluída.')
+      setDeleteConfirmId(null)
+      setEntries(prev => prev.filter(e => e.id !== id))
+    } else {
+      toast.error(result.error ?? 'Erro.')
+    }
+  }
+
+  const fmt = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`
+
+  return (
+    <div className="flex flex-col gap-5">
+      <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">Financeiro</h2>
+
+      {/* Taxa maquininha */}
+      <div className="bg-neutral-900 rounded-2xl p-4 flex flex-col gap-3">
+        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Taxa Maquininha (%)</p>
+        <div className="flex gap-2 items-center">
+          <input
+            type="number"
+            min="0"
+            max="50"
+            step="0.1"
+            value={cardRate}
+            onChange={(e) => setCardRate(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white w-28 focus:outline-none focus:border-white/30"
+          />
+          <span className="text-sm text-zinc-500">%</span>
+          <button
+            onClick={handleSaveCardRate}
+            disabled={savingCardRate}
+            className="text-[10px] font-bold text-white bg-white/10 border border-white/10 px-3 py-2 rounded-lg disabled:opacity-40"
+          >
+            {savingCardRate ? '...' : 'Salvar'}
+          </button>
+        </div>
+        <p className="text-[10px] text-zinc-600">Usada ao calcular valor líquido ao concluir agendamentos via maquininha.</p>
+      </div>
+
+      {/* Filtro de período */}
+      <div className="flex gap-2 items-center flex-wrap">
+        <div className="flex flex-col gap-1">
+          <span className="text-[9px] uppercase tracking-widest text-zinc-600">De</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[9px] uppercase tracking-widest text-zinc-600">Até</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Cards de resumo */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
+          <p className="text-[9px] uppercase tracking-widest text-emerald-400 font-black">Receitas</p>
+          <p className="text-xl font-black text-emerald-400 mt-1">{fmt(totalReceitas)}</p>
+          <p className="text-[9px] text-emerald-600 mt-0.5">Hoje: {fmt(todayReceitas)}</p>
+        </div>
+        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
+          <p className="text-[9px] uppercase tracking-widest text-red-400 font-black">Despesas</p>
+          <p className="text-xl font-black text-red-400 mt-1">{fmt(totalDespesas)}</p>
+          <p className="text-[9px] text-red-600 mt-0.5">Hoje: {fmt(todayDespesas)}</p>
+        </div>
+      </div>
+      <div className={`rounded-2xl p-4 border ${saldo >= 0 ? 'bg-blue-500/10 border-blue-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+        <p className={`text-[9px] uppercase tracking-widest font-black ${saldo >= 0 ? 'text-blue-400' : 'text-red-400'}`}>Saldo do período</p>
+        <p className={`text-2xl font-black mt-1 ${saldo >= 0 ? 'text-blue-400' : 'text-red-400'}`}>{fmt(saldo)}</p>
+      </div>
+
+      {/* Botão nova entrada + formulário */}
+      {!showForm ? (
+        <button
+          onClick={() => setShowForm(true)}
+          className="text-sm font-bold text-white bg-white/10 border border-white/10 rounded-xl px-4 py-3 hover:bg-white/15 transition-colors"
+        >
+          + Adicionar Lançamento Manual
+        </button>
+      ) : (
+        <div className="bg-neutral-900 rounded-2xl p-4 flex flex-col gap-3">
+          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Novo Lançamento</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setFormType('receita')}
+              className={`flex-1 text-xs font-bold py-2 rounded-lg border transition-colors ${formType === 'receita' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-zinc-500 border-white/10'}`}
+            >
+              Receita
+            </button>
+            <button
+              onClick={() => setFormType('despesa')}
+              className={`flex-1 text-xs font-bold py-2 rounded-lg border transition-colors ${formType === 'despesa' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-white/5 text-zinc-500 border-white/10'}`}
+            >
+              Despesa
+            </button>
+          </div>
+          {formType === 'receita' && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setFormSource('manual')}
+                className={`flex-1 text-xs font-bold py-1.5 rounded-lg border transition-colors ${formSource === 'manual' ? 'bg-white/15 text-white border-white/20' : 'bg-white/5 text-zinc-500 border-white/10'}`}
+              >Manual</button>
+              <button
+                onClick={() => setFormSource('maquininha')}
+                className={`flex-1 text-xs font-bold py-1.5 rounded-lg border transition-colors ${formSource === 'maquininha' ? 'bg-white/15 text-white border-white/20' : 'bg-white/5 text-zinc-500 border-white/10'}`}
+              >Maquininha</button>
+            </div>
+          )}
+          <input
+            type="text"
+            placeholder="Descrição"
+            value={formDesc}
+            onChange={(e) => setFormDesc(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none"
+          />
+          <div className="flex gap-2">
+            <input
+              type="number"
+              placeholder="Valor (R$)"
+              value={formAmount}
+              onChange={(e) => setFormAmount(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white flex-1 focus:outline-none"
+            />
+            <input
+              type="date"
+              value={formDate}
+              onChange={(e) => setFormDate(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+            />
+          </div>
+          {formSource === 'maquininha' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                placeholder="Taxa %"
+                value={formCardRate}
+                onChange={(e) => setFormCardRate(e.target.value)}
+                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white w-24 focus:outline-none"
+              />
+              <span className="text-xs text-zinc-500">% taxa maquininha</span>
+            </div>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => setShowForm(false)}
+              className="flex-1 text-xs font-bold text-zinc-400 border border-white/10 py-2 rounded-lg"
+            >Cancelar</button>
+            <button
+              onClick={handleAddEntry}
+              disabled={savingForm}
+              className="flex-1 text-xs font-bold text-white bg-white/15 border border-white/20 py-2 rounded-lg disabled:opacity-40"
+            >{savingForm ? 'Salvando...' : 'Salvar'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista de entradas */}
+      <div className="flex flex-col gap-2">
+        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Lançamentos</p>
+        {loadingEntries ? (
+          <div className="text-center py-8 text-zinc-600 text-sm">Carregando...</div>
+        ) : entries.length === 0 ? (
+          <div className="text-center py-8 bg-neutral-900 rounded-2xl text-zinc-600 text-sm">Nenhum lançamento no período.</div>
+        ) : (
+          entries.map((entry) => (
+            <div key={entry.id} className="bg-neutral-900 rounded-xl p-3 flex items-center gap-3">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${entry.type === 'receita' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{entry.description}</p>
+                <p className="text-[10px] text-zinc-500">
+                  {entry.date?.split('-').reverse().join('/')}
+                  {' · '}
+                  {entry.source === 'agendamento' ? 'Serviço' : entry.source === 'produto' ? 'Produto' : entry.source === 'maquininha' ? 'Maquininha' : 'Manual'}
+                </p>
+              </div>
+              <div className="flex flex-col items-end shrink-0">
+                <span className={`text-sm font-bold ${entry.type === 'receita' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {entry.type === 'receita' ? '+' : '-'}{fmt(entry.type === 'receita' ? (entry.net_amount ?? entry.amount) : entry.amount)}
+                </span>
+                {entry.card_rate_pct != null && entry.card_rate_pct > 0 && (
+                  <span className="text-[9px] text-zinc-600">{entry.card_rate_pct}% taxa</span>
+                )}
+              </div>
+              {/* Só entradas manuais podem ser excluídas */}
+              {(entry.source === 'manual' || entry.source === 'maquininha') && (
+                deleteConfirmId === entry.id ? (
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => handleDelete(entry.id)} className="text-[9px] font-black text-red-400 border border-red-500/20 px-2 py-1 rounded-lg">Sim</button>
+                    <button onClick={() => setDeleteConfirmId(null)} className="text-[9px] font-bold text-zinc-500 border border-white/10 px-2 py-1 rounded-lg">Não</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setDeleteConfirmId(entry.id)} className="text-zinc-600 hover:text-red-400 transition-colors shrink-0">
+                    <Trash2 size={14} />
+                  </button>
+                )
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------
+// Tab: Clientes
+// ------------------------------------------------------------------
+function TabClientes() {
+  type ClientStat = {
+    client_id: string
+    email: string | null
+    display_name: string | null
+    phone: string | null
+    total_services: number
+    total_spent: number
+    avg_rating: number | null
+    last_service_date: string | null
+    is_blocked: boolean
+  }
+
+  const [clients, setClients] = useState<ClientStat[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    listClientStats().then((r) => {
+      setClients(r.clients)
+      setLoading(false)
+    })
+  }, [])
+
+  const dormant = clients.filter((c) => {
+    if (!c.last_service_date) return false
+    const days = Math.floor((Date.now() - new Date(c.last_service_date).getTime()) / 86400000)
+    return days >= 30
+  })
+
+  const fmt = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`
+
+  return (
+    <div className="flex flex-col gap-5">
+      <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">Clientes</h2>
+
+      {loading ? (
+        <div className="text-center py-10 text-zinc-600 text-sm">Carregando...</div>
+      ) : clients.length === 0 ? (
+        <div className="text-center py-10 bg-neutral-900 rounded-2xl text-zinc-600 text-sm">
+          Nenhum atendimento concluído ainda.
+        </div>
+      ) : (
+        <>
+          {/* Clientes sumidos */}
+          {dormant.length > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex flex-col gap-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                {dormant.length} cliente(s) sumido(s) — sem visita há 30+ dias
+              </p>
+              {dormant.map((c) => (
+                <div key={c.client_id} className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-white/80 truncate">{c.display_name ?? c.email ?? 'Cliente'}</span>
+                  {c.phone && (
+                    <a
+                      href={`https://wa.me/55${c.phone.replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 rounded-lg shrink-0"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Ranking */}
+          <div className="flex flex-col gap-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Ranking de Clientes</p>
+            {clients.map((c, i) => (
+              <div key={c.client_id} className="bg-neutral-900 rounded-xl p-3 flex items-center gap-3">
+                <span className="text-sm font-black text-zinc-600 w-5 text-center shrink-0">
+                  {i + 1}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{c.display_name ?? c.email ?? 'Cliente'}</p>
+                  <p className="text-[10px] text-zinc-500">
+                    {c.total_services} serviço(s) · {fmt(c.total_spent)}
+                    {c.last_service_date && ` · último: ${c.last_service_date.split('-').reverse().join('/')}`}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end shrink-0 gap-0.5">
+                  {c.avg_rating != null && (
+                    <span className="text-[10px] font-bold text-amber-400">⭐ {c.avg_rating.toFixed(1)}</span>
+                  )}
+                  {c.phone && (
+                    <a
+                      href={`https://wa.me/55${c.phone.replace(/\D/g, '')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[9px] font-bold text-emerald-500 hover:text-emerald-400"
+                    >
+                      WA
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

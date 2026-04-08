@@ -636,6 +636,37 @@ export async function updateProductReservationStatus(
       .eq('id', id)
 
     if (error) throw error
+
+    // Ao marcar como retirado → cria entrada financeira automática
+    if (status === 'retirado') {
+      const { data: res } = await supabase
+        .from('product_reservations')
+        .select('product_name_snapshot, product_price_snapshot, quantity')
+        .eq('id', id)
+        .single()
+      if (res && res.product_price_snapshot != null) {
+        const { data: configData } = await supabase
+          .from('business_config')
+          .select('default_card_rate_pct')
+          .single()
+        const cardRate = configData?.default_card_rate_pct ?? 0
+        const amount = res.product_price_snapshot * (res.quantity ?? 1)
+        const netAmount = amount * (1 - cardRate / 100)
+        const { data: { user } } = await supabase.auth.getUser()
+        await supabase.from('financial_entries').insert({
+          type: 'receita',
+          source: 'produto',
+          amount,
+          description: res.product_name_snapshot ?? 'Produto',
+          card_rate_pct: cardRate,
+          net_amount: netAmount,
+          reference_id: id,
+          date: new Date().toISOString().split('T')[0],
+          created_by: user?.id ?? null,
+        })
+      }
+    }
+
     revalidatePath('/admin')
     return { success: true }
   } catch (e) {
@@ -796,5 +827,327 @@ export async function getUserDetails(userId: string): Promise<{
     }
   } catch (e) {
     return { success: false, error: (e as Error).message }
+  }
+}
+
+// ─── FASE 3: Concluir agendamento ────────────────────────────────────────────
+// CA: Só agendamentos confirmados do dia atual podem ser concluídos.
+// CA: Ao concluir → cria financial_entry automaticamente.
+export async function concludeAppointment(
+  appointmentId: string,
+  rating?: { score: number; note?: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    const today = new Date().toISOString().split('T')[0]
+
+    const { data: appt, error: fetchError } = await supabase
+      .from('appointments')
+      .select('id, date, status, client_id, service_name_snapshot, service_price_snapshot')
+      .eq('id', appointmentId)
+      .single()
+
+    if (fetchError) throw fetchError
+    if (!appt) return { success: false, error: 'Agendamento não encontrado.' }
+    if (appt.status !== 'confirmado') return { success: false, error: 'Só é possível concluir agendamentos confirmados.' }
+    if (appt.date !== today) return { success: false, error: 'Só é possível concluir agendamentos do dia atual.' }
+
+    // Busca taxa padrão da maquininha
+    const { data: configData } = await supabase
+      .from('business_config')
+      .select('default_card_rate_pct')
+      .single()
+    const cardRate = configData?.default_card_rate_pct ?? 0
+
+    const amount = appt.service_price_snapshot ?? 0
+    const netAmount = amount * (1 - cardRate / 100)
+
+    // Atualiza status do agendamento
+    const { error: updateError } = await supabase
+      .from('appointments')
+      .update({ status: 'concluido' })
+      .eq('id', appointmentId)
+    if (updateError) throw updateError
+
+    // Cria entrada financeira automaticamente (apenas se tem valor registrado)
+    if (amount > 0) {
+      const { data: { user } } = await supabase.auth.getUser()
+      await supabase.from('financial_entries').insert({
+        type: 'receita',
+        source: 'agendamento',
+        amount,
+        description: appt.service_name_snapshot ?? 'Serviço',
+        card_rate_pct: cardRate,
+        net_amount: netAmount,
+        reference_id: appointmentId,
+        date: today,
+        created_by: user?.id ?? null,
+      })
+    }
+
+    // Salva rating se fornecido
+    if (rating && rating.score >= 1 && rating.score <= 5) {
+      await supabase.from('client_ratings').insert({
+        appointment_id: appointmentId,
+        client_id: appt.client_id ?? null,
+        score: rating.score,
+        note: rating.note?.trim() || null,
+      })
+    }
+
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+// ─── FASE 3: Entradas financeiras ────────────────────────────────────────────
+export async function listFinancialEntries(filters?: {
+  dateFrom?: string
+  dateTo?: string
+}): Promise<{ entries: import('@/lib/supabase/types').FinancialEntry[]; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    let query = supabase
+      .from('financial_entries')
+      .select('*')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (filters?.dateFrom) query = query.gte('date', filters.dateFrom)
+    if (filters?.dateTo)   query = query.lte('date', filters.dateTo)
+
+    const { data, error } = await query.limit(500)
+    if (error) throw error
+    return { entries: (data ?? []) as import('@/lib/supabase/types').FinancialEntry[] }
+  } catch (e) {
+    return { entries: [], error: (e as Error).message }
+  }
+}
+
+export async function addManualFinancialEntry(data: {
+  type: 'receita' | 'despesa'
+  source: 'maquininha' | 'manual'
+  amount: number
+  description: string
+  payment_method?: string
+  card_rate_pct?: number
+  date: string
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    if (!data.description.trim()) return { success: false, error: 'Descrição obrigatória.' }
+    if (data.amount <= 0) return { success: false, error: 'Valor deve ser maior que zero.' }
+
+    const cardRate = data.card_rate_pct ?? 0
+    const netAmount = data.amount * (1 - cardRate / 100)
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const { error } = await supabase.from('financial_entries').insert({
+      type: data.type,
+      source: data.source,
+      amount: data.amount,
+      description: data.description.trim(),
+      payment_method: data.payment_method?.trim() || null,
+      card_rate_pct: cardRate,
+      net_amount: netAmount,
+      reference_id: null,
+      date: data.date,
+      created_by: user?.id ?? null,
+    })
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function updateManualFinancialEntry(
+  id: string,
+  data: {
+    amount: number
+    description: string
+    payment_method?: string
+    card_rate_pct?: number
+    date: string
+  }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    // CA: Receitas automáticas (agendamento/produto) não podem ser editadas manualmente
+    const { data: entry } = await supabase
+      .from('financial_entries')
+      .select('source')
+      .eq('id', id)
+      .single()
+    if (!entry) return { success: false, error: 'Entrada não encontrada.' }
+    if (entry.source === 'agendamento' || entry.source === 'produto') {
+      return { success: false, error: 'Entradas automáticas não podem ser editadas.' }
+    }
+
+    const cardRate = data.card_rate_pct ?? 0
+    const netAmount = data.amount * (1 - cardRate / 100)
+
+    const { error } = await supabase
+      .from('financial_entries')
+      .update({
+        amount: data.amount,
+        description: data.description.trim(),
+        payment_method: data.payment_method?.trim() || null,
+        card_rate_pct: cardRate,
+        net_amount: netAmount,
+        date: data.date,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function deleteManualFinancialEntry(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    // CA: Receitas automáticas não podem ser excluídas
+    const { data: entry } = await supabase
+      .from('financial_entries')
+      .select('source')
+      .eq('id', id)
+      .single()
+    if (!entry) return { success: false, error: 'Entrada não encontrada.' }
+    if (entry.source === 'agendamento' || entry.source === 'produto') {
+      return { success: false, error: 'Entradas automáticas não podem ser excluídas.' }
+    }
+
+    const { error } = await supabase.from('financial_entries').delete().eq('id', id)
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+// ─── FASE 3: Taxa da maquininha ──────────────────────────────────────────────
+export async function saveCardRate(
+  ratePct: number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    if (ratePct < 0 || ratePct > 50) return { success: false, error: 'Taxa inválida (0–50%).' }
+    const { error } = await supabase
+      .from('business_config')
+      .update({ default_card_rate_pct: ratePct, updated_at: new Date().toISOString() })
+      .eq('id', 1)
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+// ─── FASE 3: Ranking e dados de clientes ─────────────────────────────────────
+export async function listClientStats(dormantDays = 30): Promise<{
+  clients: {
+    client_id: string
+    email: string | null
+    display_name: string | null
+    phone: string | null
+    total_services: number
+    total_spent: number
+    avg_rating: number | null
+    last_service_date: string | null
+    is_blocked: boolean
+  }[]
+  error?: string
+}> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    // Busca todos os agendamentos concluídos
+    const { data: appts, error: apptError } = await supabase
+      .from('appointments')
+      .select('client_id, date, service_price_snapshot')
+      .eq('status', 'concluido')
+      .not('client_id', 'is', null)
+
+    if (apptError) throw apptError
+
+    // Agrega por client_id
+    const statsMap = new Map<string, {
+      total_services: number
+      total_spent: number
+      last_service_date: string | null
+    }>()
+
+    for (const a of appts ?? []) {
+      if (!a.client_id) continue
+      const existing = statsMap.get(a.client_id) ?? { total_services: 0, total_spent: 0, last_service_date: null }
+      existing.total_services += 1
+      existing.total_spent += a.service_price_snapshot ?? 0
+      if (!existing.last_service_date || a.date > existing.last_service_date) {
+        existing.last_service_date = a.date
+      }
+      statsMap.set(a.client_id, existing)
+    }
+
+    if (statsMap.size === 0) return { clients: [] }
+
+    const clientIds = Array.from(statsMap.keys())
+
+    // Busca perfis
+    const { data: profiles, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, email, display_name, phone, is_blocked')
+      .in('id', clientIds)
+    if (profileError) throw profileError
+
+    // Busca médias de rating
+    const { data: ratings } = await supabase
+      .from('client_ratings')
+      .select('client_id, score')
+      .in('client_id', clientIds)
+
+    const ratingMap = new Map<string, number[]>()
+    for (const r of ratings ?? []) {
+      if (!r.client_id) continue
+      const arr = ratingMap.get(r.client_id) ?? []
+      arr.push(r.score)
+      ratingMap.set(r.client_id, arr)
+    }
+
+    const clients = (profiles ?? []).map((p) => {
+      const stats = statsMap.get(p.id)!
+      const scores = ratingMap.get(p.id)
+      const avg_rating = scores && scores.length > 0
+        ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+        : null
+
+      return {
+        client_id: p.id,
+        email: p.email,
+        display_name: p.display_name,
+        phone: p.phone,
+        total_services: stats.total_services,
+        total_spent: stats.total_spent,
+        avg_rating,
+        last_service_date: stats.last_service_date,
+        is_blocked: p.is_blocked,
+      }
+    }).sort((a, b) => b.total_services - a.total_services)
+
+    return { clients }
+  } catch (e) {
+    return { clients: [], error: (e as Error).message }
   }
 }

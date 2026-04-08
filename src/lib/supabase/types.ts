@@ -1,4 +1,4 @@
-export type AppointmentStatus = 'confirmado' | 'cancelado' | 'faltou'
+export type AppointmentStatus = 'confirmado' | 'cancelado' | 'faltou' | 'concluido'
 export type DisplayNamePreference = 'name' | 'nickname'
 export type GalleryPhotoStatus = 'pending' | 'approved'
 
@@ -39,6 +39,8 @@ export interface BusinessConfig {
   block_multi_day_booking: boolean          // bloqueia cliente com agendamento em data diferente
   calendar_max_days_ahead: number           // dias à frente que o calendário fica aberto (padrão 30)
   calendar_open_until_date: string | null   // data limite absoluta (YYYY-MM-DD) ou null
+  // ─── Fase 3: Financeiro ───────────────────────────────────────────────
+  default_card_rate_pct: number             // taxa padrão da maquininha (%)
   updated_at: string
 }
 
@@ -99,6 +101,7 @@ export interface Appointment {
   created_at: string
   services?: Pick<Service, 'name' | 'price' | 'duration_minutes'>
   profiles?: Pick<Profile, 'is_blocked'> & { display_name?: string; email?: string | null; phone?: string | null }
+  client_ratings?: Pick<ClientRating, 'score' | 'note'> | null
 }
 
 export interface BlockedDevice {
@@ -116,6 +119,35 @@ export interface GalleryPhoto {
   user_name: string | null
   user_id: string | null
   created_at: string
+}
+
+// ─── Fase 3: Rating e Financeiro ────────────────────────────────────────────
+export type FinancialEntryType = 'receita' | 'despesa'
+export type FinancialEntrySource = 'agendamento' | 'produto' | 'maquininha' | 'manual'
+
+export interface ClientRating {
+  id: string
+  appointment_id: string
+  client_id: string | null
+  score: number
+  note: string | null
+  created_at: string
+}
+
+export interface FinancialEntry {
+  id: string
+  type: FinancialEntryType
+  source: FinancialEntrySource
+  amount: number
+  description: string
+  payment_method: string | null
+  card_rate_pct: number
+  net_amount: number
+  reference_id: string | null
+  date: string
+  created_by: string | null
+  created_at: string
+  updated_at: string
 }
 
 // ─── Produtos ────────────────────────────────────────────────────────────────
