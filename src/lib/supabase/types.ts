@@ -37,6 +37,7 @@ export interface BusinessConfig {
   address: string | null
   slot_interval_minutes: number
   // ─── Fase 2: Controles de Agenda ─────────────────────────────────────
+  max_appointments_per_day: number | null   // null = sem limite configurado (usa padrão 3)
   block_multi_day_booking: boolean          // bloqueia cliente com agendamento em data diferente
   calendar_max_days_ahead: number           // dias à frente que o calendário fica aberto (padrão 30)
   calendar_open_until_date: string | null   // data limite absoluta (YYYY-MM-DD) ou null

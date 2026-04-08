@@ -663,6 +663,33 @@ function TabHoje({
           setNewBadge((prev) => prev + 1)
           onRefresh()
         })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'appointments' },
+        (payload: { new: Record<string, unknown>; old: Record<string, unknown> }) => {
+          const updated = payload.new as unknown as Appointment
+          const old = payload.old as unknown as Appointment
+          // Notifica admin apenas quando o status muda para 'cancelado'
+          if (updated.status === 'cancelado' && old.status !== 'cancelado') {
+            const d = updated.date ?? ''
+            const t = updated.start_time?.slice(0, 5) ?? ''
+            const name = updated.client_name ?? 'Cliente'
+            toast.error(`${name} cancelou — ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '❌' })
+            try { navigator.vibrate?.([200, 100, 200]) } catch {}
+            try {
+              const ctx = new AudioContext()
+              const osc = ctx.createOscillator()
+              const gain = ctx.createGain()
+              osc.connect(gain)
+              gain.connect(ctx.destination)
+              osc.type = 'sawtooth'
+              osc.frequency.value = 330
+              gain.gain.setValueAtTime(0.2, ctx.currentTime)
+              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5)
+              osc.start(ctx.currentTime)
+              osc.stop(ctx.currentTime + 0.5)
+            } catch {}
+            onRefresh()
+          }
+        })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [onRefresh])
@@ -1506,6 +1533,7 @@ function TabConfiguracoes({
   const [savingConfig, setSavingConfig] = useState(false)
 
   // Fase 2: Controles de Agenda
+  const [maxApptPerDay, setMaxApptPerDay] = useState(String(config.max_appointments_per_day ?? ''))
   const [blockMultiDay, setBlockMultiDay] = useState(config.block_multi_day_booking ?? false)
   const [maxDaysAhead, setMaxDaysAhead] = useState(String(config.calendar_max_days_ahead ?? 30))
   const [openUntilDate, setOpenUntilDate] = useState(config.calendar_open_until_date ?? '')
@@ -1619,8 +1647,14 @@ function TabConfiguracoes({
       toast.error('Dias de antecedência inválido.')
       return
     }
+    const parsedMaxAppt = maxApptPerDay.trim() === '' ? null : parseInt(maxApptPerDay, 10)
+    if (parsedMaxAppt !== null && (isNaN(parsedMaxAppt) || parsedMaxAppt < 1 || parsedMaxAppt > 20)) {
+      toast.error('Limite de agendamentos por dia deve ser entre 1 e 20.')
+      return
+    }
     setSavingAgenda(true)
     const result = await saveBusinessConfig({
+      max_appointments_per_day: parsedMaxAppt,
       block_multi_day_booking: blockMultiDay,
       calendar_max_days_ahead: maxDaysAheadParsed,
       calendar_open_until_date: openUntilDate.trim() || null,
@@ -1995,6 +2029,24 @@ function TabConfiguracoes({
         </button>
         {openSection === 'agenda' && (
           <div className="border-t border-white/5 px-4 py-5 flex flex-col gap-5">
+
+            {/* Limite de agendamentos por dia */}
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Limite de agendamentos por cliente por dia</Label>
+              <p className="text-[11px] text-muted-foreground/70">Máximo de agendamentos confirmados que um cliente pode ter no mesmo dia. Deixe em branco para usar o padrão (3).</p>
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  type="number"
+                  min="1"
+                  max="20"
+                  placeholder="3"
+                  value={maxApptPerDay}
+                  onChange={(e) => setMaxApptPerDay(e.target.value)}
+                  className="h-9 w-24"
+                />
+                <span className="text-xs text-muted-foreground">por dia</span>
+              </div>
+            </div>
 
             {/* Bloquear multi-dia */}
             <div className="flex items-center justify-between gap-4">

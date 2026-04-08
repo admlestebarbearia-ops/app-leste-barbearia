@@ -194,7 +194,13 @@ export async function createAppointment(data: {
   const signedInWithGoogle = isAuthenticatedUser(user)
   const effectivePhone = normalizePhoneLookup(data.loggedUserPhone ?? data.clientPhone)
 
-  // Rate limiting: max 3 agendamentos confirmados por user_id por dia
+  // Busca configs de agenda (limite diário + controles) em uma única query
+  const { data: agendaConfig } = await supabase
+    .from('business_config')
+    .select('max_appointments_per_day, block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date')
+    .single()
+  const dailyLimit = agendaConfig?.max_appointments_per_day ?? 3
+
   if (signedInWithGoogle) {
     const { count } = await supabase
       .from('appointments')
@@ -203,8 +209,8 @@ export async function createAppointment(data: {
       .eq('date', data.date)
       .eq('status', 'confirmado')
 
-    if (count !== null && count >= 3) {
-      return { success: false, error: 'Limite de 3 agendamentos por dia atingido.' }
+    if (count !== null && count >= dailyLimit) {
+      return { success: false, error: `Limite de ${dailyLimit} agendamento${dailyLimit !== 1 ? 's' : ''} por dia atingido.` }
     }
 
     // Verifica se cliente está bloqueado
@@ -225,16 +231,12 @@ export async function createAppointment(data: {
       .eq('date', data.date)
       .eq('status', 'confirmado')
 
-    if (count !== null && count >= 3) {
-      return { success: false, error: 'Limite de 3 agendamentos por dia atingido para este telefone.' }
+    if (count !== null && count >= dailyLimit) {
+      return { success: false, error: `Limite de ${dailyLimit} agendamento${dailyLimit !== 1 ? 's' : ''} por dia atingido.` }
     }
   }
 
   // ─── Regras de agenda (Fase 2) ────────────────────────────────────────────
-  const { data: agendaConfig } = await supabase
-    .from('business_config')
-    .select('block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date')
-    .single()
 
   if (agendaConfig) {
     // 2. Bloquear agendamento multi-dia (cliente com confirmado em outra data)
