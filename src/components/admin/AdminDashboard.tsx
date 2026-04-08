@@ -24,8 +24,7 @@ import {
   updateAppointmentStatus,
   deleteAppointment,
   toggleBlockClient,
-  saveBusinessConfig,
-  saveWorkingHours,
+  saveBusinessConfig,  saveWorkingHours,
   addSpecialSchedule,
   removeSpecialSchedule,
   upsertService,
@@ -3233,21 +3232,21 @@ function TabFinanceiro({
   const [dateFrom, setDateFrom] = useState(firstOfMonth)
   const [dateTo, setDateTo] = useState(today)
 
-  // Form nova entrada
+  // Configurações de maquininha
+  const [hasMachine, setHasMachine] = useState(config.has_card_machine ?? false)
+  const [cardRateInput, setCardRateInput] = useState(String(config.default_card_rate_pct ?? ''))
+  const [savingMachine, setSavingMachine] = useState(false)
+  const [machineSetup, setMachineSetup] = useState(false) // mostrar form de setup
+
+  // Modal novo lançamento
   const [showForm, setShowForm] = useState(false)
-  const [formType, setFormType] = useState<'receita' | 'despesa'>('despesa')
-  const [formSource, setFormSource] = useState<'maquininha' | 'manual'>('manual')
+  // Tipo simplificado: 'entrada' (dinheiro que entrou) | 'saida' (dinheiro que saiu)
+  const [formKind, setFormKind] = useState<'entrada' | 'saida'>('saida')
   const [formDesc, setFormDesc] = useState('')
   const [formAmount, setFormAmount] = useState('')
   const [formDate, setFormDate] = useState(today)
-  const [formCardRate, setFormCardRate] = useState<string>('')
   const [savingForm, setSavingForm] = useState(false)
 
-  // Taxa padrão maquininha
-  const [cardRate, setCardRate] = useState(String(config.default_card_rate_pct ?? 0))
-  const [savingCardRate, setSavingCardRate] = useState(false)
-
-  // Delete confirm
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
   const loadEntries = async () => {
@@ -3259,44 +3258,54 @@ function TabFinanceiro({
 
   useEffect(() => { loadEntries() }, [dateFrom, dateTo])
 
-  const totalReceitas = entries.filter(e => e.type === 'receita').reduce((s, e) => s + (e.net_amount ?? e.amount), 0)
-  const totalDespesas = entries.filter(e => e.type === 'despesa').reduce((s, e) => s + e.amount, 0)
-  const saldo = totalReceitas - totalDespesas
+  const totalEntradas = entries.filter(e => e.type === 'receita').reduce((s, e) => s + (e.net_amount ?? e.amount), 0)
+  const totalSaidas   = entries.filter(e => e.type === 'despesa').reduce((s, e) => s + e.amount, 0)
+  const saldo = totalEntradas - totalSaidas
 
-  const todayEntries = entries.filter(e => e.date === today)
-  const todayReceitas = todayEntries.filter(e => e.type === 'receita').reduce((s, e) => s + (e.net_amount ?? e.amount), 0)
-  const todayDespesas = todayEntries.filter(e => e.type === 'despesa').reduce((s, e) => s + e.amount, 0)
+  const todayEntries  = entries.filter(e => e.date === today)
+  const todayEntradas = todayEntries.filter(e => e.type === 'receita').reduce((s, e) => s + (e.net_amount ?? e.amount), 0)
+  const todaySaidas   = todayEntries.filter(e => e.type === 'despesa').reduce((s, e) => s + e.amount, 0)
 
-  const handleSaveCardRate = async () => {
-    setSavingCardRate(true)
-    const rate = parseFloat(cardRate)
-    if (isNaN(rate)) { toast.error('Taxa inválida.'); setSavingCardRate(false); return }
-    const result = await saveCardRate(rate)
-    setSavingCardRate(false)
-    if (result.success) { toast.success('Taxa da maquininha salva.'); onRefresh() }
-    else toast.error(result.error ?? 'Erro.')
+  const handleSaveMachine = async () => {
+    setSavingMachine(true)
+    const rate = hasMachine ? parseFloat(cardRateInput.replace(',', '.')) : 0
+    if (hasMachine && (isNaN(rate) || rate < 0 || rate > 50)) {
+      toast.error('Taxa inválida. Use um número entre 0 e 50.')
+      setSavingMachine(false)
+      return
+    }
+    const [rateResult, configResult] = await Promise.all([
+      saveCardRate(rate),
+      saveBusinessConfig({ has_card_machine: hasMachine } as Partial<BusinessConfig>),
+    ])
+    setSavingMachine(false)
+    if (rateResult.success && configResult.success) {
+      toast.success('Configuração salva.')
+      setMachineSetup(false)
+      onRefresh()
+    } else {
+      toast.error(rateResult.error ?? configResult.error ?? 'Erro.')
+    }
   }
 
   const handleAddEntry = async () => {
     const amount = parseFloat(formAmount.replace(',', '.'))
-    if (isNaN(amount) || amount <= 0) { toast.error('Valor inválido.'); return }
-    if (!formDesc.trim()) { toast.error('Descrição obrigatória.'); return }
+    if (isNaN(amount) || amount <= 0) { toast.error('Informe um valor válido.'); return }
+    if (!formDesc.trim()) { toast.error('Informe uma descrição.'); return }
     setSavingForm(true)
     const result = await addManualFinancialEntry({
-      type: formType,
-      source: formSource,
+      type: formKind === 'entrada' ? 'receita' : 'despesa',
+      source: 'manual',
       amount,
-      description: formDesc,
-      card_rate_pct: formSource === 'maquininha' ? parseFloat(formCardRate || '0') : 0,
+      description: formDesc.trim(),
       date: formDate,
     })
     setSavingForm(false)
     if (result.success) {
-      toast.success('Entrada adicionada.')
+      toast.success('Lançamento salvo.')
       setShowForm(false)
       setFormDesc('')
       setFormAmount('')
-      setFormCardRate('')
       loadEntries()
     } else {
       toast.error(result.error ?? 'Erro ao salvar.')
@@ -3306,7 +3315,7 @@ function TabFinanceiro({
   const handleDelete = async (id: string) => {
     const result = await deleteManualFinancialEntry(id)
     if (result.success) {
-      toast.success('Entrada excluída.')
+      toast.success('Removido.')
       setDeleteConfirmId(null)
       setEntries(prev => prev.filter(e => e.id !== id))
     } else {
@@ -3314,199 +3323,257 @@ function TabFinanceiro({
     }
   }
 
-  const fmt = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`
+  const brl = (v: number) =>
+    v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+  const sourceLabel = (s: string) => {
+    if (s === 'agendamento') return 'Serviço'
+    if (s === 'produto')     return 'Produto'
+    return 'Manual'
+  }
 
   return (
-    <div className="flex flex-col gap-5">
-      <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">Financeiro</h2>
+    <div className="flex flex-col gap-6">
 
-      {/* Taxa maquininha */}
-      <div className="bg-neutral-900 rounded-2xl p-4 flex flex-col gap-3">
-        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Taxa Maquininha (%)</p>
-        <div className="flex gap-2 items-center">
-          <input
-            type="number"
-            min="0"
-            max="50"
-            step="0.1"
-            value={cardRate}
-            onChange={(e) => setCardRate(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white w-28 focus:outline-none focus:border-white/30"
-          />
-          <span className="text-sm text-zinc-500">%</span>
-          <button
-            onClick={handleSaveCardRate}
-            disabled={savingCardRate}
-            className="text-[10px] font-bold text-white bg-white/10 border border-white/10 px-3 py-2 rounded-lg disabled:opacity-40"
-          >
-            {savingCardRate ? '...' : 'Salvar'}
-          </button>
-        </div>
-        <p className="text-[10px] text-zinc-600">Usada ao calcular valor líquido ao concluir agendamentos via maquininha.</p>
+      {/* Cabeçalho */}
+      <div>
+        <h2 className="text-lg font-bold text-white">Financeiro</h2>
+        <p className="text-xs text-zinc-500 mt-0.5">Controle de entradas e saídas do caixa</p>
       </div>
 
-      {/* Filtro de período */}
-      <div className="flex gap-2 items-center flex-wrap">
-        <div className="flex flex-col gap-1">
-          <span className="text-[9px] uppercase tracking-widest text-zinc-600">De</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
-          />
+      {/* ── Configuração de maquininha ── */}
+      <div className="border border-white/8 rounded-xl overflow-hidden">
+        <button
+          onClick={() => setMachineSetup(v => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/3 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className={`w-1.5 h-1.5 rounded-full ${hasMachine ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+            <span className="text-sm text-white">
+              {hasMachine ? `Maquininha configurada — taxa ${config.default_card_rate_pct ?? 0}%` : 'Sem maquininha'}
+            </span>
+          </div>
+          <span className="text-[10px] text-zinc-500">{machineSetup ? 'Fechar' : 'Configurar'}</span>
+        </button>
+
+        {machineSetup && (
+          <div className="px-4 pb-4 flex flex-col gap-4 border-t border-white/8">
+            <p className="text-xs text-zinc-400 pt-3">
+              Você usa maquininha de cartão? Se sim, informe a taxa cobrada pela operadora (ex: 2,5%). Isso será descontado automaticamente das receitas.
+            </p>
+
+            {/* Pergunta simples: tem ou não tem */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setHasMachine(false)}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                  !hasMachine
+                    ? 'bg-white text-black border-white'
+                    : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/20'
+                }`}
+              >
+                Não uso maquininha
+              </button>
+              <button
+                onClick={() => setHasMachine(true)}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                  hasMachine
+                    ? 'bg-white text-black border-white'
+                    : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/20'
+                }`}
+              >
+                Uso maquininha
+              </button>
+            </div>
+
+            {hasMachine && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs text-zinc-400">Taxa da operadora (%)</label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="number"
+                    min="0"
+                    max="50"
+                    step="0.1"
+                    placeholder="Ex: 2.5"
+                    value={cardRateInput}
+                    onChange={(e) => setCardRateInput(e.target.value)}
+                    className="w-28 bg-transparent border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/40 placeholder-zinc-600"
+                  />
+                  <span className="text-sm text-zinc-500">%</span>
+                </div>
+                <p className="text-[11px] text-zinc-600">Você encontra essa taxa no contrato ou app da sua maquininha.</p>
+              </div>
+            )}
+
+            <button
+              onClick={handleSaveMachine}
+              disabled={savingMachine}
+              className="self-start px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold disabled:opacity-40 hover:bg-zinc-100 transition-colors"
+            >
+              {savingMachine ? 'Salvando...' : 'Salvar'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Seletor de período ── */}
+      <div className="flex items-center gap-2 text-xs text-zinc-400">
+        <span>De</span>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="bg-transparent border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/30"
+        />
+        <span>até</span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="bg-transparent border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/30"
+        />
+      </div>
+
+      {/* ── Cards de resumo ── */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="flex flex-col gap-1 px-3 py-3 rounded-xl bg-white/3 border border-white/6">
+          <span className="text-[10px] text-zinc-500">Entrou</span>
+          <span className="text-base font-semibold text-emerald-400">{brl(totalEntradas)}</span>
+          <span className="text-[10px] text-zinc-600">Hoje: {brl(todayEntradas)}</span>
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-[9px] uppercase tracking-widest text-zinc-600">Até</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
-          />
+        <div className="flex flex-col gap-1 px-3 py-3 rounded-xl bg-white/3 border border-white/6">
+          <span className="text-[10px] text-zinc-500">Saiu</span>
+          <span className="text-base font-semibold text-red-400">{brl(totalSaidas)}</span>
+          <span className="text-[10px] text-zinc-600">Hoje: {brl(todaySaidas)}</span>
+        </div>
+        <div className="flex flex-col gap-1 px-3 py-3 rounded-xl bg-white/3 border border-white/6">
+          <span className="text-[10px] text-zinc-500">Saldo</span>
+          <span className={`text-base font-semibold ${saldo >= 0 ? 'text-white' : 'text-red-400'}`}>{brl(saldo)}</span>
+          <span className="text-[10px] text-zinc-600">{saldo >= 0 ? 'positivo' : 'negativo'}</span>
         </div>
       </div>
 
-      {/* Cards de resumo */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
-          <p className="text-[9px] uppercase tracking-widest text-emerald-400 font-black">Receitas</p>
-          <p className="text-xl font-black text-emerald-400 mt-1">{fmt(totalReceitas)}</p>
-          <p className="text-[9px] text-emerald-600 mt-0.5">Hoje: {fmt(todayReceitas)}</p>
-        </div>
-        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
-          <p className="text-[9px] uppercase tracking-widest text-red-400 font-black">Despesas</p>
-          <p className="text-xl font-black text-red-400 mt-1">{fmt(totalDespesas)}</p>
-          <p className="text-[9px] text-red-600 mt-0.5">Hoje: {fmt(todayDespesas)}</p>
-        </div>
-      </div>
-      <div className={`rounded-2xl p-4 border ${saldo >= 0 ? 'bg-blue-500/10 border-blue-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
-        <p className={`text-[9px] uppercase tracking-widest font-black ${saldo >= 0 ? 'text-blue-400' : 'text-red-400'}`}>Saldo do período</p>
-        <p className={`text-2xl font-black mt-1 ${saldo >= 0 ? 'text-blue-400' : 'text-red-400'}`}>{fmt(saldo)}</p>
-      </div>
-
-      {/* Botão nova entrada + formulário */}
+      {/* ── Botão + formulário de novo lançamento ── */}
       {!showForm ? (
         <button
           onClick={() => setShowForm(true)}
-          className="text-sm font-bold text-white bg-white/10 border border-white/10 rounded-xl px-4 py-3 hover:bg-white/15 transition-colors"
+          className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-white/10 text-sm text-zinc-300 hover:border-white/20 hover:text-white transition-colors"
         >
-          + Adicionar Lançamento Manual
+          <span className="text-base leading-none">+</span>
+          Registrar lançamento
         </button>
       ) : (
-        <div className="bg-neutral-900 rounded-2xl p-4 flex flex-col gap-3">
-          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Novo Lançamento</p>
+        <div className="border border-white/10 rounded-xl p-4 flex flex-col gap-4">
+          <p className="text-sm font-semibold text-white">Novo lançamento</p>
+
+          {/* Entrou / Saiu — linguagem direta */}
           <div className="flex gap-2">
             <button
-              onClick={() => setFormType('receita')}
-              className={`flex-1 text-xs font-bold py-2 rounded-lg border transition-colors ${formType === 'receita' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-zinc-500 border-white/10'}`}
+              onClick={() => setFormKind('entrada')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                formKind === 'entrada'
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  : 'bg-transparent text-zinc-500 border-white/8 hover:border-white/15'
+              }`}
             >
-              Receita
+              Dinheiro que entrou
             </button>
             <button
-              onClick={() => setFormType('despesa')}
-              className={`flex-1 text-xs font-bold py-2 rounded-lg border transition-colors ${formType === 'despesa' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-white/5 text-zinc-500 border-white/10'}`}
+              onClick={() => setFormKind('saida')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                formKind === 'saida'
+                  ? 'bg-red-500/15 text-red-300 border-red-500/30'
+                  : 'bg-transparent text-zinc-500 border-white/8 hover:border-white/15'
+              }`}
             >
-              Despesa
+              Dinheiro que saiu
             </button>
           </div>
-          {formType === 'receita' && (
+
+          <p className="text-[11px] text-zinc-500 -mt-2">
+            {formKind === 'entrada'
+              ? 'Use para registrar receitas não capturadas automaticamente (ex: pagamento avulso).'
+              : 'Use para registrar uma despesa: aluguel, produto de limpeza, material, etc.'}
+          </p>
+
+          <div className="flex flex-col gap-2">
+            <input
+              type="text"
+              placeholder={formKind === 'entrada' ? 'O que foi? Ex: Corte avulso' : 'O que foi? Ex: Aluguel, Produto X'}
+              value={formDesc}
+              onChange={(e) => setFormDesc(e.target.value)}
+              className="bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
+            />
             <div className="flex gap-2">
-              <button
-                onClick={() => setFormSource('manual')}
-                className={`flex-1 text-xs font-bold py-1.5 rounded-lg border transition-colors ${formSource === 'manual' ? 'bg-white/15 text-white border-white/20' : 'bg-white/5 text-zinc-500 border-white/10'}`}
-              >Manual</button>
-              <button
-                onClick={() => setFormSource('maquininha')}
-                className={`flex-1 text-xs font-bold py-1.5 rounded-lg border transition-colors ${formSource === 'maquininha' ? 'bg-white/15 text-white border-white/20' : 'bg-white/5 text-zinc-500 border-white/10'}`}
-              >Maquininha</button>
-            </div>
-          )}
-          <input
-            type="text"
-            placeholder="Descrição"
-            value={formDesc}
-            onChange={(e) => setFormDesc(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none"
-          />
-          <div className="flex gap-2">
-            <input
-              type="number"
-              placeholder="Valor (R$)"
-              value={formAmount}
-              onChange={(e) => setFormAmount(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white flex-1 focus:outline-none"
-            />
-            <input
-              type="date"
-              value={formDate}
-              onChange={(e) => setFormDate(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
-            />
-          </div>
-          {formSource === 'maquininha' && (
-            <div className="flex items-center gap-2">
               <input
                 type="number"
-                placeholder="Taxa %"
-                value={formCardRate}
-                onChange={(e) => setFormCardRate(e.target.value)}
-                className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white w-24 focus:outline-none"
+                placeholder="Valor em R$"
+                value={formAmount}
+                onChange={(e) => setFormAmount(e.target.value)}
+                className="flex-1 bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
               />
-              <span className="text-xs text-zinc-500">% taxa maquininha</span>
+              <input
+                type="date"
+                value={formDate}
+                onChange={(e) => setFormDate(e.target.value)}
+                className="bg-transparent border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-white/30"
+              />
             </div>
-          )}
-          <div className="flex gap-2 pt-1">
+          </div>
+
+          <div className="flex gap-2">
             <button
-              onClick={() => setShowForm(false)}
-              className="flex-1 text-xs font-bold text-zinc-400 border border-white/10 py-2 rounded-lg"
-            >Cancelar</button>
+              onClick={() => { setShowForm(false); setFormDesc(''); setFormAmount('') }}
+              className="flex-1 py-2.5 rounded-lg text-sm text-zinc-500 border border-white/8 hover:border-white/15 transition-colors"
+            >
+              Cancelar
+            </button>
             <button
               onClick={handleAddEntry}
               disabled={savingForm}
-              className="flex-1 text-xs font-bold text-white bg-white/15 border border-white/20 py-2 rounded-lg disabled:opacity-40"
-            >{savingForm ? 'Salvando...' : 'Salvar'}</button>
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-white text-black disabled:opacity-40 hover:bg-zinc-100 transition-colors"
+            >
+              {savingForm ? 'Salvando...' : 'Salvar'}
+            </button>
           </div>
         </div>
       )}
 
-      {/* Lista de entradas */}
-      <div className="flex flex-col gap-2">
-        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Lançamentos</p>
+      {/* ── Lista de lançamentos ── */}
+      <div className="flex flex-col gap-1">
         {loadingEntries ? (
-          <div className="text-center py-8 text-zinc-600 text-sm">Carregando...</div>
+          <p className="text-center py-8 text-zinc-600 text-sm">Carregando...</p>
         ) : entries.length === 0 ? (
-          <div className="text-center py-8 bg-neutral-900 rounded-2xl text-zinc-600 text-sm">Nenhum lançamento no período.</div>
+          <p className="text-center py-8 text-zinc-600 text-sm">Nenhum lançamento no período.</p>
         ) : (
           entries.map((entry) => (
-            <div key={entry.id} className="bg-neutral-900 rounded-xl p-3 flex items-center gap-3">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${entry.type === 'receita' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+            <div key={entry.id} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/3 transition-colors group">
+              <div className={`w-1 h-8 rounded-full shrink-0 ${entry.type === 'receita' ? 'bg-emerald-500' : 'bg-red-500'}`} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{entry.description}</p>
-                <p className="text-[10px] text-zinc-500">
+                <p className="text-sm text-white truncate">{entry.description}</p>
+                <p className="text-[11px] text-zinc-600">
                   {entry.date?.split('-').reverse().join('/')}
                   {' · '}
-                  {entry.source === 'agendamento' ? 'Serviço' : entry.source === 'produto' ? 'Produto' : entry.source === 'maquininha' ? 'Maquininha' : 'Manual'}
+                  {sourceLabel(entry.source)}
+                  {entry.card_rate_pct != null && entry.card_rate_pct > 0 && ` · ${entry.card_rate_pct}% taxa`}
                 </p>
               </div>
-              <div className="flex flex-col items-end shrink-0">
-                <span className={`text-sm font-bold ${entry.type === 'receita' ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {entry.type === 'receita' ? '+' : '-'}{fmt(entry.type === 'receita' ? (entry.net_amount ?? entry.amount) : entry.amount)}
-                </span>
-                {entry.card_rate_pct != null && entry.card_rate_pct > 0 && (
-                  <span className="text-[9px] text-zinc-600">{entry.card_rate_pct}% taxa</span>
-                )}
-              </div>
-              {/* Só entradas manuais podem ser excluídas */}
+              <span className={`text-sm font-semibold shrink-0 ${entry.type === 'receita' ? 'text-emerald-400' : 'text-red-400'}`}>
+                {entry.type === 'receita' ? '+' : '−'}{brl(entry.type === 'receita' ? (entry.net_amount ?? entry.amount) : entry.amount)}
+              </span>
               {(entry.source === 'manual' || entry.source === 'maquininha') && (
                 deleteConfirmId === entry.id ? (
                   <div className="flex gap-1 shrink-0">
-                    <button onClick={() => handleDelete(entry.id)} className="text-[9px] font-black text-red-400 border border-red-500/20 px-2 py-1 rounded-lg">Sim</button>
-                    <button onClick={() => setDeleteConfirmId(null)} className="text-[9px] font-bold text-zinc-500 border border-white/10 px-2 py-1 rounded-lg">Não</button>
+                    <button onClick={() => handleDelete(entry.id)} className="text-[10px] text-red-400 border border-red-500/20 px-2 py-1 rounded">Sim</button>
+                    <button onClick={() => setDeleteConfirmId(null)} className="text-[10px] text-zinc-500 border border-white/10 px-2 py-1 rounded">Não</button>
                   </div>
                 ) : (
-                  <button onClick={() => setDeleteConfirmId(entry.id)} className="text-zinc-600 hover:text-red-400 transition-colors shrink-0">
-                    <Trash2 size={14} />
+                  <button
+                    onClick={() => setDeleteConfirmId(entry.id)}
+                    className="text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                  >
+                    <Trash2 size={13} />
                   </button>
                 )
               )}

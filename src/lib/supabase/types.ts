@@ -40,7 +40,8 @@ export interface BusinessConfig {
   calendar_max_days_ahead: number           // dias à frente que o calendário fica aberto (padrão 30)
   calendar_open_until_date: string | null   // data limite absoluta (YYYY-MM-DD) ou null
   // ─── Fase 3: Financeiro ───────────────────────────────────────────────
-  default_card_rate_pct: number             // taxa padrão da maquininha (%)
+  has_card_machine: boolean                 // o estabelecimento usa maquininha?
+  default_card_rate_pct: number             // taxa da maquininha (%)
   updated_at: string
 }
 
