@@ -1,24 +1,75 @@
 // Service Worker — Barbearia Leste
-// Permite notificações na tela de bloqueio e em segundo plano
+const STATIC_CACHE = 'leste-static-v2'
 
 self.addEventListener('install', () => {
   self.skipWaiting()
 })
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim())
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    Promise.all([
+      clients.claim(),
+      // Inicia a requisição de navegação em paralelo com o boot do SW
+      // elimina o overhead de esperar o SW iniciar antes de ir à rede
+      self.registration.navigationPreload?.enable(),
+    ])
+  )
 })
 
-// Recebe mensagem da página para mostrar notificação via SW
-// (funciona mesmo com a aba em segundo plano / tela bloqueada)
+self.addEventListener('fetch', (e) => {
+  const { request } = e
+  const url = new URL(request.url)
+
+  // Chunks JS/CSS do Next.js têm hash no nome — nunca mudam, cache permanente
+  if (url.pathname.startsWith('/_next/static/')) {
+    e.respondWith(
+      caches.match(request).then(cached =>
+        cached ?? fetch(request).then(res => {
+          if (res.ok) caches.open(STATIC_CACHE).then(c => c.put(request, res.clone()))
+          return res
+        })
+      )
+    )
+    return
+  }
+
+  // Imagens estáticas — cache-first
+  if (request.destination === 'image') {
+    e.respondWith(
+      caches.match(request).then(cached =>
+        cached ?? fetch(request).then(res => {
+          if (res.ok) caches.open(STATIC_CACHE).then(c => c.put(request, res.clone()))
+          return res
+        })
+      )
+    )
+    return
+  }
+
+  // Navegação — usa o preloadResponse (já foi disparado em paralelo com o boot do SW)
+  if (request.mode === 'navigate') {
+    e.respondWith(
+      (async () => {
+        try {
+          const preloaded = await e.preloadResponse
+          if (preloaded) return preloaded
+        } catch {}
+        return fetch(request)
+      })()
+    )
+    return
+  }
+})
+
+// Push notifications via postMessage da página
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SHOW_NOTIFICATION') {
     const { title, body, icon } = event.data
     event.waitUntil(
       self.registration.showNotification(title, {
         body,
-        icon: icon || '/android-chrome-192x192.png',
-        badge: '/android-chrome-192x192.png',
+        icon: icon || '/logo2.png',
+        badge: '/logo2.png',
         vibrate: [300, 100, 300, 100, 300],
         requireInteraction: false,
         tag: 'barbearia-leste-notif',
