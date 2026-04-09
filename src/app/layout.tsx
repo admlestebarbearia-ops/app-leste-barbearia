@@ -71,6 +71,14 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
       suppressHydrationWarning
     >
+      <head>
+        {/* Captura beforeinstallprompt antes do React montar — evento dispara cedo demais para useEffect */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__pwaPrompt=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__pwaPrompt=e;});`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col antialiased overflow-x-hidden" suppressHydrationWarning>
         <ThemeProvider
           attribute="class"
