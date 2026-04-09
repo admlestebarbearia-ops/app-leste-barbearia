@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Image from 'next/image'
 import { X, Download, Share } from 'lucide-react'
 
 const DISMISSED_KEY = 'pwa-prompt-dismissed-v2'
@@ -90,12 +89,13 @@ export default function PwaPrompt() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pointer-events-none">
       <div className="pointer-events-auto w-full max-w-sm mx-auto bg-card border border-border rounded-2xl shadow-2xl flex items-center gap-3 p-3">
-        <Image
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
           src="/logo2.png"
           alt="Leste Barbearia"
           width={48}
           height={48}
-          className="rounded-xl shrink-0"
+          className="rounded-xl shrink-0 w-12 h-12 object-cover"
         />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold leading-tight">Leste Barbearia</p>
