@@ -1,5 +1,6 @@
 // Service Worker — Barbearia Leste
 const STATIC_CACHE = 'leste-static-v2'
+const NOTIF_ICON = '/android-chrome-192x192.png'
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -9,8 +10,6 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     Promise.all([
       clients.claim(),
-      // Inicia a requisição de navegação em paralelo com o boot do SW
-      // elimina o overhead de esperar o SW iniciar antes de ir à rede
       self.registration.navigationPreload?.enable(),
     ])
   )
@@ -20,7 +19,6 @@ self.addEventListener('fetch', (e) => {
   const { request } = e
   const url = new URL(request.url)
 
-  // Chunks JS/CSS do Next.js têm hash no nome — nunca mudam, cache permanente
   if (url.pathname.startsWith('/_next/static/')) {
     e.respondWith(
       caches.match(request).then(cached =>
@@ -33,7 +31,6 @@ self.addEventListener('fetch', (e) => {
     return
   }
 
-  // Imagens estáticas — cache-first
   if (request.destination === 'image') {
     e.respondWith(
       caches.match(request).then(cached =>
@@ -46,7 +43,6 @@ self.addEventListener('fetch', (e) => {
     return
   }
 
-  // Navegação — usa o preloadResponse (já foi disparado em paralelo com o boot do SW)
   if (request.mode === 'navigate') {
     e.respondWith(
       (async () => {
@@ -61,15 +57,65 @@ self.addEventListener('fetch', (e) => {
   }
 })
 
-// Push notifications via postMessage da página
+// ─── Push recebido do servidor (web-push / VAPID) ────────────────────────────
+// Este listener é o que faz a notificação aparecer com o app fechado/minimizado.
+// Sem ele o push chega no SW mas não exibe nada ao usuário.
+self.addEventListener('push', (e) => {
+  let title = 'Leste Barbearia'
+  let body = 'Você tem um lembrete.'
+  let url = '/'
+
+  try {
+    const data = e.data?.json()
+    if (data?.title) title = data.title
+    if (data?.body) body = data.body
+    if (data?.url) url = data.url
+  } catch {}
+
+  e.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: NOTIF_ICON,
+      badge: NOTIF_ICON,
+      // vibrate é ignorado no iOS — funciona apenas no Android
+      vibrate: [300, 100, 300, 100, 300],
+      requireInteraction: false,
+      tag: 'barbearia-leste-notif',
+      renotify: true,
+      data: { url },
+    })
+  )
+})
+
+// ─── Clique na notificação — abre/foca o app ────────────────────────────────
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close()
+  const url = e.notification.data?.url ?? '/'
+
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // Se já há uma aba/janela do app aberta, foca ela
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(url)
+          return client.focus()
+        }
+      }
+      // Senão abre uma nova janela
+      return clients.openWindow(url)
+    })
+  )
+})
+
+// ─── postMessage da página (fallback quando app está aberto) ─────────────────
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SHOW_NOTIFICATION') {
     const { title, body, icon } = event.data
     event.waitUntil(
       self.registration.showNotification(title, {
         body,
-        icon: icon || '/logo2.png',
-        badge: '/logo2.png',
+        icon: icon || NOTIF_ICON,
+        badge: NOTIF_ICON,
         vibrate: [300, 100, 300, 100, 300],
         requireInteraction: false,
         tag: 'barbearia-leste-notif',
@@ -78,6 +124,7 @@ self.addEventListener('message', (event) => {
     )
   }
 })
+
 
 // ─── Web Push (lembretes do servidor) ────────────────────────────────────
 self.addEventListener('push', (event) => {
