@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
   const appId = process.env.MERCADOPAGO_APP_ID
   const appSecret = process.env.MERCADOPAGO_APP_SECRET
-  const redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/mercadopago/callback`
+  const redirectUri = new URL('/api/auth/mercadopago/callback', request.url).toString()
 
   if (!appId || !appSecret) {
     console.error('[MP OAuth] Variáveis de ambiente não configuradas')

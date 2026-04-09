@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     sameSite: 'lax',
   })
 
-  const redirectUri = `${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/mercadopago/callback`
+  const redirectUri = new URL('/api/auth/mercadopago/callback', request.url).toString()
   const authUrl =
     `https://auth.mercadopago.com/authorization` +
     `?client_id=${encodeURIComponent(appId)}` +
