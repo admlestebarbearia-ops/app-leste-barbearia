@@ -190,7 +190,7 @@ export async function createAppointment(data: {
   clientPhone?: string
   loggedUserPhone?: string
   payCash?: boolean
-}): Promise<{ success: boolean; appointmentId?: string; error?: string; mpInitPoint?: string }> {
+}): Promise<{ success: boolean; appointmentId?: string; error?: string; preferenceId?: string; amount?: number }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const signedInWithGoogle = isAuthenticatedUser(user)
@@ -452,7 +452,7 @@ export async function createAppointment(data: {
       })
 
       revalidatePath('/agendar')
-      return { success: true, appointmentId: appointment.id, mpInitPoint: mpResult.initPoint }
+      return { success: true, appointmentId: appointment.id, preferenceId: mpResult.preferenceId, amount: Number(serviceSnapshot.price) }
     } catch (mpError) {
       // Reverter: cancela o agendamento criado para não bloquear o slot indefinidamente
       const adminForRevert = createAdminClient()
@@ -739,4 +739,33 @@ export async function createProductReservation(data: {
 
   revalidatePath('/reservas')
   return { success: true, reservationId: reservation.id }
+}
+
+// ─── Cancelar agendamento aguardando pagamento ──────────────────────────────
+export async function cancelPendingPayment(
+  appointmentId: string
+): Promise<{ success: boolean; error?: string }> {
+  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+
+  if (!ownershipFilter) return { success: false, error: 'Identificacao nao encontrada.' }
+
+  const { data: appt } = await supabase
+    .from('appointments')
+    .select('id, status')
+    .eq('id', appointmentId)
+    .eq('status', 'aguardando_pagamento')
+    .or(ownershipFilter)
+    .single()
+
+  if (!appt) return { success: false, error: 'Agendamento nao encontrado.' }
+
+  const adminClient = createAdminClient()
+  await adminClient
+    .from('appointments')
+    .update({ status: 'cancelado' })
+    .eq('id', appointmentId)
+
+  revalidatePath('/agendar')
+  return { success: true }
 }

@@ -7,7 +7,8 @@ import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
-import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone } from '@/app/agendar/actions'
+import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone, cancelPendingPayment } from '@/app/agendar/actions'
+import { PaymentBrick } from '@/components/payment/PaymentBrick'
 import { createClient } from '@/lib/supabase/client'
 import {
   buildAvailabilitySyncKey,
@@ -149,6 +150,17 @@ export function BookingForm({
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [payCash, setPayCash] = useState(false)
+
+  // Estado do Payment Brick inline (substitui redirecionamento externo)
+  const [paymentData, setPaymentData] = useState<{
+    preferenceId: string
+    amount: number
+    appointmentId: string
+    serviceName: string
+    serviceDate: string
+    serviceTime: string
+  } | null>(null)
+  const [cancellingPaymentStep, setCancellingPaymentStep] = useState(false)
 
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
@@ -443,9 +455,16 @@ const handleConfirm = async () => {
       })
 
       if (result.success && result.appointmentId) {
-        if (result.mpInitPoint) {
-          // Modo pagamento online: redireciona para o checkout do Mercado Pago
-          window.location.href = result.mpInitPoint
+        if (result.preferenceId && result.amount) {
+          // Modo pagamento online: exibe Payment Brick inline (sem redirecionamento)
+          setPaymentData({
+            preferenceId: result.preferenceId,
+            amount: result.amount,
+            appointmentId: result.appointmentId,
+            serviceName: selectedService.name,
+            serviceDate: format(selectedDate, 'dd/MM/yyyy'),
+            serviceTime: selectedTime,
+          })
         } else {
           router.push(`/agendar/sucesso?id=${result.appointmentId}`)
         }
@@ -481,6 +500,78 @@ const handleConfirm = async () => {
     config?.display_name_preference === 'nickname'
       ? config?.barber_nickname
       : config?.barber_name
+
+  const handleCancelPayment = async () => {
+    if (!paymentData || cancellingPaymentStep) return
+    setCancellingPaymentStep(true)
+    await cancelPendingPayment(paymentData.appointmentId)
+    setPaymentData(null)
+    setCancellingPaymentStep(false)
+  }
+
+  const mpPublicKey = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY ?? ''
+
+  // ─── Tela de pagamento inline (substitui o wizard de agendamento) ─────────
+  if (paymentData) {
+    return (
+      <div className="flex flex-col min-h-screen bg-background">
+        {/* Barra superior */}
+        <div className="sticky top-0 z-50 flex items-center gap-3 px-4 py-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
+          <button
+            onClick={handleCancelPayment}
+            disabled={cancellingPaymentStep}
+            className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/50 hover:text-white/80 transition-colors disabled:opacity-40"
+          >
+            <span className="text-base">←</span>
+            {cancellingPaymentStep ? 'Cancelando...' : 'Voltar'}
+          </button>
+          <span className="flex-1 text-center text-xs font-bold uppercase tracking-[0.2em] text-foreground">
+            Pagamento
+          </span>
+          <div className="w-16" />
+        </div>
+
+        <div className="flex flex-col gap-6 px-4 pt-6 pb-12 max-w-lg mx-auto w-full">
+          {/* Resumo do agendamento */}
+          <div className="bg-card border border-white/[0.08] rounded-2xl p-5 flex flex-col gap-3">
+            <p className="text-[10px] uppercase tracking-widest font-bold text-white/40">Resumo</p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-bold text-foreground">{paymentData.serviceName}</span>
+                <span className="text-xs text-white/50">
+                  {paymentData.serviceDate} às {paymentData.serviceTime}
+                </span>
+              </div>
+              <span className="text-base font-extrabold text-primary whitespace-nowrap">
+                R$ {paymentData.amount.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+          </div>
+
+          {/* Payment Brick */}
+          {mpPublicKey ? (
+            <PaymentBrick
+              amount={paymentData.amount}
+              preferenceId={paymentData.preferenceId}
+              appointmentId={paymentData.appointmentId}
+              publicKey={mpPublicKey}
+              onSuccess={(apptId) => router.push(`/agendar/sucesso?id=${apptId}`)}
+              onError={(msg) => toast.error(msg)}
+            />
+          ) : (
+            <div className="bg-destructive/10 border border-destructive/30 rounded-2xl p-5 text-center">
+              <p className="text-xs font-bold text-destructive uppercase tracking-wider">
+                Chave pública do MercadoPago não configurada.
+              </p>
+              <p className="text-[10px] text-white/40 mt-1">
+                Adicione NEXT_PUBLIC_MP_PUBLIC_KEY nas variáveis de ambiente.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-0 pb-32 min-h-screen">
