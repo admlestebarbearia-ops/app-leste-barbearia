@@ -91,7 +91,7 @@ export default function PwaPrompt() {
       <div className="pointer-events-auto w-full max-w-sm mx-auto bg-card border border-border rounded-2xl shadow-2xl flex items-center gap-3 p-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/logo2.png"
+          src="/android-chrome-192x192.png"
           alt="Leste Barbearia"
           width={48}
           height={48}
