@@ -5,6 +5,8 @@ import { LoginButton } from '@/components/auth/LoginButton'
 import { isAuthenticatedUser } from '@/lib/auth/session-state'
 import type { BusinessConfig } from '@/lib/supabase/types'
 
+export const runtime = 'edge'
+
 interface Props {
   searchParams: Promise<{ next?: string }>
 }
