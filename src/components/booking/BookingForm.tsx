@@ -486,18 +486,15 @@ const handleConfirm = async () => {
     <div className="flex flex-col gap-0 pb-32 min-h-screen">
       {/* Header Premium */}
       <header className="flex flex-col items-center justify-center pt-10 pb-6 px-4">
-        <div className="relative mb-6">
-          <div className="absolute inset-0 bg-primary/15 blur-3xl scale-115 rounded-full" />
-          <div className="relative w-32 h-32 rounded-[2rem] border border-white/10 bg-card/75 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.4)] flex items-center justify-center overflow-hidden">
-            <div className="absolute inset-0 bg-[linear-gradient(140deg,rgba(255,255,255,0.05),transparent_50%,rgba(11,65,150,0.16))]" />
-            <Image
-              src={config?.logo_url ?? '/logo-barbearialeste.png'}
-              alt="Leste Barbearia"
-              width={96}
-              height={96}
-              className="object-contain relative animate-logo-glow"
-            />
-          </div>
+        <div className="relative mb-6 flex w-full items-center justify-center">
+          <div className="absolute h-32 w-32 rounded-full bg-primary/15 blur-3xl" />
+          <Image
+            src={config?.logo_url ?? '/logo-barbearialeste.png'}
+            alt="Leste Barbearia"
+            width={180}
+            height={180}
+            className="relative h-auto w-36 object-contain animate-logo-glow drop-shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+          />
         </div>
         <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">
           SELECIONE O SERVIÇO

@@ -39,19 +39,16 @@ export default async function LoginPage({ searchParams }: Props) {
     <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-background">
       <div className="w-full max-w-sm flex flex-col items-center gap-10">
 
-        <div className="relative flex flex-col items-center gap-3">
-          <div className="absolute inset-0 bg-primary/12 blur-3xl scale-110 rounded-full" />
-          <div className="relative w-40 h-40 rounded-[2rem] border border-white/10 bg-card/80 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.42)] flex items-center justify-center overflow-hidden">
-            <div className="absolute inset-0 bg-[linear-gradient(140deg,rgba(255,255,255,0.05),transparent_45%,rgba(11,65,150,0.18))]" />
-            <Image
-              src={typedConfig?.logo_url ?? '/logo-barbearialeste.png'}
-              alt="Leste Barbearia"
-              width={120}
-              height={120}
-              className="object-contain relative"
-              priority
-            />
-          </div>
+        <div className="relative flex w-full items-center justify-center">
+          <div className="absolute h-36 w-36 rounded-full bg-primary/12 blur-3xl" />
+          <Image
+            src={typedConfig?.logo_url ?? '/logo-barbearialeste.png'}
+            alt="Leste Barbearia"
+            width={220}
+            height={220}
+            className="relative h-auto w-44 object-contain animate-logo-glow drop-shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+            priority
+          />
         </div>
 
         <p className="text-sm text-muted-foreground text-center">
