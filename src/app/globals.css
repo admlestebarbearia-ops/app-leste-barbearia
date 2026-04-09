@@ -157,4 +157,16 @@ body {
   12%  { filter: drop-shadow(0 0 22px rgba(255,255,255,0.6)) drop-shadow(0 0 8px rgba(180,210,255,0.35)); }
   28%  { filter: drop-shadow(0 0  0px rgba(255,255,255,0));   }
   100% { filter: drop-shadow(0 0  0px rgba(255,255,255,0));   }
-} 
+}
+
+.animate-loader-ring { animation: loader-ring 2.8s ease-in-out infinite; }
+@keyframes loader-ring {
+  0%, 100% { opacity: 0.18; transform: scale(0.96); }
+  50% { opacity: 0.5; transform: scale(1.04); }
+}
+
+.animate-loader-sheen { animation: loader-sheen 1.8s ease-in-out infinite; }
+@keyframes loader-sheen {
+  0% { transform: translateX(-110%); }
+  55%, 100% { transform: translateX(220%); }
+}

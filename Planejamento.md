@@ -21,11 +21,9 @@ Hospedagem: Vercel (Deploy automático e otimizado).
 
 Barreira 1 (Identidade): Login obrigatório com Google via Supabase Auth (elimina anonimato).
 
-Barreira 2 (Anti-Bot): Cloudflare Turnstile invisível na ação de confirmação.
+Barreira 2 (Anti-Spam): Rate Limiting via Middleware do Next.js (bloqueia mais de 3 agendamentos por dia vindos do mesmo IP).
 
-Barreira 3 (Anti-Spam): Rate Limiting via Middleware do Next.js (bloqueia mais de 3 agendamentos por dia vindos do mesmo IP).
-
-Barreira 4 (Controle do Dono): Botão de "Bloquear Cliente" no painel admin para casos de no-show (não comparecimento).
+Barreira 3 (Controle do Dono): Botão de "Bloquear Cliente" no painel admin para casos de no-show (não comparecimento).
 
 4. Estrutura do Banco de Dados (Escalável)
 O banco já será modelado prevendo o crescimento da Leste Barbearia (adição de novos barbeiros no futuro).
