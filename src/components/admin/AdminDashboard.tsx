@@ -569,6 +569,7 @@ function TabHoje({
   const [estornoLoading, setEstornoLoading] = useState<string | null>(null)
   const [newBadge, setNewBadge] = useState(0)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
+  const [notifLoading, setNotifLoading] = useState(false)
   const swRef = useRef<ServiceWorkerRegistration | null>(null)
   const [calMonth, setCalMonth] = useState(() => todayStr.slice(0, 7))
   const [selectedDay, setSelectedDay] = useState<string | null>(todayStr)
@@ -589,14 +590,28 @@ function TabHoje({
 
   const requestNotifPermission = async () => {
     if (!('Notification' in window)) return
-    const result = await Notification.requestPermission()
-    setNotifPermission(result)
-    if (result === 'granted') {
-      // Garante que o SW está registrado ao conceder permissão
-      if ('serviceWorker' in navigator && !swRef.current) {
-        swRef.current = await navigator.serviceWorker.register('/sw.js').catch(() => null)
+    if (notifLoading) return
+
+    // Se já negado, o browser não abre mais diálogo — orienta o usuário
+    if (Notification.permission === 'denied') {
+      toast.error('Notificações bloqueadas. Clique no cadeado 🔒 na barra de endereço e permita notificações para este site.')
+      return
+    }
+
+    setNotifLoading(true)
+    try {
+      const result = await Notification.requestPermission()
+      setNotifPermission(result)
+      if (result === 'granted') {
+        if ('serviceWorker' in navigator && !swRef.current) {
+          swRef.current = await navigator.serviceWorker.register('/sw.js').catch(() => null)
+        }
+        toast.success('Notificações ativadas! Você receberá alertas mesmo com a tela bloqueada.')
+      } else if (result === 'denied') {
+        toast.error('Permissão negada. Para ativar, clique no cadeado 🔒 na barra de endereço e permita notificações.')
       }
-      toast.success('Notificações ativadas! Você receberá alertas mesmo com a tela bloqueada.')
+    } finally {
+      setNotifLoading(false)
     }
   }
 
@@ -856,12 +871,19 @@ function TabHoje({
       {notifPermission !== 'granted' && (
         <button
           onClick={requestNotifPermission}
-          className="flex items-center gap-3 w-full bg-amber-500/15 border border-amber-500/30 rounded-xl px-4 py-3.5 text-left hover:bg-amber-500/20 transition-colors"
+          disabled={notifLoading}
+          className="flex items-center gap-3 w-full bg-amber-500/15 border border-amber-500/30 rounded-xl px-4 py-3.5 text-left hover:bg-amber-500/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          <span className="text-2xl shrink-0">🔔</span>
+          <span className="text-2xl shrink-0">{notifLoading ? '⏳' : notifPermission === 'denied' ? '🚫' : '🔔'}</span>
           <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="text-xs text-amber-300 font-bold">Ativar notificações</span>
-            <span className="text-[11px] text-amber-400/70 leading-tight">Receba alertas de novos agendamentos mesmo com a tela bloqueada</span>
+            <span className="text-xs text-amber-300 font-bold">
+              {notifLoading ? 'Aguardando permissão...' : notifPermission === 'denied' ? 'Notificações bloqueadas' : 'Ativar notificações'}
+            </span>
+            <span className="text-[11px] text-amber-400/70 leading-tight">
+              {notifPermission === 'denied'
+                ? 'Clique para ver como desbloquear no navegador'
+                : 'Receba alertas de novos agendamentos mesmo com a tela bloqueada'}
+            </span>
           </div>
         </button>
       )}
