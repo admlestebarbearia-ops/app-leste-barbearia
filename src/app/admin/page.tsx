@@ -66,7 +66,6 @@ export default async function AdminPage({
 
   // Todos os agendamentos — usa cliente admin (service role) para bypassar RLS
   // e ver agendamentos de TODOS os clientes, não só do admin logado
-  const adminClient = createAdminClient()
   const today = new Date().toISOString().split('T')[0]
   // Inclui os últimos 30 dias para não perder histórico recente
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
