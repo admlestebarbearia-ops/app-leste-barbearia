@@ -1,7 +1,16 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Crawlers de redes sociais — não têm cookies, não precisam de auth
+const SOCIAL_CRAWLERS = /facebookexternalhit|Twitterbot|WhatsApp|LinkedInBot|Slackbot|TelegramBot|Discordbot|Pinterest/i
+
 export async function middleware(request: NextRequest) {
+  // Bypassa auth completamente para crawlers sociais (OG image preview)
+  const ua = request.headers.get('user-agent') ?? ''
+  if (SOCIAL_CRAWLERS.test(ua)) {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
