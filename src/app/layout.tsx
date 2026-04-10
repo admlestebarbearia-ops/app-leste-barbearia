@@ -31,6 +31,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Leste Barbearia",
     description: "Agende seu horário na Leste Barbearia",
+    images: [{ url: "/fundo.jpg", alt: "Leste Barbearia" }],
     type: "website",
     locale: "pt_BR",
   },
@@ -38,6 +39,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Leste Barbearia",
     description: "Agende seu horário na Leste Barbearia",
+    images: ["/fundo.jpg"],
   },
   icons: {
     icon: [
