@@ -1054,6 +1054,19 @@ function TabHoje({
 
                   {/* Rodapé — botões de ação */}
                   <div className="flex gap-2 flex-wrap pt-1 border-t border-white/5">
+                    {appt.status === 'aguardando_pagamento' && (
+                      <>
+                        <span className="text-[9px] font-bold text-amber-300/70 self-center">💳 Aguardando pagamento MP</span>
+                        <button
+                          disabled={!!loading}
+                          onClick={() => handleStatus(appt.id, 'cancelado')}
+                          className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    )}
+
                     {appt.status === 'confirmado' && (
                       <>
                         {(appt.client_phone || appt.profiles?.phone) && (
@@ -2250,24 +2263,35 @@ function TabConfiguracoes({
               <button
                 onClick={() => setPaymentMode('presencial')}
                 className={[
-                  'py-2.5 rounded-xl border text-xs font-bold transition-all',
+                  'flex flex-col items-center py-2.5 rounded-xl border text-xs font-bold transition-all',
                   paymentMode === 'presencial'
                     ? 'bg-white/[0.08] border-white/20 text-foreground'
                     : 'border-border text-zinc-600 hover:text-zinc-400 hover:border-zinc-700',
                 ].join(' ')}
               >
-                Na barbearia
+                <span>Pagar ao chegar</span>
+                <span className="text-[9px] font-normal text-zinc-500 mt-0.5">Sem cobrança no app</span>
               </button>
               <button
-                onClick={() => setPaymentMode('online_obrigatorio')}
+                onClick={() => {
+                  if (!mpConnected) return
+                  setPaymentMode('online_obrigatorio')
+                }}
+                disabled={!mpConnected}
+                title={!mpConnected ? 'Vincule o Mercado Pago primeiro' : undefined}
                 className={[
-                  'py-2.5 rounded-xl border text-xs font-bold transition-all',
+                  'flex flex-col items-center py-2.5 rounded-xl border text-xs font-bold transition-all',
                   paymentMode === 'online_obrigatorio'
                     ? 'bg-white/[0.08] border-white/20 text-foreground'
+                    : !mpConnected
+                    ? 'border-border text-zinc-700 cursor-not-allowed opacity-50'
                     : 'border-border text-zinc-600 hover:text-zinc-400 hover:border-zinc-700',
                 ].join(' ')}
               >
-                Online (MP)
+                <span>Cobrar no agendamento</span>
+                <span className="text-[9px] font-normal text-zinc-500 mt-0.5">
+                  {mpConnected ? 'Exige pagamento antecipado' : 'Vincule o MP primeiro'}
+                </span>
               </button>
             </div>
           </div>
@@ -2276,8 +2300,8 @@ function TabConfiguracoes({
           {paymentMode === 'online_obrigatorio' && (
             <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-border">
               <div className="flex flex-col gap-0">
-                <span className="text-xs font-medium text-foreground">Aceitar dinheiro</span>
-                <span className="text-[11px] text-zinc-500">Cliente pode optar por pagar presencial</span>
+                <span className="text-xs font-medium text-foreground">Permitir pagamento presencial</span>
+                <span className="text-[11px] text-zinc-500">Cliente pode optar por pagar em dinheiro ao chegar</span>
               </div>
               <Switch checked={aceitaDinheiro} onCheckedChange={setAceitaDinheiro} className="shrink-0" />
             </div>

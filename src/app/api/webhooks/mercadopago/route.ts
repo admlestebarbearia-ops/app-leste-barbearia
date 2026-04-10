@@ -1,5 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { createHmac, timingSafeEqual } from 'crypto'
+
+// ─── Valida assinatura do webhook (x-signature header) ───────────────────────
+// Conforme documentação MP: https://www.mercadopago.com.br/developers/pt/docs/your-integrations/notifications/webhooks
+function validateMpSignature(
+  xSignature: string | null,
+  xRequestId: string | null,
+  dataId: string | null,
+  secret: string
+): boolean {
+  if (!xSignature) return false
+
+  let ts: string | null = null
+  let hash: string | null = null
+
+  for (const part of xSignature.split(',')) {
+    const [k, v] = part.split('=')
+    if (k?.trim() === 'ts') ts = v?.trim() ?? null
+    if (k?.trim() === 'v1') hash = v?.trim() ?? null
+  }
+
+  if (!ts || !hash) return false
+
+  // Verifica se o timestamp não é muito antigo (tolerância de 5 minutos)
+  const tsMs = Number(ts) * 1000
+  if (Math.abs(Date.now() - tsMs) > 5 * 60 * 1000) return false
+
+  // Monta o template conforme spec do MP
+  const parts: string[] = []
+  if (dataId) parts.push(`id:${dataId}`)
+  if (xRequestId) parts.push(`request-id:${xRequestId}`)
+  if (ts) parts.push(`ts:${ts}`)
+  const template = parts.join(';') + ';'
+
+  const computed = createHmac('sha256', secret).update(template).digest('hex')
+
+  try {
+    return timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(hash, 'hex'))
+  } catch {
+    return false
+  }
+}
 
 // ─── Fetch estado do pagamento na API do MP ───────────────────────────────────
 async function fetchMpPaymentStatus(paymentId: string, accessToken: string) {
@@ -20,7 +62,19 @@ async function fetchMpPaymentStatus(paymentId: string, accessToken: string) {
 export async function POST(request: NextRequest) {
   try {
     const url = new URL(request.url)
-    const dataId = url.searchParams.get('data.id')       // ID do evento (pagamento)
+    const dataId = url.searchParams.get('data.id')          // ID do evento (pagamento)
+    const xSignature = request.headers.get('x-signature')
+    const xRequestId = request.headers.get('x-request-id')
+
+    // ── Validação HMAC da assinatura (se MERCADOPAGO_WEBHOOK_SECRET configurado) ──
+    const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET
+    if (webhookSecret) {
+      const valid = validateMpSignature(xSignature, xRequestId, dataId, webhookSecret)
+      if (!valid) {
+        console.warn('[MP Webhook] Assinatura inválida — rejeitando requisição.')
+        return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 })
+      }
+    }
 
     // Lê o body para determinar tipo do evento
     const body = await request.json() as {

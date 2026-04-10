@@ -149,7 +149,8 @@ export function BookingForm({
   const [availableSlots, setAvailableSlots] = useState<string[]>([])
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [loadingSlots, setLoadingSlots] = useState(false)
-  const [payCash, setPayCash] = useState(false)
+  // null = usuário ainda não escolheu; 'mp' = Mercado Pago; 'cash' = dinheiro presencial
+  const [paymentChoice, setPaymentChoice] = useState<'mp' | 'cash' | null>(null)
 
   // Estado do Payment Brick inline (substitui redirecionamento externo)
   const [paymentData, setPaymentData] = useState<{
@@ -208,6 +209,11 @@ export function BookingForm({
       setPhoneError('')
     }
   }
+
+  // Reseta a escolha de pagamento sempre que o cliente troca de horário
+  useEffect(() => {
+    setPaymentChoice(null)
+  }, [selectedTime])
 
   const requireLogin = config?.require_google_login ?? true
   const showFreeMode = !isAuthenticatedUser && !requireLogin
@@ -451,7 +457,7 @@ const handleConfirm = async () => {
         clientName: showFreeMode ? clientName : undefined,
         clientPhone: showFreeMode ? clientPhone : undefined,
         loggedUserPhone: isAuthenticatedUser ? (overridePhone ?? savedPhone ?? undefined) : undefined,
-        payCash: payCash,
+        payCash: paymentChoice === 'cash',
       })
 
       if (result.success && result.appointmentId) {
@@ -484,11 +490,16 @@ const handleConfirm = async () => {
     router.push('/?next=/perfil')
   }
 
+  // Pagamento online c/ dinheiro permitido exige escolha explícita antes de confirmar
+  const needsExplicitPaymentChoice =
+    config?.payment_mode === 'online_obrigatorio' && (config?.aceita_dinheiro ?? false)
+
   const canConfirm =
     !!barber &&
     !!selectedService &&
     !!selectedDate &&
     !!selectedTime &&
+    (!needsExplicitPaymentChoice || paymentChoice !== null) &&
     (!showFreeMode || (
       clientName.trim().length > 1 &&
       !nameError &&
@@ -848,20 +859,24 @@ const handleConfirm = async () => {
         {/* Escolha de forma de pagamento (modo online com dinheiro permitido) */}
         {config?.payment_mode === 'online_obrigatorio' && config?.aceita_dinheiro && (
           <div className="max-w-[340px] mx-auto w-full mb-2">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold text-center mb-1.5">Como deseja pagar?</p>
             <div className="flex gap-1.5 p-1 bg-[#09090b]/95 backdrop-blur-xl border border-white/10 rounded-2xl">
               <button
-                onClick={() => setPayCash(false)}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${!payCash ? 'bg-primary text-primary-foreground' : 'text-white/40 hover:text-white/70'}`}
+                onClick={() => setPaymentChoice('mp')}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${paymentChoice === 'mp' ? 'bg-primary text-primary-foreground shadow-md' : 'text-white/40 hover:text-white/70'}`}
               >
-                Pagar online (MP)
+                💳 Pagar via MP
               </button>
               <button
-                onClick={() => setPayCash(true)}
-                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all ${payCash ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/70'}`}
+                onClick={() => setPaymentChoice('cash')}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${paymentChoice === 'cash' ? 'bg-white/10 text-white shadow-md' : 'text-white/40 hover:text-white/70'}`}
               >
-                Pagar em dinheiro
+                💵 Pagar ao chegar
               </button>
             </div>
+            {paymentChoice === null && (
+              <p className="text-[10px] text-amber-400/80 text-center mt-1.5 font-medium">Escolha como deseja pagar para continuar</p>
+            )}
           </div>
         )}
         {/* Aviso de pagamento online obrigatório (sem opção de dinheiro) */}
@@ -869,7 +884,7 @@ const handleConfirm = async () => {
           <div className="max-w-[340px] mx-auto w-full mb-2">
             <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-xl">
               <span className="text-primary text-base">💳</span>
-              <span className="text-[11px] text-primary/80 font-medium">Pagamento online via Mercado Pago</span>
+              <span className="text-[11px] text-primary/80 font-medium">Pagamento antecipado via Mercado Pago</span>
             </div>
           </div>
         )}
@@ -885,7 +900,7 @@ const handleConfirm = async () => {
               disabled={!canConfirm || isPending}
               className="flex-1 h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50"
             >
-              {isPending ? 'Confirmando...' : 'Confirmar'}
+              {isPending ? 'Confirmando...' : (needsExplicitPaymentChoice && paymentChoice === null) ? 'Escolha o método acima' : 'Confirmar'}
             </Button>
          </div>
       </div>
