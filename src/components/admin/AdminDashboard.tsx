@@ -1571,7 +1571,7 @@ function TabConfiguracoes({
   const [addingFolga, setAddingFolga] = useState(false)
 
   // Accordion
-  const [openSection, setOpenSection] = useState<string>('geral')
+  const [openSection, setOpenSection] = useState<string>('')
   const toggleSection = (id: string) => setOpenSection(prev => prev === id ? '' : id)
 
   const updateHour = (dayOfWeek: number, field: keyof WorkingHours, value: unknown) => {
@@ -1813,40 +1813,41 @@ function TabConfiguracoes({
         {openSection === 'geral' && (
           <div className="border-t border-white/5 px-4 py-5 flex flex-col gap-6">
 
-            {/* Logo Principal */}
+            {/* Logos — lado a lado */}
             <section className="flex flex-col gap-3">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Logo Principal</h3>
-              <div className="flex items-center gap-4">
-                <button onClick={() => logoRef.current?.click()} className="w-20 h-20 rounded-xl bg-card border border-border overflow-hidden flex items-center justify-center hover:border-primary/50 transition-colors shrink-0">
-                  {logoPreview ? (
-                    <Image src={logoPreview} alt="Logo" width={80} height={80} className="object-contain w-full h-full" />
-                  ) : (
-                    <span className="text-xs text-muted-foreground text-center px-2">Sem logo</span>
-                  )}
-                </button>
-                <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
-                <div className="flex flex-col gap-1.5">
-                  <Button variant="outline" size="sm" onClick={() => logoRef.current?.click()}>Trocar imagem</Button>
-                  {logoFile && <Button size="sm" onClick={handleSaveLogo} disabled={savingLogo}>{savingLogo ? 'Enviando...' : 'Salvar logo'}</Button>}
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Logos</h3>
+              <div className="grid grid-cols-2 gap-5">
+                {/* Logo Principal */}
+                <div className="flex flex-col gap-2.5">
+                  <span className="text-[11px] text-zinc-500">Logo principal</span>
+                  <button onClick={() => logoRef.current?.click()} className="w-20 h-20 rounded-xl bg-card border border-border overflow-hidden flex items-center justify-center hover:border-primary/50 transition-colors">
+                    {logoPreview ? (
+                      <Image src={logoPreview} alt="Logo" width={80} height={80} className="object-contain w-full h-full" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground text-center px-2">Sem logo</span>
+                    )}
+                  </button>
+                  <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+                  <div className="flex flex-col gap-1.5">
+                    <Button variant="outline" size="sm" onClick={() => logoRef.current?.click()}>Trocar imagem</Button>
+                    {logoFile && <Button size="sm" onClick={handleSaveLogo} disabled={savingLogo}>{savingLogo ? 'Enviando...' : 'Salvar'}</Button>}
+                  </div>
                 </div>
-              </div>
-            </section>
-
-            {/* Logo Menu Inferior */}
-            <section className="flex flex-col gap-3">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Logo Menu Inferior</h3>
-              <div className="flex items-center gap-4">
-                <button onClick={() => bottomLogoRef.current?.click()} className="w-20 h-20 rounded-xl bg-card border border-border overflow-hidden flex items-center justify-center hover:border-primary/50 transition-colors shrink-0">
-                  {bottomLogoPreview ? (
-                    <Image src={bottomLogoPreview} alt="Logo Bottom" width={80} height={80} className="object-contain w-full h-full" />
-                  ) : (
-                    <span className="text-xs text-muted-foreground text-center px-2">Sem logo</span>
-                  )}
-                </button>
-                <input ref={bottomLogoRef} type="file" accept="image/*" className="hidden" onChange={handleBottomLogoChange} />
-                <div className="flex flex-col gap-1.5">
-                  <Button variant="outline" size="sm" onClick={() => bottomLogoRef.current?.click()}>Trocar menu logo</Button>
-                  {bottomLogoFile && <Button size="sm" onClick={handleSaveBottomLogo} disabled={savingBottomLogo}>{savingBottomLogo ? 'Enviando...' : 'Salvar logo inferior'}</Button>}
+                {/* Logo Menu Inferior */}
+                <div className="flex flex-col gap-2.5">
+                  <span className="text-[11px] text-zinc-500">Menu inferior</span>
+                  <button onClick={() => bottomLogoRef.current?.click()} className="w-20 h-20 rounded-xl bg-card border border-border overflow-hidden flex items-center justify-center hover:border-primary/50 transition-colors">
+                    {bottomLogoPreview ? (
+                      <Image src={bottomLogoPreview} alt="Logo Bottom" width={80} height={80} className="object-contain w-full h-full" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground text-center px-2">Sem logo</span>
+                    )}
+                  </button>
+                  <input ref={bottomLogoRef} type="file" accept="image/*" className="hidden" onChange={handleBottomLogoChange} />
+                  <div className="flex flex-col gap-1.5">
+                    <Button variant="outline" size="sm" onClick={() => bottomLogoRef.current?.click()}>Trocar imagem</Button>
+                    {bottomLogoFile && <Button size="sm" onClick={handleSaveBottomLogo} disabled={savingBottomLogo}>{savingBottomLogo ? 'Enviando...' : 'Salvar'}</Button>}
+                  </div>
                 </div>
               </div>
             </section>
@@ -2144,29 +2145,27 @@ function TabConfiguracoes({
         )}
       </div>
 
-      {/* Seção: Integrações — Mercado Pago */}
-      <div className="w-full max-w-lg mx-auto rounded-2xl border border-border overflow-hidden bg-card">
-
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-border">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: '#009EE3' }}>
-            <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      {/* ── ACCORDION: Pagamento Online ── */}
+      <div className="border border-white/10 rounded-2xl overflow-hidden">
+        <button
+          onClick={() => toggleSection('pagamento')}
+          className="w-full flex items-center justify-between px-4 py-4 bg-white/[0.03] hover:bg-white/5 transition-colors text-left"
+        >
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-bold text-white">Pagamento Online</span>
+            <span className="text-xs text-zinc-500">Mercado Pago e formas de cobrança</span>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-bold text-foreground">Pagamento Online</p>
+          <div className="flex items-center gap-2">
+            {config.mp_access_token ? (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2 py-0.5">Conectado</span>
+            ) : (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 bg-zinc-500/10 border border-zinc-500/15 rounded-full px-2 py-0.5">Desconectado</span>
+            )}
+            <ChevronDown size={16} className={`text-zinc-500 transition-transform duration-200 ${openSection === 'pagamento' ? 'rotate-180' : ''}`} />
           </div>
-          {config.mp_access_token ? (
-            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5">
-              Conectado
-            </span>
-          ) : (
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 bg-zinc-500/10 border border-zinc-500/15 rounded-full px-2.5 py-0.5">
-              Desconectado
-            </span>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-4 p-5">
+        </button>
+        {openSection === 'pagamento' && (
+          <div className="border-t border-white/5 px-4 py-5 flex flex-col gap-4">
 
           {/* Conexão da conta */}
           {config.mp_access_token ? (
@@ -2256,6 +2255,7 @@ function TabConfiguracoes({
             {savingMp ? 'Salvando...' : 'Salvar'}
           </Button>
         </div>
+        )}
       </div>
 
       {/* Footer */}
@@ -3530,6 +3530,7 @@ function TabFinanceiro({
   const [savingForm, setSavingForm] = useState(false)
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [formPaymentMethod, setFormPaymentMethod] = useState<PaymentMethod | ''>('')
 
   const loadEntries = async () => {
     setLoadingEntries(true)
@@ -3573,11 +3574,19 @@ function TabFinanceiro({
     if (isNaN(amount) || amount <= 0) { toast.error('Informe um valor válido.'); return }
     if (!formDesc.trim()) { toast.error('Informe uma descrição.'); return }
     setSavingForm(true)
+    const method = formPaymentMethod || undefined
+    const cardRate = method === 'debito'
+      ? (config.debit_rate_pct ?? 0)
+      : method === 'credito'
+        ? (config.credit_rate_pct ?? 0)
+        : 0
     const result = await addManualFinancialEntry({
       type: formKind === 'entrada' ? 'receita' : 'despesa',
       amount,
       description: formDesc.trim(),
       date: formDate,
+      payment_method: method,
+      card_rate_pct: cardRate,
     })
     setSavingForm(false)
     if (result.success) {
@@ -3585,6 +3594,7 @@ function TabFinanceiro({
       setShowForm(false)
       setFormDesc('')
       setFormAmount('')
+      setFormPaymentMethod('')
       loadEntries()
     } else {
       toast.error(result.error ?? 'Erro ao salvar.')
@@ -3612,100 +3622,115 @@ function TabFinanceiro({
     return 'Manual'
   }
 
-  return (
-    <div className="flex flex-col gap-6">
+  const methodLabel = (m: string) => {
+    if (m === 'dinheiro') return 'Dinheiro'
+    if (m === 'pix')      return 'PIX'
+    if (m === 'debito')   return 'Débito'
+    if (m === 'credito')  return 'Crédito'
+    return m
+  }
 
-      {/* Cabeçalho */}
-      <div>
-        <h2 className="text-lg font-bold text-white">Financeiro</h2>
-        <p className="text-xs text-zinc-500 mt-0.5">Controle de entradas e saídas do caixa</p>
+  return (
+    <div className="flex flex-col gap-5">
+
+      {/* Cabeçalho + seletor de período */}
+      <div className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-white">Financeiro</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">Controle de entradas e saídas do caixa</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="bg-black/30 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/30"
+          />
+          <span className="text-zinc-600 text-xs">→</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="bg-black/30 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/30"
+          />
+        </div>
       </div>
 
-      {/* ── Configuração de maquininha ── */}
+      {/* Cards de resumo */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="flex flex-col gap-1 p-3.5 rounded-xl bg-emerald-500/8 border border-emerald-500/15">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-500">Entradas</span>
+          <span className="text-lg font-bold text-emerald-400 leading-tight tabular-nums">{brl(totalEntradas)}</span>
+          <span className="text-[10px] text-zinc-500">Hoje: {brl(todayEntradas)}</span>
+        </div>
+        <div className="flex flex-col gap-1 p-3.5 rounded-xl bg-red-500/8 border border-red-500/15">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-red-500">Saídas</span>
+          <span className="text-lg font-bold text-red-400 leading-tight tabular-nums">{brl(totalSaidas)}</span>
+          <span className="text-[10px] text-zinc-500">Hoje: {brl(todaySaidas)}</span>
+        </div>
+        <div className={`flex flex-col gap-1 p-3.5 rounded-xl border ${saldo >= 0 ? 'bg-white/4 border-white/10' : 'bg-red-500/8 border-red-500/15'}`}>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Saldo</span>
+          <span className={`text-lg font-bold leading-tight tabular-nums ${saldo >= 0 ? 'text-white' : 'text-red-400'}`}>{brl(saldo)}</span>
+          <span className="text-[10px] text-zinc-500">{saldo >= 0 ? 'Positivo' : 'Negativo'}</span>
+        </div>
+      </div>
+
+      {/* Configuração de maquininha */}
       <div className="border border-white/8 rounded-xl overflow-hidden">
         <button
           onClick={() => setMachineSetup(v => !v)}
           className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/3 transition-colors"
         >
           <div className="flex items-center gap-2.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${hasMachine ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasMachine ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
             <span className="text-sm text-white">
               {hasMachine
-                ? `Maquininha — Déb ${config.debit_rate_pct ?? 0}% / Créd ${config.credit_rate_pct ?? 0}%`
+                ? `Maquininha — Déb ${config.debit_rate_pct ?? 0}% · Créd ${config.credit_rate_pct ?? 0}%`
                 : 'Sem maquininha'}
             </span>
           </div>
           <span className="text-[10px] text-zinc-500">{machineSetup ? 'Fechar' : 'Configurar'}</span>
         </button>
-
         {machineSetup && (
-          <div className="px-4 pb-4 flex flex-col gap-4 border-t border-white/8">
+          <div className="px-4 pb-4 border-t border-white/8 flex flex-col gap-4">
             <p className="text-xs text-zinc-400 pt-3">
-              Você usa maquininha de cartão? Se sim, informe a taxa cobrada pela operadora (ex: 2,5%). Isso será descontado automaticamente das receitas.
+              Informe a taxa cobrada pela operadora. Ela será descontada automaticamente das receitas com cartão.
             </p>
-
-            {/* Pergunta simples: tem ou não tem */}
             <div className="flex gap-2">
               <button
                 onClick={() => setHasMachine(false)}
-                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-                  !hasMachine
-                    ? 'bg-white text-black border-white'
-                    : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/20'
-                }`}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${!hasMachine ? 'bg-white text-black border-white' : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/20'}`}
               >
-                Não uso maquininha
+                Sem maquininha
               </button>
               <button
                 onClick={() => setHasMachine(true)}
-                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-                  hasMachine
-                    ? 'bg-white text-black border-white'
-                    : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/20'
-                }`}
+                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${hasMachine ? 'bg-white text-black border-white' : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/20'}`}
               >
-                Uso maquininha
+                Com maquininha
               </button>
             </div>
-
             {hasMachine && (
-              <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs text-zinc-400">Taxa Débito (%)</label>
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="number"
-                      min="0"
-                      max="50"
-                      step="0.1"
-                      placeholder="Ex: 1.5"
-                      value={debitRateInput}
-                      onChange={(e) => setDebitRateInput(e.target.value)}
-                      className="w-28 bg-transparent border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/40 placeholder-zinc-600"
-                    />
-                    <span className="text-sm text-zinc-500">%</span>
-                  </div>
+                  <input
+                    type="number" min="0" max="50" step="0.1" placeholder="Ex: 1.5"
+                    value={debitRateInput} onChange={(e) => setDebitRateInput(e.target.value)}
+                    className="w-full bg-transparent border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/40 placeholder-zinc-600"
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs text-zinc-400">Taxa Crédito (%)</label>
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="number"
-                      min="0"
-                      max="50"
-                      step="0.1"
-                      placeholder="Ex: 2.5"
-                      value={creditRateInput}
-                      onChange={(e) => setCreditRateInput(e.target.value)}
-                      className="w-28 bg-transparent border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/40 placeholder-zinc-600"
-                    />
-                    <span className="text-sm text-zinc-500">%</span>
-                  </div>
+                  <input
+                    type="number" min="0" max="50" step="0.1" placeholder="Ex: 2.5"
+                    value={creditRateInput} onChange={(e) => setCreditRateInput(e.target.value)}
+                    className="w-full bg-transparent border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/40 placeholder-zinc-600"
+                  />
                 </div>
-                <p className="text-[11px] text-zinc-600">Você encontra essas taxas no contrato ou app da sua maquininha.</p>
               </div>
             )}
-
+            <p className="text-[11px] text-zinc-600">Encontre as taxas no contrato ou app da sua maquininha.</p>
             <button
               onClick={handleSaveMachine}
               disabled={savingMachine}
@@ -3717,48 +3742,11 @@ function TabFinanceiro({
         )}
       </div>
 
-      {/* ── Seletor de período ── */}
-      <div className="flex items-center gap-2 text-xs text-zinc-400">
-        <span>De</span>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="bg-transparent border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/30"
-        />
-        <span>até</span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="bg-transparent border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/30"
-        />
-      </div>
-
-      {/* ── Cards de resumo ── */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="flex flex-col gap-1 px-3 py-3 rounded-xl bg-white/3 border border-white/6">
-          <span className="text-[10px] text-zinc-500">Entrou</span>
-          <span className="text-base font-semibold text-emerald-400">{brl(totalEntradas)}</span>
-          <span className="text-[10px] text-zinc-600">Hoje: {brl(todayEntradas)}</span>
-        </div>
-        <div className="flex flex-col gap-1 px-3 py-3 rounded-xl bg-white/3 border border-white/6">
-          <span className="text-[10px] text-zinc-500">Saiu</span>
-          <span className="text-base font-semibold text-red-400">{brl(totalSaidas)}</span>
-          <span className="text-[10px] text-zinc-600">Hoje: {brl(todaySaidas)}</span>
-        </div>
-        <div className="flex flex-col gap-1 px-3 py-3 rounded-xl bg-white/3 border border-white/6">
-          <span className="text-[10px] text-zinc-500">Saldo</span>
-          <span className={`text-base font-semibold ${saldo >= 0 ? 'text-white' : 'text-red-400'}`}>{brl(saldo)}</span>
-          <span className="text-[10px] text-zinc-600">{saldo >= 0 ? 'positivo' : 'negativo'}</span>
-        </div>
-      </div>
-
-      {/* ── Botão + formulário de novo lançamento ── */}
+      {/* Botão + formulário de novo lançamento */}
       {!showForm ? (
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-white/10 text-sm text-zinc-300 hover:border-white/20 hover:text-white transition-colors"
+          className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-white/10 text-sm text-zinc-300 hover:border-white/20 hover:bg-white/2 transition-colors"
         >
           <span className="text-base leading-none">+</span>
           Registrar lançamento
@@ -3767,64 +3755,65 @@ function TabFinanceiro({
         <div className="border border-white/10 rounded-xl p-4 flex flex-col gap-4">
           <p className="text-sm font-semibold text-white">Novo lançamento</p>
 
-          {/* Entrou / Saiu — linguagem direta */}
           <div className="flex gap-2">
             <button
               onClick={() => setFormKind('entrada')}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-                formKind === 'entrada'
-                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                  : 'bg-transparent text-zinc-500 border-white/8 hover:border-white/15'
-              }`}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${formKind === 'entrada' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-transparent text-zinc-500 border-white/8 hover:border-white/15'}`}
             >
-              Dinheiro que entrou
+              Entrada
             </button>
             <button
               onClick={() => setFormKind('saida')}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-                formKind === 'saida'
-                  ? 'bg-red-500/15 text-red-300 border-red-500/30'
-                  : 'bg-transparent text-zinc-500 border-white/8 hover:border-white/15'
-              }`}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${formKind === 'saida' ? 'bg-red-500/15 text-red-300 border-red-500/30' : 'bg-transparent text-zinc-500 border-white/8 hover:border-white/15'}`}
             >
-              Dinheiro que saiu
+              Saída
             </button>
           </div>
 
-          <p className="text-[11px] text-zinc-500 -mt-2">
-            {formKind === 'entrada'
-              ? 'Use para registrar receitas não capturadas automaticamente (ex: pagamento avulso).'
-              : 'Use para registrar uma despesa: aluguel, produto de limpeza, material, etc.'}
-          </p>
-
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5">
             <input
               type="text"
-              placeholder={formKind === 'entrada' ? 'O que foi? Ex: Corte avulso' : 'O que foi? Ex: Aluguel, Produto X'}
+              placeholder={formKind === 'entrada' ? 'Descrição (ex: Corte avulso)' : 'Descrição (ex: Aluguel, Produto)'}
               value={formDesc}
               onChange={(e) => setFormDesc(e.target.value)}
-              className="bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
+              className="w-full bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
             />
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <input
                 type="number"
                 placeholder="Valor em R$"
                 value={formAmount}
                 onChange={(e) => setFormAmount(e.target.value)}
-                className="flex-1 bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
+                className="bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
               />
               <input
                 type="date"
                 value={formDate}
                 onChange={(e) => setFormDate(e.target.value)}
-                className="bg-transparent border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-white/30"
+                className="bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-white/30"
               />
             </div>
+            <select
+              value={formPaymentMethod}
+              onChange={(e) => setFormPaymentMethod(e.target.value as PaymentMethod | '')}
+              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-white/30"
+            >
+              <option value="">Forma de pagamento (opcional)</option>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="pix">PIX</option>
+              <option value="debito">Débito</option>
+              <option value="credito">Crédito</option>
+            </select>
+            {(formPaymentMethod === 'debito' || formPaymentMethod === 'credito') && hasMachine && (
+              <p className="text-[11px] text-zinc-500">
+                Taxa {formPaymentMethod === 'debito' ? config.debit_rate_pct ?? 0 : config.credit_rate_pct ?? 0}% será aplicada automaticamente.
+              </p>
+            )}
           </div>
 
           <div className="flex gap-2">
             <button
-              onClick={() => { setShowForm(false); setFormDesc(''); setFormAmount('') }}
+              onClick={() => { setShowForm(false); setFormDesc(''); setFormAmount(''); setFormPaymentMethod('') }}
               className="flex-1 py-2.5 rounded-lg text-sm text-zinc-500 border border-white/8 hover:border-white/15 transition-colors"
             >
               Cancelar
@@ -3840,38 +3829,62 @@ function TabFinanceiro({
         </div>
       )}
 
-      {/* ── Lista de lançamentos ── */}
-      <div className="flex flex-col gap-1">
+      {/* Lista de lançamentos */}
+      <div className="flex flex-col">
         {loadingEntries ? (
-          <p className="text-center py-8 text-zinc-600 text-sm">Carregando...</p>
+          <p className="text-center py-10 text-zinc-600 text-sm">Carregando...</p>
         ) : entries.length === 0 ? (
-          <p className="text-center py-8 text-zinc-600 text-sm">Nenhum lançamento no período.</p>
+          <p className="text-center py-10 text-zinc-600 text-sm">Nenhum lançamento no período selecionado.</p>
         ) : (
           entries.map((entry) => (
-            <div key={entry.id} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/3 transition-colors group">
-              <div className={`w-1 h-8 rounded-full shrink-0 ${entry.type === 'receita' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+            <div
+              key={entry.id}
+              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/3 transition-colors group border-b border-white/4 last:border-0"
+            >
+              <div className={`w-0.5 h-9 rounded-full shrink-0 ${entry.type === 'receita' ? 'bg-emerald-500' : 'bg-red-500'}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-white truncate">{entry.description}</p>
-                <p className="text-[11px] text-zinc-600">
-                  {entry.date?.split('-').reverse().join('/')}
-                  {' · '}
-                  {sourceLabel(entry.source)}
-                  {entry.card_rate_pct != null && entry.card_rate_pct > 0 && ` · ${entry.card_rate_pct}% taxa`}
-                </p>
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  <span className="text-[10px] text-zinc-600">{entry.date?.split('-').reverse().join('/')}</span>
+                  <span className="text-[10px] text-zinc-700">·</span>
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${
+                    entry.source === 'agendamento' ? 'text-sky-400 bg-sky-500/10' :
+                    entry.source === 'produto'     ? 'text-violet-400 bg-violet-500/10' :
+                    entry.source === 'estorno'     ? 'text-orange-400 bg-orange-500/10' :
+                    'text-zinc-400 bg-zinc-500/10'
+                  }`}>{sourceLabel(entry.source)}</span>
+                  {entry.payment_method && (
+                    <>
+                      <span className="text-[10px] text-zinc-700">·</span>
+                      <span className="text-[10px] text-zinc-500">{methodLabel(entry.payment_method)}</span>
+                    </>
+                  )}
+                  {entry.card_rate_pct != null && entry.card_rate_pct > 0 && (
+                    <>
+                      <span className="text-[10px] text-zinc-700">·</span>
+                      <span className="text-[10px] text-zinc-600">{entry.card_rate_pct}% taxa</span>
+                    </>
+                  )}
+                </div>
               </div>
-              <span className={`text-sm font-semibold shrink-0 ${entry.type === 'receita' ? 'text-emerald-400' : 'text-red-400'}`}>
-                {entry.type === 'receita' ? '+' : '−'}{brl(entry.type === 'receita' ? (entry.net_amount ?? entry.amount) : entry.amount)}
-              </span>
+              <div className="flex flex-col items-end gap-0.5 shrink-0">
+                <span className={`text-sm font-semibold tabular-nums ${entry.type === 'receita' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {entry.type === 'receita' ? '+' : '−'}{brl(entry.type === 'receita' ? (entry.net_amount ?? entry.amount) : entry.amount)}
+                </span>
+                {entry.net_amount != null && entry.net_amount !== entry.amount && entry.type === 'receita' && (
+                  <span className="text-[10px] text-zinc-600 tabular-nums">bruto {brl(entry.amount)}</span>
+                )}
+              </div>
               {entry.source === 'manual' && (
                 deleteConfirmId === entry.id ? (
                   <div className="flex gap-1 shrink-0">
-                    <button onClick={() => handleDelete(entry.id)} className="text-[10px] text-red-400 border border-red-500/20 px-2 py-1 rounded">Sim</button>
-                    <button onClick={() => setDeleteConfirmId(null)} className="text-[10px] text-zinc-500 border border-white/10 px-2 py-1 rounded">Não</button>
+                    <button onClick={() => handleDelete(entry.id)} className="text-[10px] text-red-400 border border-red-500/20 px-2 py-1 rounded-md">Sim</button>
+                    <button onClick={() => setDeleteConfirmId(null)} className="text-[10px] text-zinc-500 border border-white/10 px-2 py-1 rounded-md">Não</button>
                   </div>
                 ) : (
                   <button
                     onClick={() => setDeleteConfirmId(entry.id)}
-                    className="text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                    className="text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0 ml-1"
                   >
                     <Trash2 size={13} />
                   </button>

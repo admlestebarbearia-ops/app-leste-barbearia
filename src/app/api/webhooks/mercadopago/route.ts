@@ -73,18 +73,21 @@ export async function POST(request: NextRequest) {
     } else if (payment.status === 'rejected' || payment.status === 'cancelled') {
       newAppointmentStatus = 'cancelado'
       newIntentStatus = payment.status === 'rejected' ? 'rejected' : 'cancelled'
+    } else if (payment.status === 'refunded' || payment.status === 'charged_back') {
+      // Reembolso emitido pelo MP/banco — retorna agendamento para cancelado
+      newAppointmentStatus = 'cancelado'
+      newIntentStatus = payment.status
     } else if (payment.status === 'pending' || payment.status === 'in_process') {
-      // Pagamento pendente (ex: boleto, PIX aguardando) — mantém aguardando_pagamento
+      // Pagamento pendente (ex: PIX aguardando) — mantém aguardando_pagamento
       newIntentStatus = 'pending'
     }
 
-    // Atualiza payment_intent
+    // Atualiza payment_intent (sem filtrar por status anterior — permite atualizações subsequentes)
     if (newIntentStatus) {
       await adminClient
         .from('payment_intents')
         .update({ status: newIntentStatus, mp_payment_id: paymentId, updated_at: new Date().toISOString() })
         .eq('appointment_id', appointmentId)
-        .eq('status', 'pending')
     }
 
     // Atualiza o agendamento
@@ -93,7 +96,7 @@ export async function POST(request: NextRequest) {
         .from('appointments')
         .update({ status: newAppointmentStatus })
         .eq('id', appointmentId)
-        .eq('status', 'aguardando_pagamento')
+        .in('status', ['aguardando_pagamento', 'confirmado'])
     }
 
     return NextResponse.json({ received: true })
