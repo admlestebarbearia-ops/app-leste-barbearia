@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToUser } from '@/app/api/push/actions'
 
 // Roda a cada 15 minutos via scheduler externo (GitHub Actions)
-// Envia lembretes push 1h antes e 30min antes do horário do agendamento
+// Envia lembretes push: 1h30, 1h15, 1h, 45min, 30min e 15min antes do agendamento
 
 export async function GET(request: Request) {
   // Segurança: verifica secret enviado pelo agendador
@@ -23,19 +23,23 @@ export async function GET(request: Request) {
     const todayStr = nowBrasilia.toISOString().split('T')[0]
     const nowMinutes = nowBrasilia.getHours() * 60 + nowBrasilia.getMinutes()
 
-    // Janelas de envio (em minutos a partir de agora)
-    // 1h antes: start_time entre 55min e 65min daqui
-    const min1h = nowMinutes + 55
-    const max1h = nowMinutes + 65
-    // 30min antes: start_time entre 25min e 35min daqui
-    const min30 = nowMinutes + 25
-    const max30 = nowMinutes + 35
-
     const toTimeStr = (minutes: number) => {
-      const h = Math.floor((minutes % 1440) / 60).toString().padStart(2, '0')
-      const m = (minutes % 60).toString().padStart(2, '0')
+      const safeMin = ((minutes % 1440) + 1440) % 1440
+      const h = Math.floor(safeMin / 60).toString().padStart(2, '0')
+      const m = (safeMin % 60).toString().padStart(2, '0')
       return `${h}:${m}:00`
     }
+
+    // Janelas de ±7 min em torno de cada intervalo (cron roda a cada 15min)
+    // Garante que todo agendamento seja coberto sem reenvio duplo (flags no BD)
+    const REMINDERS = [
+      { label: '1h30',  minutes: 90, flag: 'reminder_90min_sent', title: '✂️ Daqui 1h30!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}.` },
+      { label: '1h15',  minutes: 75, flag: 'reminder_75min_sent', title: '✂️ Daqui 1h15!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}.` },
+      { label: '1h',    minutes: 60, flag: 'reminder_1h_sent',    title: '✂️ Daqui 1 hora!',  bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Não esqueça!` },
+      { label: '45min', minutes: 45, flag: 'reminder_45min_sent', title: '⏰ Daqui 45 min!',  bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Vai chegando!` },
+      { label: '30min', minutes: 30, flag: 'reminder_30min_sent', title: '⏰ 30 minutos!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Estamos te esperando!` },
+      { label: '15min', minutes: 15, flag: 'reminder_15min_sent', title: '🔔 15 minutos!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Saia já!` },
+    ] as const
 
     // ─── Expirar payment_intents vencidos ────────────────────────────────────
     const nowIso = now.toISOString()
@@ -66,7 +70,13 @@ export async function GET(request: Request) {
     // Busca agendamentos confirmados de hoje com client_id (usuários logados)
     const { data: appointments, error } = await adminSupabase
       .from('appointments')
-      .select('id, client_id, service_name_snapshot, start_time, reminder_1h_sent, reminder_30min_sent, barbers(name, nickname)')
+      .select(`
+        id, client_id, service_name_snapshot, start_time,
+        reminder_90min_sent, reminder_75min_sent,
+        reminder_1h_sent, reminder_45min_sent,
+        reminder_30min_sent, reminder_15min_sent,
+        barbers(name, nickname)
+      `)
       .eq('date', todayStr)
       .eq('status', 'confirmado')
       .not('client_id', 'is', null)
@@ -76,8 +86,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ sent: 0, message: 'Nenhum agendamento hoje.' })
     }
 
-    let sent1h = 0
-    let sent30 = 0
+    const sentCounts: Record<string, number> = {}
     let failed = 0
 
     for (const appt of appointments) {
@@ -91,36 +100,27 @@ export async function GET(request: Request) {
       const timeLabel = appt.start_time.slice(0, 5)
       const service = appt.service_name_snapshot ?? 'serviço'
 
-      // Lembrete de 1h antes
-      if (!appt.reminder_1h_sent && apptMinutes >= min1h && apptMinutes <= max1h) {
-        const result = await sendPushToUser(appt.client_id, {
-          title: '✂️ Daqui 1 hora!',
-          body: `${service} às ${timeLabel} com ${barberName}. Não esqueça!`,
-          url: '/reservas',
-          tag: `lembrete-1h-${appt.id}`,
-        })
-        sent1h += result.sent
-        failed += result.failed
-        // Marca como enviado para não reenviar
-        await adminSupabase
-          .from('appointments')
-          .update({ reminder_1h_sent: true })
-          .eq('id', appt.id)
-      }
+      for (const reminder of REMINDERS) {
+        const alreadySent = (appt as Record<string, unknown>)[reminder.flag] === true
+        if (alreadySent) continue
 
-      // Lembrete de 30min antes
-      if (!appt.reminder_30min_sent && apptMinutes >= min30 && apptMinutes <= max30) {
+        const minWindow = nowMinutes + reminder.minutes - 7
+        const maxWindow = nowMinutes + reminder.minutes + 7
+        if (apptMinutes < minWindow || apptMinutes > maxWindow) continue
+
         const result = await sendPushToUser(appt.client_id, {
-          title: '⏰ 30 minutos!',
-          body: `${service} às ${timeLabel} com ${barberName}. Estamos te esperando!`,
+          title: reminder.title,
+          body: reminder.bodyFn(service, timeLabel, barberName),
           url: '/reservas',
-          tag: `lembrete-30min-${appt.id}`,
+          tag: `lembrete-${reminder.label}-${appt.id}`,
         })
-        sent30 += result.sent
+
+        sentCounts[reminder.label] = (sentCounts[reminder.label] ?? 0) + result.sent
         failed += result.failed
+
         await adminSupabase
           .from('appointments')
-          .update({ reminder_30min_sent: true })
+          .update({ [reminder.flag]: true })
           .eq('id', appt.id)
       }
     }
@@ -129,8 +129,7 @@ export async function GET(request: Request) {
       date: todayStr,
       nowBrasilia: toTimeStr(nowMinutes),
       appointments: appointments.length,
-      sent1h,
-      sent30min: sent30,
+      sent: sentCounts,
       failed,
       expiredIntents: expiredIntents?.length ?? 0,
     })

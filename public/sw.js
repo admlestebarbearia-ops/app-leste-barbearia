@@ -70,12 +70,14 @@ self.addEventListener('push', (e) => {
   let title = 'Leste Barbearia'
   let body = 'Você tem um lembrete.'
   let url = '/'
+  let tag = 'barbearia-leste-notif'
 
   try {
     const data = e.data?.json()
     if (data?.title) title = data.title
     if (data?.body) body = data.body
     if (data?.url) url = data.url
+    if (data?.tag) tag = data.tag
   } catch {}
 
   e.waitUntil(
@@ -86,7 +88,7 @@ self.addEventListener('push', (e) => {
       // vibrate é ignorado no iOS — funciona apenas no Android
       vibrate: [300, 100, 300, 100, 300],
       requireInteraction: false,
-      tag: 'barbearia-leste-notif',
+      tag,
       renotify: true,
       data: { url },
     })
