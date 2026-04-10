@@ -130,7 +130,10 @@ export function AdminDashboard({
         db: 'Erro ao salvar token no banco de dados',
       }
       const detail = mpReason ? (reasonMap[mpReason] ?? mpReason) : 'motivo desconhecido'
-      toast.error(`Erro ao vincular Mercado Pago: ${detail}`, { duration: 8000 })
+      // Lê o detalhe do erro direto do MP (passado como mp_detail no redirect do callback)
+      const mpDetailRaw = new URLSearchParams(window.location.search).get('mp_detail')
+      const mpDetailSuffix = mpDetailRaw ? ` — MP: ${decodeURIComponent(mpDetailRaw)}` : ''
+      toast.error(`Erro ao vincular Mercado Pago: ${detail}${mpDetailSuffix}`, { duration: 15000 })
       setTab('configuracoes')
       window.history.replaceState({}, '', '/admin')
     }

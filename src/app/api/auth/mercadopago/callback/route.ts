@@ -139,8 +139,10 @@ export async function GET(request: NextRequest) {
 
   if (!tokenRes.ok) {
     const errText = await tokenRes.text()
-    console.error('[MP OAuth] Erro ao trocar token:', errText)
-    return NextResponse.redirect(new URL('/admin?mp=error&reason=token', request.url))
+    console.error('[MP OAuth] Erro ao trocar token (status', tokenRes.status, '):', errText)
+    // Passa detalhe do erro MP para o frontend (primeiros 120 chars, sem dados sensíveis)
+    const mpDetail = encodeURIComponent(errText.slice(0, 120))
+    return NextResponse.redirect(new URL(`/admin?mp=error&reason=token&mp_detail=${mpDetail}`, request.url))
   }
 
   const tokenData = await tokenRes.json() as {
