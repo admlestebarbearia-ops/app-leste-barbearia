@@ -39,6 +39,7 @@ export default async function ReservasPage() {
   if (!ownershipFilter) redirect('/?next=/reservas')
 
   const today = new Date().toISOString().split('T')[0]
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   // Usa adminClient para buscar reservas de produtos (evita complexidade de RLS com visitantes)
   const adminClient = createAdminClient()
@@ -48,7 +49,7 @@ export default async function ReservasPage() {
     ...lookupPhones.map((phone) => `client_phone.eq.${phone}`),
   ].join(',')
 
-  const [{ data: appointments }, { data: configRaw }, { data: productReservationsRaw }] = await Promise.all([
+  const [{ data: appointments }, { data: cancelledByAdmin }, { data: configRaw }, { data: productReservationsRaw }] = await Promise.all([
     supabase
       .from('appointments')
       .select('*, services(name, price, duration_minutes)')
@@ -57,7 +58,15 @@ export default async function ReservasPage() {
       .or(ownershipFilter)
       .order('date', { ascending: true })
       .order('start_time', { ascending: true }),
-    supabase.from('business_config').select('cancellation_window_minutes').single(),
+    supabase
+      .from('appointments')
+      .select('id, date, start_time, service_name_snapshot')
+      .eq('status', 'cancelado')
+      .eq('cancelled_by_admin', true)
+      .gte('date', sevenDaysAgo)
+      .or(ownershipFilter)
+      .order('date', { ascending: false }),
+    supabase.from('business_config').select('cancellation_window_minutes, whatsapp_number').single(),
     productOwnershipOrClauses
       ? adminClient
           .from('product_reservations')
@@ -68,12 +77,14 @@ export default async function ReservasPage() {
       : Promise.resolve({ data: [] }),
   ])
 
-  const config = configRaw as Pick<BusinessConfig, 'cancellation_window_minutes'> | null
+  const config = configRaw as Pick<BusinessConfig, 'cancellation_window_minutes' | 'whatsapp_number'> | null
 
   return (
     <ReservasClient
       appointments={dedupeById(appointments ?? [])}
+      cancelledByAdmin={cancelledByAdmin ?? []}
       cancellationWindowMinutes={config?.cancellation_window_minutes ?? 60}
+      whatsappNumber={config?.whatsapp_number ?? null}
       productReservations={(productReservationsRaw ?? []) as ProductReservation[]}
     />
   )

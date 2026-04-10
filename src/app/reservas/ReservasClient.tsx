@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { parseISO, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag } from 'lucide-react'
+import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle } from 'lucide-react'
 import { cancelMyAppointment } from '@/app/agendar/actions'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
@@ -18,13 +18,22 @@ interface Appt {
   services: { name: string; price: number; duration_minutes: number | null } | null
 }
 
+interface CancelledAppt {
+  id: string
+  date: string
+  start_time: string
+  service_name_snapshot: string | null
+}
+
 interface Props {
   appointments: Appt[]
+  cancelledByAdmin: CancelledAppt[]
   cancellationWindowMinutes: number
+  whatsappNumber: string | null
   productReservations: ProductReservation[]
 }
 
-export function ReservasClient({ appointments: initial, cancellationWindowMinutes, productReservations }: Props) {
+export function ReservasClient({ appointments: initial, cancelledByAdmin, cancellationWindowMinutes, whatsappNumber, productReservations }: Props) {
   const router = useRouter()
   const [appointments, setAppointments] = useState<Appt[]>(initial)
   const [cancelling, setCancelling] = useState<string | null>(null)
@@ -73,6 +82,71 @@ export function ReservasClient({ appointments: initial, cancellationWindowMinute
 
         {/* Toggle lembretes push */}
         <PushNotificationToggle />
+
+        {/* ── Avisos de cancelamento pelo admin ── */}
+        {cancelledByAdmin.length > 0 && (
+          <div className="flex flex-col gap-3">
+            {cancelledByAdmin.map((appt) => {
+              const date = parseISO(appt.date)
+              const timeLabel = appt.start_time?.slice(0, 5) ?? ''
+              const whatsappHref = whatsappNumber
+                ? `https://wa.me/55${whatsappNumber.replace(/\D/g, '')}`
+                : 'https://wa.me/'
+
+              return (
+                <div
+                  key={appt.id}
+                  className="bg-red-950/40 rounded-2xl border border-red-500/30 overflow-hidden"
+                >
+                  {/* Barra de alerta */}
+                  <div className="bg-red-500/15 px-4 py-2 flex items-center gap-2">
+                    <AlertTriangle size={13} className="text-red-400 shrink-0" />
+                    <span className="text-xs font-bold text-red-300 uppercase tracking-widest">
+                      Agendamento cancelado
+                    </span>
+                  </div>
+
+                  {/* Corpo */}
+                  <div className="px-4 py-4 flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col items-center bg-white/5 rounded-xl px-3 py-2 min-w-[54px]">
+                        <Clock size={12} className="text-zinc-500 mb-0.5" />
+                        <span className="text-xl font-black text-white tabular-nums leading-none">
+                          {timeLabel}
+                        </span>
+                      </div>
+                      <div className="flex-1 flex flex-col gap-0.5 min-w-0">
+                        <span className="text-xs text-zinc-500 capitalize">
+                          {format(date, "EEEE, d 'de' MMMM", { locale: ptBR })}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <Scissors size={11} className="text-zinc-500 shrink-0" />
+                          <span className="text-sm font-semibold text-white truncate">
+                            {appt.service_name_snapshot ?? 'Serviço'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-red-300">
+                      Seu agendamento foi cancelado pelo barbeiro. Entre em contato para remarcar.
+                    </p>
+
+                    <a
+                      href={whatsappHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 w-full bg-green-600 hover:bg-green-500 text-white text-xs font-extrabold uppercase tracking-widest py-3 rounded-xl transition-colors"
+                    >
+                      <MessageCircle size={14} />
+                      Falar com o barbeiro no WhatsApp
+                    </a>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Lista vazia */}
         {appointments.length === 0 ? (

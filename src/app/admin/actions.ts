@@ -64,7 +64,7 @@ export async function updateAppointmentStatus(
     const { supabase } = await requireAdmin()
     const { error } = await supabase
       .from('appointments')
-      .update({ status })
+      .update({ status, ...(status === 'cancelado' ? { cancelled_by_admin: true } : {}) })
       .eq('id', appointmentId)
     if (error) throw error
     revalidatePath('/admin')
