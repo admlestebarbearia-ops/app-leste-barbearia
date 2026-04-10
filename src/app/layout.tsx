@@ -31,15 +31,15 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Leste Barbearia",
     description: "Agende seu horário na Leste Barbearia",
-    images: [{ url: "/fundo.jpg", alt: "Leste Barbearia" }],
+    images: [{ url: "/logo_barber.png", alt: "Leste Barbearia" }],
     type: "website",
     locale: "pt_BR",
   },
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
     title: "Leste Barbearia",
     description: "Agende seu horário na Leste Barbearia",
-    images: ["/fundo.jpg"],
+    images: ["/logo_barber.png"],
   },
   icons: {
     icon: [
