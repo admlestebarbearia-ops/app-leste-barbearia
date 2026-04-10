@@ -1349,10 +1349,11 @@ function StandaloneReservasSection({
 }) {
   const [loading, setLoading] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [retirePendingId, setRetirePendingId] = useState<string | null>(null)
 
-  const handleStatus = async (id: string, status: 'retirado' | 'cancelado') => {
+  const handleStatus = async (id: string, status: 'retirado' | 'cancelado', paymentMethod?: PaymentMethod) => {
     setLoading(id + status)
-    const result = await updateProductReservationStatus(id, status)
+    const result = await updateProductReservationStatus(id, status, paymentMethod)
     if (result.success) {
       toast.success(status === 'retirado' ? 'Marcado como retirado.' : 'Reserva cancelada.')
       onUpdated?.(id, status)
@@ -1360,6 +1361,7 @@ function StandaloneReservasSection({
       toast.error(result.error ?? 'Erro.')
     }
     setLoading(null)
+    setRetirePendingId(null)
   }
 
   const handleDelete = async (id: string) => {
@@ -1460,22 +1462,47 @@ function StandaloneReservasSection({
           {/* Ações */}
           <div className="flex gap-2 flex-wrap pt-1 border-t border-white/5">
             {r.status === 'reservado' && (
-              <>
-                <button
-                  disabled={!!loading}
-                  onClick={() => handleStatus(r.id, 'retirado')}
-                  className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
-                >
-                  Retirado
-                </button>
-                <button
-                  disabled={!!loading}
-                  onClick={() => handleStatus(r.id, 'cancelado')}
-                  className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
-                >
-                  Cancelar
-                </button>
-              </>
+              retirePendingId === r.id ? (
+                <div className="flex flex-col gap-1.5 w-full">
+                  <span className="text-[10px] text-zinc-400">Como foi pago?</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {(['dinheiro', 'pix', 'debito', 'credito'] as PaymentMethod[]).map((m) => (
+                      <button
+                        key={m}
+                        disabled={!!loading}
+                        onClick={() => handleStatus(r.id, 'retirado', m)}
+                        className="text-[10px] font-bold capitalize text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                      >
+                        {m === 'dinheiro' ? 'Dinheiro' : m === 'pix' ? 'PIX' : m === 'debito' ? 'Débito' : 'Crédito'}
+                      </button>
+                    ))}
+                    <button
+                      disabled={!!loading}
+                      onClick={() => setRetirePendingId(null)}
+                      className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                    >
+                      Voltar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <button
+                    disabled={!!loading}
+                    onClick={() => setRetirePendingId(r.id)}
+                    className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                  >
+                    Retirado
+                  </button>
+                  <button
+                    disabled={!!loading}
+                    onClick={() => handleStatus(r.id, 'cancelado')}
+                    className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                  >
+                    Cancelar
+                  </button>
+                </>
+              )
             )}
             {deleteConfirmId === r.id ? (
               <>
@@ -3222,14 +3249,17 @@ function TabProdutos({
     }
   }
 
-  const handleReservationStatus = async (id: string, status: ProductReservationStatus) => {
-    const result = await updateProductReservationStatus(id, status)
+  const [retirePendingResId, setRetirePendingResId] = useState<string | null>(null)
+
+  const handleReservationStatus = async (id: string, status: ProductReservationStatus, paymentMethod?: PaymentMethod) => {
+    const result = await updateProductReservationStatus(id, status, paymentMethod)
     if (result.success) {
       setReservations((prev) => prev.map((r) => r.id === id ? { ...r, status } : r))
       toast.success('Status atualizado.')
     } else {
       toast.error(result.error ?? 'Erro.')
     }
+    setRetirePendingResId(null)
   }
 
   const statusLabel: Record<ProductReservationStatus, string> = {
@@ -3422,20 +3452,43 @@ function TabProdutos({
                     </span>
                   </div>
                   {r.status === 'reservado' && (
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => handleReservationStatus(r.id, 'retirado')}
-                        className="flex-1 text-[10px] font-black uppercase tracking-widest text-blue-400 border border-blue-400/20 bg-blue-400/5 py-1.5 rounded-lg"
-                      >
-                        Marcar retirado
-                      </button>
-                      <button
-                        onClick={() => handleReservationStatus(r.id, 'cancelado')}
-                        className="flex-1 text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-400/20 bg-red-400/5 py-1.5 rounded-lg"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
+                    retirePendingResId === r.id ? (
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[10px] text-zinc-400">Como foi pago?</span>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {(['dinheiro', 'pix', 'debito', 'credito'] as PaymentMethod[]).map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => handleReservationStatus(r.id, 'retirado', m)}
+                              className="flex-1 text-[10px] font-black uppercase tracking-widest text-blue-400 border border-blue-400/20 bg-blue-400/5 py-1.5 rounded-lg"
+                            >
+                              {m === 'dinheiro' ? 'Dinheiro' : m === 'pix' ? 'PIX' : m === 'debito' ? 'Débito' : 'Crédito'}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => setRetirePendingResId(null)}
+                            className="text-[10px] font-black uppercase tracking-widest text-zinc-400 border border-white/10 bg-white/5 py-1.5 px-2 rounded-lg"
+                          >
+                            Voltar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => setRetirePendingResId(r.id)}
+                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-blue-400 border border-blue-400/20 bg-blue-400/5 py-1.5 rounded-lg"
+                        >
+                          Marcar retirado
+                        </button>
+                        <button
+                          onClick={() => handleReservationStatus(r.id, 'cancelado')}
+                          className="flex-1 text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-400/20 bg-red-400/5 py-1.5 rounded-lg"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    )
                   )}
                   {deleteResConfirm === r.id ? (
                     <div className="flex gap-1.5">

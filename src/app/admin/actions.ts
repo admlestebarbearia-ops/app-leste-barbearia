@@ -601,7 +601,8 @@ export async function listProductReservations() {
 
 export async function updateProductReservationStatus(
   id: string,
-  status: 'reservado' | 'cancelado' | 'retirado'
+  status: 'reservado' | 'cancelado' | 'retirado',
+  payment_method?: import('@/lib/supabase/types').PaymentMethod
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
@@ -647,9 +648,12 @@ export async function updateProductReservationStatus(
       if (res && res.product_price_snapshot != null) {
         const { data: configData } = await supabase
           .from('business_config')
-          .select('default_card_rate_pct')
+          .select('debit_rate_pct, credit_rate_pct, default_card_rate_pct')
           .single()
-        const cardRate = configData?.default_card_rate_pct ?? 0
+        const cardRate =
+          payment_method === 'debito'  ? (configData?.debit_rate_pct  ?? configData?.default_card_rate_pct ?? 0) :
+          payment_method === 'credito' ? (configData?.credit_rate_pct ?? configData?.default_card_rate_pct ?? 0) :
+          0
         const amount = res.product_price_snapshot * (res.quantity ?? 1)
         const netAmount = amount * (1 - cardRate / 100)
         const { data: { user } } = await supabase.auth.getUser()
@@ -658,6 +662,7 @@ export async function updateProductReservationStatus(
           source: 'produto',
           amount,
           description: res.product_name_snapshot ?? 'Produto',
+          payment_method: payment_method ?? null,
           card_rate_pct: cardRate,
           net_amount: netAmount,
           reference_id: id,
