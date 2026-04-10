@@ -347,6 +347,14 @@ export async function createAppointment(data: {
   const paymentMode = agendaConfig?.payment_mode ?? 'presencial'
   const mpToken = agendaConfig?.mp_access_token ?? null
   const aceitaDinheiroConfig = agendaConfig?.aceita_dinheiro ?? true
+
+  // Guarda: se o admin configurou pagamento online obrigatório mas não vinculou
+  // o Mercado Pago, o agendamento NÃO deve ser confirmado silenciosamente.
+  // O cliente deve receber uma mensagem clara em vez de passar sem pagar.
+  if (paymentMode === 'online_obrigatorio' && !mpToken && !(data.payCash && aceitaDinheiroConfig)) {
+    return { success: false, error: 'Sistema de pagamento online indisponível no momento. Entre em contato com a barbearia.' }
+  }
+
   // Cliente escolheu pagar em dinheiro E a barbearia permite → não exige MP
   const isOnlinePayment = paymentMode === 'online_obrigatorio' && !!mpToken && !(data.payCash && aceitaDinheiroConfig)
   const appointmentStatus = isOnlinePayment ? 'aguardando_pagamento' as const : 'confirmado' as const

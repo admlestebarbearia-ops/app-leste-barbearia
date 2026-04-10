@@ -1,13 +1,17 @@
+import { createHmac } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+/**
+ * Inicia o fluxo OAuth do Mercado Pago.
+ * Usa estado assinado com HMAC (sem cookies) — robusto a qualquer tipo de
+ * redirect cross-site do MP (GET ou POST).
+ */
 export async function GET(request: NextRequest) {
-  // Verifica que o usuário autenticado é admin
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    // Redireciona para a home (que tem o botão de login)
     return NextResponse.redirect(new URL('/', request.url))
   }
 
@@ -22,13 +26,22 @@ export async function GET(request: NextRequest) {
   }
 
   const appId = process.env.MERCADOPAGO_APP_ID
-  if (!appId) {
-    console.error('[MP OAuth] MERCADOPAGO_APP_ID não configurado')
+  const appSecret = process.env.MERCADOPAGO_APP_SECRET
+  if (!appId || !appSecret) {
+    console.error('[MP OAuth] MERCADOPAGO_APP_ID ou APP_SECRET nao configurado')
     return NextResponse.redirect(new URL('/admin?mp=error&reason=config', request.url))
   }
 
-  // Gera state aleatório para proteção CSRF
-  const state = crypto.randomUUID()
+  // Estado CSRF assinado: base64url(payload) + '.' + HMAC-SHA256(payload, appSecret)
+  // Sem cookies — funciona mesmo quando MP faz POST redirect (sameSite:lax nao funciona)
+  const payload = Buffer.from(JSON.stringify({
+    uid: user.id,
+    ts: Date.now(),
+    n: Math.random().toString(36).slice(2),
+  })).toString('base64url')
+
+  const sig = createHmac('sha256', appSecret).update(payload).digest('base64url')
+  const state = `${payload}.${sig}`
 
   const redirectUri = new URL('/api/auth/mercadopago/callback', request.url).toString()
   const authUrl =
@@ -39,18 +52,5 @@ export async function GET(request: NextRequest) {
     `&redirect_uri=${encodeURIComponent(redirectUri)}` +
     `&state=${encodeURIComponent(state)}`
 
-  // IMPORTANTE: o cookie DEVE ser definido diretamente na resposta de redirect.
-  // Usar cookies() do next/headers e depois NextResponse.redirect() são respostas
-  // independentes — o cookie não seria incluído no redirect. Aqui definimos no
-  // objeto de resposta correto para garantir que o browser o receba.
-  const response = NextResponse.redirect(authUrl)
-  response.cookies.set('mp_oauth_state', state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 600, // 10 minutos
-    path: '/',
-    sameSite: 'lax',
-  })
-
-  return response
+  return NextResponse.redirect(authUrl)
 }

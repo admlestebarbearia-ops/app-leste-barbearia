@@ -47,7 +47,8 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Roda em todas as rotas exceto assets estáticos e SW
-    '/((?!_next/static|_next/image|favicon|logo|sw\\.js|site\\.webmanifest|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|mp3)).*)',
+    // Roda em todas as rotas exceto assets estáticos, SW e rotas de OAuth MP
+    // (OAuth MP faz sua própria verificação de auth internamente)
+    '/((?!_next/static|_next/image|favicon|logo|sw\\.js|site\\.webmanifest|api/auth/mercadopago|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|mp3)).*)',
   ],
 }
