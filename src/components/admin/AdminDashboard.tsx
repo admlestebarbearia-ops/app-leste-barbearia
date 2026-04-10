@@ -88,6 +88,7 @@ interface Props {
   initialProductReservations?: ProductReservation[]
   initialStandaloneReservations?: ProductReservation[]
   appointmentsError?: string | null
+  mpStatus?: string
 }
 
 export function AdminDashboard({
@@ -100,9 +101,27 @@ export function AdminDashboard({
   initialProductReservations = [],
   initialStandaloneReservations = [],
   appointmentsError,
+  mpStatus,
 }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('hoje')
+
+  // Trata retorno do OAuth do Mercado Pago (?mp=connected ou ?mp=error)
+  useEffect(() => {
+    if (!mpStatus) return
+    if (mpStatus === 'connected') {
+      toast.success('Mercado Pago vinculado com sucesso!')
+      setTab('configuracoes')
+      // Limpa o query param da URL sem causar re-render do servidor
+      window.history.replaceState({}, '', '/admin')
+    } else if (mpStatus === 'error') {
+      toast.error('Erro ao vincular Mercado Pago. Tente novamente.')
+      setTab('configuracoes')
+      window.history.replaceState({}, '', '/admin')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [isPauseDialogOpen, setIsPauseDialogOpen] = useState(false)
   const [pauseMessage, setPauseMessage] = useState(config.pause_message || '')
@@ -1568,7 +1587,8 @@ function TabConfiguracoes({
   const [openUntilDate, setOpenUntilDate] = useState(config.calendar_open_until_date ?? '')
   const [savingAgenda, setSavingAgenda] = useState(false)
 
-  // Fase 4: Mercado Pago
+  // Fase 4: Mercado Pago — estado local do token para refletir connect/disconnect imediatamente
+  const [mpConnected, setMpConnected] = useState<boolean>(!!config.mp_access_token)
   const [paymentMode, setPaymentMode] = useState<'presencial' | 'online_obrigatorio'>(config.payment_mode ?? 'presencial')
   const [aceitaDinheiro, setAceitaDinheiro] = useState<boolean>(config.aceita_dinheiro ?? true)
   const [mpExpiryMinutes, setMpExpiryMinutes] = useState(String(config.payment_expiry_minutes ?? 15))
@@ -1729,6 +1749,7 @@ function TabConfiguracoes({
     const result = await disconnectMercadoPago()
     setSavingMp(false)
     if (result.success) {
+      setMpConnected(false)
       toast.success('Mercado Pago desconectado.')
       onRefresh()
     } else {
@@ -2183,7 +2204,7 @@ function TabConfiguracoes({
             <span className="text-xs text-zinc-500">Mercado Pago e formas de cobrança</span>
           </div>
           <div className="flex items-center gap-2">
-            {config.mp_access_token ? (
+            {mpConnected ? (
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2 py-0.5">Conectado</span>
             ) : (
               <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 bg-zinc-500/10 border border-zinc-500/15 rounded-full px-2 py-0.5">Desconectado</span>
@@ -2195,7 +2216,7 @@ function TabConfiguracoes({
           <div className="border-t border-white/5 px-4 py-5 flex flex-col gap-4">
 
           {/* Conexão da conta */}
-          {config.mp_access_token ? (
+          {mpConnected ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

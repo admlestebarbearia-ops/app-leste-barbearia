@@ -864,6 +864,15 @@ const handleConfirm = async () => {
             </div>
           </div>
         )}
+        {/* Aviso de pagamento online obrigatório (sem opção de dinheiro) */}
+        {config?.payment_mode === 'online_obrigatorio' && !config?.aceita_dinheiro && (
+          <div className="max-w-[340px] mx-auto w-full mb-2">
+            <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-xl">
+              <span className="text-primary text-base">💳</span>
+              <span className="text-[11px] text-primary/80 font-medium">Pagamento online via Mercado Pago</span>
+            </div>
+          </div>
+        )}
          <div className="max-w-[340px] mx-auto w-full flex gap-2">
             <button
               onClick={() => setSelectedTime(null)}

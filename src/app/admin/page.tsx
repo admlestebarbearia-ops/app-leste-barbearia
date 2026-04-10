@@ -5,7 +5,14 @@ import { AdminDashboard } from '@/components/admin/AdminDashboard'
 import { OnboardingWizard } from '@/components/admin/OnboardingWizard'
 import type { BusinessConfig, WorkingHours, Service, SpecialSchedule, Appointment, Product, ProductReservation } from '@/lib/supabase/types'
 
-export default async function AdminPage() {
+// Força renderização dinâmica para garantir dados sempre frescos (sem cache)
+export const dynamic = 'force-dynamic'
+
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mp?: string; reason?: string }>
+}) {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -20,7 +27,11 @@ export default async function AdminPage() {
 
   if (!profile?.is_admin) redirect('/')
 
-  // Dados do negócio
+  // Lê parâmetro de status do OAuth do MP (se veio de callback)
+  const { mp: mpStatus } = await searchParams
+
+  // Dados do negócio — usa adminClient para garantir dados frescos sem cache de sessão
+  const adminClient = createAdminClient()
   const [
     { data: config },
     { data: workingHours },
@@ -28,15 +39,15 @@ export default async function AdminPage() {
     { data: specialSchedules },
     { data: products },
   ] = await Promise.all([
-    supabase.from('business_config').select('*').single(),
-    supabase.from('working_hours').select('*').order('day_of_week'),
-    supabase.from('services').select('*').order('name'),
-    supabase
+    adminClient.from('business_config').select('*').single(),
+    adminClient.from('working_hours').select('*').order('day_of_week'),
+    adminClient.from('services').select('*').order('name'),
+    adminClient
       .from('special_schedules')
       .select('*')
       .gte('date', new Date().toISOString().split('T')[0])
       .order('date'),
-    supabase.from('products').select('*').order('sort_order').order('created_at'),
+    adminClient.from('products').select('*').order('sort_order').order('created_at'),
   ])
 
   const typedConfig = config as BusinessConfig | null
@@ -148,6 +159,7 @@ export default async function AdminPage() {
         initialProductReservations={productReservations}
         initialStandaloneReservations={standaloneReservations}
         appointmentsError={apptError?.message ?? null}
+        mpStatus={mpStatus}
       />
     </main>
   )
