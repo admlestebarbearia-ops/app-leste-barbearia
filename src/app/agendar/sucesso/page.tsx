@@ -10,11 +10,12 @@ import { GUEST_BOOKING_PHONE_COOKIE, normalizePhoneLookup } from '@/lib/auth/ses
 import type { BusinessConfig } from '@/lib/supabase/types'
 
 interface Props {
-  searchParams: Promise<{ id?: string }>
+  searchParams: Promise<{ id?: string; cash?: string }>
 }
 
 export default async function SucessoPage({ searchParams }: Props) {
-  const { id } = await searchParams
+  const { id, cash } = await searchParams
+  const isCashPayment = cash === '1'
 
   if (!id) redirect('/agendar')
 
@@ -79,6 +80,19 @@ export default async function SucessoPage({ searchParams }: Props) {
             Seu horario esta confirmado.
           </p>
         </div>
+
+        {/* Aviso de pagamento em dinheiro */}
+        {isCashPayment && service && (
+          <div className="w-full flex items-start gap-3 bg-amber-500/[0.08] border border-amber-500/25 rounded-xl p-4">
+            <span className="text-xl shrink-0">💵</span>
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-bold text-amber-300 uppercase tracking-wider">Pagamento na barbearia</p>
+              <p className="text-xs text-amber-300/70 leading-relaxed">
+                Lembre-se de levar <strong className="text-amber-300">R$ {service.price.toFixed(2).replace('.', ',')}</strong> para pagar ao barbeiro ao chegar. Não é necessário pagar antecipadamente.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="w-full bg-card border border-border rounded-xl p-5 flex flex-col gap-3">
           <div className="flex justify-between items-start">

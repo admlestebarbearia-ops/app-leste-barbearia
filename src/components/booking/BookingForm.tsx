@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
-import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag, Images, Download, Share } from 'lucide-react'
+import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag, Images, Download, Share, QrCode, CreditCard, Banknote, ChevronRight } from 'lucide-react'
 
 // Ícones SVG customizados da pasta public/barber-icon
 const SERVICE_ICON_PATHS: Record<string, string> = {
@@ -151,6 +151,10 @@ export function BookingForm({
   const [loadingSlots, setLoadingSlots] = useState(false)
   // null = usuário ainda não escolheu; 'mp' = Mercado Pago; 'cash' = dinheiro presencial
   const [paymentChoice, setPaymentChoice] = useState<'mp' | 'cash' | null>(null)
+  // Tela de seleção de pagamento (aparece após escolher horário, antes de criar agendamento)
+  const [showPaymentStep, setShowPaymentStep] = useState(false)
+  // Método MP destacado no passo de pagamento (só visual — ambos usam o mesmo brick)
+  const [selectedMpMethod, setSelectedMpMethod] = useState<'pix' | 'card' | null>(null)
 
   // Estado do Payment Brick inline (substitui redirecionamento externo)
   const [paymentData, setPaymentData] = useState<{
@@ -213,6 +217,8 @@ export function BookingForm({
   // Reseta a escolha de pagamento sempre que o cliente troca de horário
   useEffect(() => {
     setPaymentChoice(null)
+    setShowPaymentStep(false)
+    setSelectedMpMethod(null)
   }, [selectedTime])
 
   const requireLogin = config?.require_google_login ?? true
@@ -366,7 +372,7 @@ export function BookingForm({
     setSelectedDate(undefined)
     setAvailableSlots([])
     setSelectedTime(null)
-    scrollToRef(barberSectionRef)
+    scrollToRef(calendarSectionRef)
   }
 
   const handleDateSelect = useCallback(
@@ -472,7 +478,9 @@ const handleConfirm = async () => {
             serviceTime: selectedTime,
           })
         } else {
-          router.push(`/agendar/sucesso?id=${result.appointmentId}`)
+          // cash=1 informa a página de sucesso para exibir aviso de pagamento presencial
+          const cashFlag = paymentChoice === 'cash' ? '&cash=1' : ''
+          router.push(`/agendar/sucesso?id=${result.appointmentId}${cashFlag}`)
         }
       } else {
         toast.error(result.error ?? 'Erro ao confirmar agendamento.')
@@ -490,16 +498,12 @@ const handleConfirm = async () => {
     router.push('/?next=/perfil')
   }
 
-  // Pagamento online c/ dinheiro permitido exige escolha explícita antes de confirmar
-  const needsExplicitPaymentChoice =
-    config?.payment_mode === 'online_obrigatorio' && (config?.aceita_dinheiro ?? false)
-
+  // canConfirm: verifica se o CTA flutuante pode ser ativado (não exige paymentChoice — isso fica na tela de pagamento)
   const canConfirm =
     !!barber &&
     !!selectedService &&
     !!selectedDate &&
     !!selectedTime &&
-    (!needsExplicitPaymentChoice || paymentChoice !== null) &&
     (!showFreeMode || (
       clientName.trim().length > 1 &&
       !nameError &&
@@ -521,6 +525,178 @@ const handleConfirm = async () => {
   }
 
   const mpPublicKey = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY ?? ''
+
+  const needsPaymentStep = config?.payment_mode === 'online_obrigatorio'
+  const aceitaDinheiro = config?.aceita_dinheiro ?? false
+
+  // ─── Tela de seleção de forma de pagamento ────────────────────────────────
+  if (showPaymentStep && selectedService && selectedDate && selectedTime) {
+    const servicePrice = selectedService.price ?? 0
+    const displayDateStr = format(selectedDate, "dd 'de' MMMM", { locale: ptBR })
+
+    return (
+      <div className="flex flex-col min-h-screen bg-background">
+        {/* Header */}
+        <div className="sticky top-0 z-50 flex items-center gap-3 px-4 py-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
+          <button
+            onClick={() => { setShowPaymentStep(false); setPaymentChoice(null); setSelectedMpMethod(null) }}
+            className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/50 hover:text-white/80 transition-colors"
+          >
+            <span className="text-base">←</span> Voltar
+          </button>
+          <span className="flex-1 text-center text-xs font-bold uppercase tracking-[0.2em] text-foreground">
+            Pagamento
+          </span>
+          <div className="w-16" />
+        </div>
+
+        <div className="flex flex-col gap-6 px-4 pt-6 pb-24 max-w-lg mx-auto w-full">
+
+          {/* Resumo do agendamento */}
+          <div className="bg-card border border-white/[0.08] rounded-2xl p-5">
+            <p className="text-[10px] uppercase tracking-widest font-bold text-white/40 mb-3">Resumo</p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-extrabold text-foreground">{selectedService.name}</span>
+                <span className="text-xs text-white/50 capitalize">{displayDateStr} • {selectedTime}</span>
+                {selectedService.duration_minutes && (
+                  <span className="text-[10px] text-white/30 uppercase tracking-wider">{selectedService.duration_minutes} min</span>
+                )}
+              </div>
+              <span className="text-lg font-extrabold text-primary whitespace-nowrap">
+                R$ {servicePrice.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+          </div>
+
+          {/* Formas de pagamento */}
+          <div className="flex flex-col gap-3">
+            <p className="text-[10px] uppercase tracking-widest font-bold text-white/40">Forma de pagamento</p>
+
+            {/* Grid PIX + Cartão */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* PIX */}
+              <button
+                onClick={() => { setSelectedMpMethod('pix'); setPaymentChoice('mp') }}
+                className={[
+                  'relative flex flex-col items-center justify-center gap-2.5 rounded-2xl border p-5 transition-all duration-200',
+                  selectedMpMethod === 'pix' && paymentChoice === 'mp'
+                    ? 'border-[#00BDAE] bg-[#00BDAE]/10 ring-2 ring-[#00BDAE]/30 scale-[1.02]'
+                    : 'border-white/[0.06] bg-[#1a1a1a] hover:border-white/20 active:scale-[0.97]',
+                ].join(' ')}
+              >
+                {/* Ícone PIX estilizado */}
+                <div className={['w-10 h-10 rounded-xl flex items-center justify-center transition-colors', selectedMpMethod === 'pix' && paymentChoice === 'mp' ? 'bg-[#00BDAE]/20' : 'bg-white/5'].join(' ')}>
+                  <QrCode size={22} className={selectedMpMethod === 'pix' && paymentChoice === 'mp' ? 'text-[#00BDAE]' : 'text-white/40'} />
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className={['text-xs font-extrabold uppercase tracking-wider', selectedMpMethod === 'pix' && paymentChoice === 'mp' ? 'text-[#00BDAE]' : 'text-white/60'].join(' ')}>
+                    PIX
+                  </span>
+                  <span className="text-[10px] text-white/30 font-medium">Instantâneo</span>
+                </div>
+                {selectedMpMethod === 'pix' && paymentChoice === 'mp' && (
+                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-[#00BDAE] flex items-center justify-center">
+                    <Check size={10} className="text-black" strokeWidth={3} />
+                  </div>
+                )}
+              </button>
+
+              {/* Cartão */}
+              <button
+                onClick={() => { setSelectedMpMethod('card'); setPaymentChoice('mp') }}
+                className={[
+                  'relative flex flex-col items-center justify-center gap-2.5 rounded-2xl border p-5 transition-all duration-200',
+                  selectedMpMethod === 'card' && paymentChoice === 'mp'
+                    ? 'border-primary bg-primary/10 ring-2 ring-primary/30 scale-[1.02]'
+                    : 'border-white/[0.06] bg-[#1a1a1a] hover:border-white/20 active:scale-[0.97]',
+                ].join(' ')}
+              >
+                <div className={['w-10 h-10 rounded-xl flex items-center justify-center transition-colors', selectedMpMethod === 'card' && paymentChoice === 'mp' ? 'bg-primary/20' : 'bg-white/5'].join(' ')}>
+                  <CreditCard size={22} className={selectedMpMethod === 'card' && paymentChoice === 'mp' ? 'text-primary' : 'text-white/40'} />
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className={['text-xs font-extrabold uppercase tracking-wider', selectedMpMethod === 'card' && paymentChoice === 'mp' ? 'text-primary' : 'text-white/60'].join(' ')}>
+                    Cartão
+                  </span>
+                  <span className="text-[10px] text-white/30 font-medium">Crédito ou Débito</span>
+                </div>
+                {selectedMpMethod === 'card' && paymentChoice === 'mp' && (
+                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                    <Check size={10} className="text-white" strokeWidth={3} />
+                  </div>
+                )}
+              </button>
+            </div>
+
+            {/* Dinheiro (se barbearia aceita) */}
+            {aceitaDinheiro && (
+              <button
+                onClick={() => { setPaymentChoice('cash'); setSelectedMpMethod(null) }}
+                className={[
+                  'flex items-center gap-4 rounded-2xl border p-4 transition-all duration-200 text-left',
+                  paymentChoice === 'cash'
+                    ? 'border-amber-500/50 bg-amber-500/10 ring-2 ring-amber-500/20 scale-[1.01]'
+                    : 'border-white/[0.06] bg-[#1a1a1a] hover:border-white/20 active:scale-[0.98]',
+                ].join(' ')}
+              >
+                <div className={['w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors', paymentChoice === 'cash' ? 'bg-amber-500/20' : 'bg-white/5'].join(' ')}>
+                  <Banknote size={22} className={paymentChoice === 'cash' ? 'text-amber-400' : 'text-white/40'} />
+                </div>
+                <div className="flex flex-col gap-0.5 flex-1">
+                  <span className={['text-xs font-extrabold uppercase tracking-wider', paymentChoice === 'cash' ? 'text-amber-400' : 'text-white/60'].join(' ')}>
+                    Pagar na Barbearia
+                  </span>
+                  <span className="text-[10px] text-white/30 font-medium">Pague ao barbeiro na chegada</span>
+                </div>
+                {paymentChoice === 'cash' && (
+                  <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                    <Check size={11} className="text-black" strokeWidth={3} />
+                  </div>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Aviso dinheiro */}
+          {paymentChoice === 'cash' && (
+            <div className="flex items-start gap-3 bg-amber-500/[0.07] border border-amber-500/20 rounded-xl p-4">
+              <span className="text-xl shrink-0 mt-0.5">💡</span>
+              <p className="text-xs text-amber-300/80 leading-relaxed">
+                Seu agendamento será confirmado agora. Lembre-se de levar o valor de{' '}
+                <strong className="text-amber-300">R$ {servicePrice.toFixed(2).replace('.', ',')}</strong>{' '}
+                para pagar ao barbeiro ao chegar na barbearia.
+              </p>
+            </div>
+          )}
+
+          {/* Selo de segurança MP */}
+          {paymentChoice === 'mp' && (
+            <div className="flex items-center justify-center gap-2 opacity-50">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/60"><path d="M12 22s8-4 8-10V5l-8-2-8 2v7c0 6 8 10 8 10z"/></svg>
+              <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">Pagamento seguro via Mercado Pago</span>
+            </div>
+          )}
+
+          {/* Botão confirmar */}
+          <Button
+            onClick={handleConfirm}
+            disabled={paymentChoice === null || isPending}
+            className="w-full h-14 rounded-2xl text-sm font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-40 shadow-[0_8px_30px_rgba(0,0,0,0.5)] border border-primary/50 mt-2"
+          >
+            {isPending
+              ? 'Confirmando...'
+              : paymentChoice === 'cash'
+              ? 'Confirmar Agendamento'
+              : paymentChoice === 'mp'
+              ? 'Ir para Pagamento →'
+              : 'Selecione uma forma de pagamento'}
+          </Button>
+
+        </div>
+      </div>
+    )
+  }
 
   // ─── Tela de pagamento inline (substitui o wizard de agendamento) ─────────
   if (paymentData) {
@@ -856,35 +1032,12 @@ const handleConfirm = async () => {
 
       {/* Barra de confirmacao flutuante (CTA) */}
       <div className={`fixed bottom-[90px] left-0 right-0 px-4 z-40 transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] ${selectedTime ? 'translate-y-0 opacity-100 pointer-events-auto scale-100' : 'translate-y-full opacity-0 pointer-events-none scale-95'}`}>
-        {/* Escolha de forma de pagamento (modo online com dinheiro permitido) */}
-        {config?.payment_mode === 'online_obrigatorio' && config?.aceita_dinheiro && (
-          <div className="max-w-[340px] mx-auto w-full mb-2">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold text-center mb-1.5">Como deseja pagar?</p>
-            <div className="flex gap-1.5 p-1 bg-[#09090b]/95 backdrop-blur-xl border border-white/10 rounded-2xl">
-              <button
-                onClick={() => setPaymentChoice('mp')}
-                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${paymentChoice === 'mp' ? 'bg-primary text-primary-foreground shadow-md' : 'text-white/40 hover:text-white/70'}`}
-              >
-                💳 Pagar via MP
-              </button>
-              <button
-                onClick={() => setPaymentChoice('cash')}
-                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${paymentChoice === 'cash' ? 'bg-white/10 text-white shadow-md' : 'text-white/40 hover:text-white/70'}`}
-              >
-                💵 Pagar na barbearia
-              </button>
-            </div>
-            {paymentChoice === null && (
-              <p className="text-[10px] text-amber-400/80 text-center mt-1.5 font-medium">Escolha como deseja pagar para continuar</p>
-            )}
-          </div>
-        )}
-        {/* Aviso de pagamento online obrigatório (sem opção de dinheiro) */}
-        {config?.payment_mode === 'online_obrigatorio' && !config?.aceita_dinheiro && (
-          <div className="max-w-[340px] mx-auto w-full mb-2">
-            <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-xl">
-              <span className="text-primary text-base">💳</span>
-              <span className="text-[11px] text-primary/80 font-medium">Pagamento antecipado via Mercado Pago</span>
+        {/* Badge discreto indicando que o próximo passo é pagamento */}
+        {needsPaymentStep && (
+          <div className="max-w-[340px] mx-auto w-full mb-1.5 flex justify-center">
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-[#09090b]/80 border border-white/[0.06] rounded-full">
+              <CreditCard size={11} className="text-white/30" />
+              <span className="text-[10px] text-white/30 font-semibold uppercase tracking-wider">PIX • Cartão • Dinheiro</span>
             </div>
           </div>
         )}
@@ -896,11 +1049,11 @@ const handleConfirm = async () => {
               ← Voltar
             </button>
             <Button
-              onClick={handleConfirm}
+              onClick={needsPaymentStep ? () => setShowPaymentStep(true) : handleConfirm}
               disabled={!canConfirm || isPending}
-              className="flex-1 h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50"
+              className="flex-1 h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50 flex items-center justify-center gap-1.5"
             >
-              {isPending ? 'Confirmando...' : (needsExplicitPaymentChoice && paymentChoice === null) ? 'Escolha o método acima' : 'Confirmar'}
+              {isPending ? 'Aguarde...' : needsPaymentStep ? <><span>Avançar</span><ChevronRight size={14} /></> : 'Confirmar'}
             </Button>
          </div>
       </div>
