@@ -27,8 +27,8 @@ export default async function AdminPage({
 
   if (!profile?.is_admin) redirect('/')
 
-  // Lê parâmetro de status do OAuth do MP (se veio de callback)
-  const { mp: mpStatus } = await searchParams
+  // Lê parâmetros de status do OAuth do MP (se veio de callback)
+  const { mp: mpStatus, reason: mpReason } = await searchParams
 
   // Dados do negócio — usa adminClient para garantir dados frescos sem cache de sessão
   const adminClient = createAdminClient()
@@ -159,6 +159,7 @@ export default async function AdminPage({
         initialStandaloneReservations={standaloneReservations}
         appointmentsError={apptError?.message ?? null}
         mpStatus={mpStatus}
+        mpReason={mpReason}
       />
     </main>
   )

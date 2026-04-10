@@ -117,7 +117,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/admin?mp=error&reason=config', request.url))
   }
 
-  const redirectUri = new URL('/api/auth/mercadopago/callback', request.url).toString()
+  // Mesma lógica de siteUrl do route.ts initiator — deve ser idêntico ao que foi enviado ao MP
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  const proto = request.headers.get('x-forwarded-proto') ?? 'https'
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+    ?? (forwardedHost ? `${proto}://${forwardedHost}` : new URL(request.url).origin)
+  const redirectUri = `${siteUrl}/api/auth/mercadopago/callback`
+  console.log('[MP OAuth] redirect_uri usado no token exchange:', redirectUri)
 
   const tokenRes = await fetch('https://api.mercadopago.com/oauth/token', {
     method: 'POST',

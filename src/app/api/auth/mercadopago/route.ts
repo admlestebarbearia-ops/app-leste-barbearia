@@ -43,7 +43,13 @@ export async function GET(request: NextRequest) {
   const sig = createHmac('sha256', appSecret).update(payload).digest('base64url')
   const state = `${payload}.${sig}`
 
-  const redirectUri = new URL('/api/auth/mercadopago/callback', request.url).toString()
+  // Usa NEXT_PUBLIC_SITE_URL ou x-forwarded-host para garantir URL consistente no Vercel
+  // (request.url pode conter hostname interno do Vercel, não o domínio customizado)
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  const proto = request.headers.get('x-forwarded-proto') ?? 'https'
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+    ?? (forwardedHost ? `${proto}://${forwardedHost}` : new URL(request.url).origin)
+  const redirectUri = `${siteUrl}/api/auth/mercadopago/callback`
   const authUrl =
     `https://auth.mercadopago.com.br/authorization` +
     `?client_id=${encodeURIComponent(appId)}` +

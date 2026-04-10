@@ -89,6 +89,7 @@ interface Props {
   initialStandaloneReservations?: ProductReservation[]
   appointmentsError?: string | null
   mpStatus?: string
+  mpReason?: string
 }
 
 export function AdminDashboard({
@@ -102,6 +103,7 @@ export function AdminDashboard({
   initialStandaloneReservations = [],
   appointmentsError,
   mpStatus,
+  mpReason,
 }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('hoje')
@@ -112,10 +114,23 @@ export function AdminDashboard({
     if (mpStatus === 'connected') {
       toast.success('Mercado Pago vinculado com sucesso!')
       setTab('configuracoes')
-      // Limpa o query param da URL sem causar re-render do servidor
       window.history.replaceState({}, '', '/admin')
+      // Força reload dos dados do servidor para que config.mp_access_token seja atualizado
+      router.refresh()
     } else if (mpStatus === 'error') {
-      toast.error('Erro ao vincular Mercado Pago. Tente novamente.')
+      const reasonMap: Record<string, string> = {
+        token: 'Falha ao trocar o código MP (redirect_uri ou credenciais inválidas)',
+        token_missing: 'Resposta do MP sem access_token',
+        state: 'Parâmetro de estado inválido (tente novamente)',
+        expired: 'Link expirado. Inicie o fluxo novamente',
+        user: 'Usuário não corresponde ao iniciador do fluxo',
+        auth: 'Sessão não encontrada. Faça login e tente novamente',
+        no_code: 'Código de autorização ausente',
+        config: 'Variáveis de ambiente MP não configuradas',
+        db: 'Erro ao salvar token no banco de dados',
+      }
+      const detail = mpReason ? (reasonMap[mpReason] ?? mpReason) : 'motivo desconhecido'
+      toast.error(`Erro ao vincular Mercado Pago: ${detail}`, { duration: 8000 })
       setTab('configuracoes')
       window.history.replaceState({}, '', '/admin')
     }
@@ -1624,6 +1639,8 @@ function TabConfiguracoes({
 
   // Fase 4: Mercado Pago — estado local do token para refletir connect/disconnect imediatamente
   const [mpConnected, setMpConnected] = useState<boolean>(!!config.mp_access_token)
+  // Sync quando config muda (ex: após router.refresh() pós-OAuth bem sucedido)
+  useEffect(() => { setMpConnected(!!config.mp_access_token) }, [config.mp_access_token])
   const [paymentMode, setPaymentMode] = useState<'presencial' | 'online_obrigatorio'>(config.payment_mode ?? 'presencial')
   const [aceitaDinheiro, setAceitaDinheiro] = useState<boolean>(config.aceita_dinheiro ?? true)
   const [mpExpiryMinutes, setMpExpiryMinutes] = useState(String(config.payment_expiry_minutes ?? 15))
@@ -2291,7 +2308,7 @@ function TabConfiguracoes({
                     : 'border-border text-zinc-600 hover:text-zinc-400 hover:border-zinc-700',
                 ].join(' ')}
               >
-                <span>Pagar ao chegar</span>
+                <span>Receber na barbearia</span>
                 <span className="text-[9px] font-normal text-zinc-500 mt-0.5">Sem cobrança no app</span>
               </button>
               <button

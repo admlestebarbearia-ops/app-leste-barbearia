@@ -871,7 +871,7 @@ const handleConfirm = async () => {
                 onClick={() => setPaymentChoice('cash')}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${paymentChoice === 'cash' ? 'bg-white/10 text-white shadow-md' : 'text-white/40 hover:text-white/70'}`}
               >
-                💵 Pagar ao chegar
+                💵 Pagar na barbearia
               </button>
             </div>
             {paymentChoice === null && (
