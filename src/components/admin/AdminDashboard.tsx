@@ -2145,121 +2145,115 @@ function TabConfiguracoes({
       </div>
 
       {/* Seção: Integrações — Mercado Pago */}
-      <div className="w-full max-w-lg mx-auto rounded-xl border border-border overflow-hidden">
+      <div className="w-full max-w-lg mx-auto rounded-2xl border border-border overflow-hidden bg-card">
 
-        {/* Header com branding MP */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-border" style={{ background: 'linear-gradient(135deg, rgba(0,158,227,0.12) 0%, rgba(0,158,227,0.04) 100%)' }}>
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm" style={{ backgroundColor: '#009EE3' }}>
-            <span className="text-white text-xs font-black tracking-tight select-none">MP</span>
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-border">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: '#009EE3' }}>
+            <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-foreground">Mercado Pago</p>
-            <p className="text-xs text-muted-foreground">Processamento de pagamentos online</p>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-foreground">Pagamento Online</p>
           </div>
-          {config.mp_access_token && (
-            <span className="text-xs font-medium text-green-400 bg-green-400/10 border border-green-400/25 rounded-full px-2.5 py-1 shrink-0">
-              ● Ativo
+          {config.mp_access_token ? (
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5">
+              Conectado
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 bg-zinc-500/10 border border-zinc-500/15 rounded-full px-2.5 py-0.5">
+              Desconectado
             </span>
           )}
         </div>
 
-        {/* Corpo */}
-        <div className="flex flex-col gap-5 p-5">
+        <div className="flex flex-col gap-4 p-5">
 
-          {/* Status de conexão */}
+          {/* Conexão da conta */}
           {config.mp_access_token ? (
-            <div className="flex items-center justify-between px-4 py-3 rounded-xl border border-green-500/20 bg-green-500/8">
-              <div className="flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full bg-green-400" style={{ boxShadow: '0 0 6px rgba(74,222,128,0.6)' }} />
-                <span className="text-sm text-green-400 font-medium">Conta do vendedor vinculada</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs text-zinc-400">Conta Mercado Pago vinculada</span>
               </div>
               <button
                 onClick={handleDisconnectMP}
                 disabled={savingMp}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 underline decoration-dotted underline-offset-2"
+                className="text-[11px] text-red-400/70 hover:text-red-400 transition-colors disabled:opacity-40 font-medium"
               >
                 Desvincular
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-muted/30 border border-border">
-                <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />
-                <span className="text-sm text-muted-foreground">Nenhuma conta vinculada</span>
-              </div>
-              <button
-                onClick={() => { window.location.href = '/api/auth/mercadopago' }}
-                className="w-full py-3 px-4 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-[0.99] flex items-center justify-center gap-2"
-                style={{ backgroundColor: '#009EE3' }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4" aria-hidden="true"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                Conectar conta do Mercado Pago
-              </button>
-              <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                Você será redirecionado para autorizar a integração na sua conta MP
-              </p>
-            </div>
+            <button
+              onClick={() => { window.location.href = '/api/auth/mercadopago' }}
+              className="w-full py-3.5 rounded-xl text-sm font-bold text-white transition-all hover:brightness-110 active:scale-[0.98] flex items-center justify-center gap-2.5"
+              style={{ background: 'linear-gradient(135deg, #009EE3 0%, #0077B5 100%)' }}
+            >
+              <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+              Vincular Mercado Pago
+            </button>
           )}
 
-          <div className="border-t border-border" />
+          <div className="h-px bg-border" />
 
           {/* Modo de pagamento */}
           <div className="flex flex-col gap-2">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Modo de pagamento</Label>
+            <span className="text-[11px] text-zinc-500 font-medium uppercase tracking-wider">Cobrança</span>
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => setPaymentMode('presencial')}
-                className={`py-2.5 px-3 rounded-xl border text-sm font-medium transition-colors ${paymentMode === 'presencial' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted/50'}`}
+                className={[
+                  'py-2.5 rounded-xl border text-xs font-bold transition-all',
+                  paymentMode === 'presencial'
+                    ? 'bg-white/[0.08] border-white/20 text-foreground'
+                    : 'border-border text-zinc-600 hover:text-zinc-400 hover:border-zinc-700',
+                ].join(' ')}
               >
-                Pagar na barbearia
+                Na barbearia
               </button>
               <button
                 onClick={() => setPaymentMode('online_obrigatorio')}
-                className={`py-2.5 px-3 rounded-xl border text-sm font-medium transition-colors ${paymentMode === 'online_obrigatorio' ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted/50'}`}
+                className={[
+                  'py-2.5 rounded-xl border text-xs font-bold transition-all',
+                  paymentMode === 'online_obrigatorio'
+                    ? 'bg-white/[0.08] border-white/20 text-foreground'
+                    : 'border-border text-zinc-600 hover:text-zinc-400 hover:border-zinc-700',
+                ].join(' ')}
               >
-                Online obrigatório
+                Online (MP)
               </button>
             </div>
-            {paymentMode === 'online_obrigatorio' && (
-              <p className="text-xs text-yellow-500">
-                ⚠️ Agendamentos só confirmados após pagamento via Mercado Pago.
-              </p>
-            )}
           </div>
 
-          {/* Toggle: aceitar dinheiro (só visível no modo online) */}
+          {/* Toggle: aceita dinheiro */}
           {paymentMode === 'online_obrigatorio' && (
-            <div className="flex items-center justify-between px-3.5 py-3 rounded-xl border border-border bg-muted/20">
-              <div className="flex flex-col gap-0.5">
-                <span className="text-sm text-foreground font-medium">Aceitar pagamento em dinheiro</span>
-                <span className="text-xs text-muted-foreground">Cliente poderá escolher pagar na barbearia ao invés do Mercado Pago</span>
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-border">
+              <div className="flex flex-col gap-0">
+                <span className="text-xs font-medium text-foreground">Aceitar dinheiro</span>
+                <span className="text-[11px] text-zinc-500">Cliente pode optar por pagar presencial</span>
               </div>
-              <Switch
-                checked={aceitaDinheiro}
-                onCheckedChange={setAceitaDinheiro}
-                className="shrink-0 ml-3"
-              />
+              <Switch checked={aceitaDinheiro} onCheckedChange={setAceitaDinheiro} className="shrink-0" />
             </div>
           )}
 
-          {/* Tempo de expiração */}
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Expiração do link de pagamento</Label>
-            <div className="flex items-center gap-2">
+          {/* Expiração */}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-zinc-500">Expiração do pagamento</span>
+            <div className="flex items-center gap-1.5">
               <Input
                 type="number"
                 min="1"
                 max="60"
                 value={mpExpiryMinutes}
                 onChange={(e) => setMpExpiryMinutes(e.target.value)}
-                className="h-9 w-24"
+                className="h-8 w-16 text-center text-xs"
               />
-              <span className="text-xs text-muted-foreground">minutos (recomendado: 15)</span>
+              <span className="text-[11px] text-zinc-600">min</span>
             </div>
           </div>
 
-          <Button onClick={handleSaveMercadoPago} disabled={savingMp} size="sm">
-            {savingMp ? 'Salvando...' : 'Salvar configurações'}
+          <Button onClick={handleSaveMercadoPago} disabled={savingMp} size="sm" className="w-full">
+            {savingMp ? 'Salvando...' : 'Salvar'}
           </Button>
         </div>
       </div>

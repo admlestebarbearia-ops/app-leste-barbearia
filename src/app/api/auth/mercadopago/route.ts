@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
   const redirectUri = new URL('/api/auth/mercadopago/callback', request.url).toString()
   const authUrl =
-    `https://auth.mercadopago.com/authorization` +
+    `https://auth.mercadopago.com.br/authorization` +
     `?client_id=${encodeURIComponent(appId)}` +
     `&response_type=code` +
     `&platform_id=mp` +
