@@ -8,7 +8,7 @@ import type { BusinessConfig, Barber, Service, WorkingHours, SpecialSchedule } f
 export default async function AgendarPage({ searchParams }: { searchParams?: Promise<Record<string, string>> }) {
   const supabase = await createClient()
   const cookieStore = await cookies()
-  const resolvedParams = await (searchParams ?? Promise.resolve({}))
+  const resolvedParams: Record<string, string> = await (searchParams ?? Promise.resolve({} as Record<string, string>))
 
   const { data: { user } } = await supabase.auth.getUser()
   const signedInWithGoogle = isAuthenticatedUser(user)
