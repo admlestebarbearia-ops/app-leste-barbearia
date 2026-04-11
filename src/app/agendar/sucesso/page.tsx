@@ -83,12 +83,17 @@ export default async function SucessoPage({ searchParams }: Props) {
 
         {/* Aviso de pagamento em dinheiro */}
         {isCashPayment && service && (
-          <div className="w-full flex items-start gap-3 bg-amber-500/[0.08] border border-amber-500/25 rounded-xl p-4">
-            <span className="text-xl shrink-0">💵</span>
-            <div className="flex flex-col gap-1">
-              <p className="text-xs font-bold text-amber-300 uppercase tracking-wider">Pagamento na barbearia</p>
-              <p className="text-xs text-amber-300/70 leading-relaxed">
-                Lembre-se de levar <strong className="text-amber-300">R$ {service.price.toFixed(2).replace('.', ',')}</strong> para pagar ao barbeiro ao chegar. Não é necessário pagar antecipadamente.
+          <div className="w-full overflow-hidden rounded-2xl border-2 border-amber-500/60 bg-amber-500/10">
+            <div className="flex items-center gap-2.5 bg-amber-500/20 px-4 py-3 border-b border-amber-500/30">
+              <span className="text-xl">💵</span>
+              <p className="text-sm font-black text-amber-300 uppercase tracking-[0.1em]">Pagamento na barbearia</p>
+            </div>
+            <div className="px-4 py-4 flex flex-col gap-1.5">
+              <p className="text-2xl font-black text-amber-300 tracking-tight">
+                R$ {service.price.toFixed(2).replace('.', ',')}
+              </p>
+              <p className="text-sm text-amber-200/80 leading-relaxed">
+                Leve esse valor em dinheiro para pagar ao barbeiro ao chegar. Não é necessário pagar antecipadamente.
               </p>
             </div>
           </div>

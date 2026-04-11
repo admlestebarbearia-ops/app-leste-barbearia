@@ -11,6 +11,7 @@ interface Props {
   preferenceId: string
   appointmentId: string
   publicKey: string
+  paymentMethod?: 'pix' | 'card'
   onSuccess: (appointmentId: string) => void
   onError?: (message: string) => void
 }
@@ -20,6 +21,7 @@ export function PaymentBrick({
   preferenceId,
   appointmentId,
   publicKey,
+  paymentMethod,
   onSuccess,
   onError,
 }: Props) {
@@ -111,12 +113,11 @@ export function PaymentBrick({
       <Payment
         initialization={{ amount, preferenceId }}
         customization={{
-          paymentMethods: {
-            creditCard: 'all',
-            debitCard: 'all',
-            bankTransfer: 'all',
-            mercadoPago: 'all',
-          },
+          paymentMethods: paymentMethod === 'pix'
+            ? { bankTransfer: 'all' }
+            : paymentMethod === 'card'
+            ? { creditCard: 'all', debitCard: 'all' }
+            : { creditCard: 'all', debitCard: 'all', bankTransfer: 'all', mercadoPago: 'all' },
           visual: {
             style: { theme: 'dark' },
             hideFormTitle: true,

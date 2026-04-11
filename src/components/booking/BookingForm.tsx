@@ -164,6 +164,7 @@ export function BookingForm({
     serviceName: string
     serviceDate: string
     serviceTime: string
+    mpMethod?: 'pix' | 'card'
   } | null>(null)
   const [cancellingPaymentStep, setCancellingPaymentStep] = useState(false)
 
@@ -476,6 +477,7 @@ const handleConfirm = async () => {
             serviceName: selectedService.name,
             serviceDate: format(selectedDate, 'dd/MM/yyyy'),
             serviceTime: selectedTime,
+            mpMethod: selectedMpMethod ?? undefined,
           })
         } else {
           // cash=1 informa a página de sucesso para exibir aviso de pagamento presencial
@@ -660,13 +662,18 @@ const handleConfirm = async () => {
 
           {/* Aviso dinheiro */}
           {paymentChoice === 'cash' && (
-            <div className="flex items-start gap-3 bg-amber-500/[0.07] border border-amber-500/20 rounded-xl p-4">
-              <span className="text-xl shrink-0 mt-0.5">💡</span>
-              <p className="text-xs text-amber-300/80 leading-relaxed">
-                Seu agendamento será confirmado agora. Lembre-se de levar o valor de{' '}
-                <strong className="text-amber-300">R$ {servicePrice.toFixed(2).replace('.', ',')}</strong>{' '}
-                para pagar ao barbeiro ao chegar na barbearia.
-              </p>
+            <div className="w-full overflow-hidden rounded-2xl border-2 border-amber-500/60 bg-amber-500/10">
+              <div className="flex items-center gap-2.5 bg-amber-500/20 px-4 py-2.5 border-b border-amber-500/30">
+                <span className="text-lg">💵</span>
+                <p className="text-xs font-black text-amber-300 uppercase tracking-[0.15em]">Você pagará na barbearia</p>
+              </div>
+              <div className="px-4 py-3.5">
+                <p className="text-sm text-amber-200 leading-relaxed">
+                  Leve{' '}
+                  <strong className="text-amber-300 text-base font-black">R$ {servicePrice.toFixed(2).replace('.', ',')}</strong>{' '}
+                  em dinheiro para pagar ao barbeiro ao chegar.
+                </p>
+              </div>
             </div>
           )}
 
@@ -742,6 +749,7 @@ const handleConfirm = async () => {
               preferenceId={paymentData.preferenceId}
               appointmentId={paymentData.appointmentId}
               publicKey={mpPublicKey}
+              paymentMethod={paymentData.mpMethod}
               onSuccess={(apptId) => router.push(`/agendar/sucesso?id=${apptId}`)}
               onError={(msg) => toast.error(msg)}
             />
