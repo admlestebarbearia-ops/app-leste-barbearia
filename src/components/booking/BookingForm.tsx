@@ -689,11 +689,21 @@ const handleConfirm = async () => {
           <Button
             onClick={handleConfirm}
             disabled={paymentChoice === null || isPending}
-            className="w-full h-14 rounded-2xl text-sm font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-40 shadow-[0_8px_30px_rgba(0,0,0,0.5)] border border-primary/50 mt-2"
+            className="w-full h-14 rounded-2xl text-sm font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-40 shadow-[0_8px_30px_rgba(0,0,0,0.5)] border border-primary/50 mt-2 overflow-hidden relative"
           >
-            {isPending
-              ? 'Confirmando...'
-              : paymentChoice === 'cash'
+            {isPending ? (
+              <span className="flex items-center justify-center gap-3">
+                <span className="w-4 h-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin shrink-0" />
+                <span className="flex flex-col items-start leading-tight text-left">
+                  <span className="text-xs font-black tracking-wider">
+                    {paymentChoice === 'cash' ? 'Confirmando agendamento...' : 'Criando agendamento...'}
+                  </span>
+                  {paymentChoice === 'mp' && (
+                    <span className="text-[10px] font-normal opacity-70 tracking-normal normal-case">Conectando ao Mercado Pago</span>
+                  )}
+                </span>
+              </span>
+            ) : paymentChoice === 'cash'
               ? 'Confirmar Agendamento'
               : paymentChoice === 'mp'
               ? 'Ir para Pagamento →'
@@ -919,7 +929,7 @@ const handleConfirm = async () => {
 
         {/* Secao 4: Horarios */}
         {selectedDate && (
-          <section ref={slotsSectionRef} className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <section ref={slotsSectionRef} className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-36">
             <h2 className="text-[10px] tracking-[0.2em] font-bold uppercase text-foreground mb-5 text-center mt-6">
                Horários disponíveis em {format(selectedDate, 'dd/MM')}
             </h2>
@@ -1351,13 +1361,27 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
   const [appointments, setAppointments] = useState<Appt[]>([])
   const [loaded, setLoaded] = useState(false)
   const [cancelling, setCancelling] = useState<string | null>(null)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
   const [now, setNow] = useState(() => new Date())
 
-  useEffect(() => {
+  const fetchAppointments = () => {
     getMyAppointments().then(({ appointments: data }) => {
       setAppointments(data as Appt[])
       setLoaded(true)
     })
+  }
+
+  useEffect(() => {
+    fetchAppointments()
+  }, [])
+
+  // Re-busca quando o usuário retorna à aba (ex: veio de /reservas e cancelou lá)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fetchAppointments()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
   useEffect(() => {
@@ -1372,9 +1396,14 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
       setAppointments((prev) => prev.filter((a) => a.id !== id))
       toast.success('Agendamento cancelado.')
     } else {
-      toast.error(result.error)
+      // Se já estava cancelado (ex: cancelado via /reservas), remove do estado local
+      if (result.error?.includes('cancelado') || result.error?.includes('nao encontrado')) {
+        setAppointments((prev) => prev.filter((a) => a.id !== id))
+      }
+      toast.error(result.error ?? 'Erro ao cancelar. Tente novamente.')
     }
     setCancelling(null)
+    setConfirmId(null)
   }
 
   if (!loaded) return null
@@ -1409,13 +1438,32 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
           </p>
         </div>
         {canCancel && (
-          <button
-            onClick={() => handleCancel(nextAppt.id)}
-            disabled={cancelling === nextAppt.id}
-            className="text-[10px] font-bold uppercase tracking-widest text-destructive/70 hover:text-destructive transition-colors disabled:opacity-50 mt-1 shrink-0"
-          >
-            {cancelling === nextAppt.id ? 'Cancelando...' : 'Cancelar'}
-          </button>
+          confirmId === nextAppt.id ? (
+            <div className="flex items-center gap-2 shrink-0 mt-1">
+              <span className="text-[10px] text-white/40 uppercase tracking-wider">Cancelar?</span>
+              <button
+                onClick={() => handleCancel(nextAppt.id)}
+                disabled={cancelling === nextAppt.id}
+                className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg bg-destructive/20 text-destructive border border-destructive/30 hover:bg-destructive/30 transition-colors disabled:opacity-50"
+              >
+                {cancelling === nextAppt.id ? '...' : 'Sim'}
+              </button>
+              <button
+                onClick={() => setConfirmId(null)}
+                disabled={cancelling === nextAppt.id}
+                className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg text-white/40 border border-white/10 hover:border-white/20 transition-colors"
+              >
+                Não
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmId(nextAppt.id)}
+              className="text-[10px] font-bold uppercase tracking-widest text-destructive/70 hover:text-destructive transition-colors mt-1 shrink-0"
+            >
+              Cancelar
+            </button>
+          )
         )}
       </div>
       <div className="border-t border-white/[0.06] pt-3 flex flex-col gap-0.5">
