@@ -177,7 +177,7 @@ export function BookingForm({
   useEffect(() => {
     if (isAuthenticatedUser) return
     try {
-      const saved = localStorage.getItem('guest_name')
+      const saved = sessionStorage.getItem('guest_name')
       if (saved) setClientName(saved)
     } catch {}
   }, [isAuthenticatedUser])
@@ -191,7 +191,7 @@ export function BookingForm({
     }
     const sanitized = value.replace(/\d/g, '')
     setClientName(sanitized)
-    try { if (!isAuthenticatedUser) localStorage.setItem('guest_name', sanitized) } catch {}
+    try { if (!isAuthenticatedUser) sessionStorage.setItem('guest_name', sanitized) } catch {}
   }
 
   const formatPhone = (raw: string) => {
@@ -253,7 +253,8 @@ export function BookingForm({
       return
     }
     setAvailableSlots(slots)
-    setSelectedTime(null)
+    // Preserva o horário selecionado se ainda estiver disponível — evita instabilidade do botão "Avançar"
+    setSelectedTime(prev => (prev && slots.includes(prev)) ? prev : null)
   }, [selectedDate, selectedService])
 
   // Mantém ref sempre atualizada com a última versão do callback
@@ -288,9 +289,11 @@ export function BookingForm({
         clearTimeout(realtimeRefreshRef.current)
       }
 
+      // Só atualiza os slots disponíveis via server action — sem router.refresh() aqui.
+      // O router.refresh() é chamado pelo polling a cada 30s e pelo visibilitychange,
+      // evitando rajadas de requisições HTTP por eventos realtime.
       realtimeRefreshRef.current = setTimeout(() => {
         refetchRef.current()
-        router.refresh()
       }, 250)
     }
 

@@ -669,9 +669,12 @@ function TabHoje({
         new Notification(title, { body, icon })
       })
     } else {
-      // Fallback: notificação direta (só funciona com aba ativa)
-      navigator.serviceWorker?.controller?.postMessage({ type: 'SHOW_NOTIFICATION', title, body, icon })
-      new Notification(title, { body, icon })
+      // Fallback: prefere postMessage ao SW; só usa new Notification se o SW controller não tiver
+      if (navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title, body, icon })
+      } else {
+        new Notification(title, { body, icon })
+      }
     }
   }
 
@@ -684,32 +687,32 @@ function TabHoje({
           const newRow = payload.new as unknown as Appointment
           const d = newRow.date ?? ''
           const t = newRow.start_time?.slice(0, 5) ?? ''
-          toast.success(`Novo agendamento! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '📅' })
-          sendBrowserNotif(d, t)
-          // Som de notificação
-          // Vibração (Android Chrome; iOS e PC ignoram silenciosamente)
-          try { navigator.vibrate?.([300, 100, 300, 100, 300]) } catch {}
-          try {
-            const audio = new Audio('/bell.mp3')
-            audio.volume = 1.0
-            audio.play().catch(() => {
-              const ctx = new AudioContext()
-              const osc = ctx.createOscillator()
-              const gain = ctx.createGain()
-              osc.connect(gain)
-              gain.connect(ctx.destination)
-              osc.frequency.value = 880
-              gain.gain.setValueAtTime(0.3, ctx.currentTime)
-              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
-              osc.start(ctx.currentTime)
-              osc.stop(ctx.currentTime + 0.6)
-            })
-            audio.onended = () => {
-              const audio2 = new Audio('/bell.mp3')
-              audio2.volume = 1.0
-              audio2.play().catch(() => {})
-            }
-          } catch {}
+
+          // Só notifica (toast + som) quando o agendamento já entrou confirmado (dinheiro presencial).
+          // Pagamentos online entram como 'aguardando_pagamento' — a notificação real vem no UPDATE abaixo.
+          const isConfirmed = newRow.status === 'confirmado'
+          if (isConfirmed) {
+            toast.success(`Novo agendamento! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '📅' })
+            sendBrowserNotif(d, t)
+            try { navigator.vibrate?.([300, 100, 300, 100, 300]) } catch {}
+            try {
+              const audio = new Audio('/bell.mp3')
+              audio.volume = 1.0
+              audio.play().catch(() => {
+                const ctx = new AudioContext()
+                const osc = ctx.createOscillator()
+                const gain = ctx.createGain()
+                osc.connect(gain)
+                gain.connect(ctx.destination)
+                osc.frequency.value = 880
+                gain.gain.setValueAtTime(0.3, ctx.currentTime)
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+                osc.start(ctx.currentTime)
+                osc.stop(ctx.currentTime + 0.6)
+              })
+            } catch {}
+          }
+
           // Adicionar ao estado local imediatamente (com services buscados)
           try {
             const { data: svcData } = await supabase
@@ -727,13 +730,42 @@ function TabHoje({
               return [...prev, newRow]
             })
           }
-          setNewBadge((prev) => prev + 1)
+          if (isConfirmed) setNewBadge((prev) => prev + 1)
           onRefresh()
         })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'appointments' },
         (payload: { new: Record<string, unknown>; old: Record<string, unknown> }) => {
           const updated = payload.new as unknown as Appointment
           const old = payload.old as unknown as Appointment
+
+          // Pagamento online confirmado: aguardando_pagamento → confirmado
+          if (updated.status === 'confirmado' && old.status === 'aguardando_pagamento') {
+            const d = updated.date ?? ''
+            const t = updated.start_time?.slice(0, 5) ?? ''
+            toast.success(`Pagamento confirmado! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '💰' })
+            sendBrowserNotif(d, t)
+            try { navigator.vibrate?.([300, 100, 300, 100, 300]) } catch {}
+            try {
+              const audio = new Audio('/bell.mp3')
+              audio.volume = 1.0
+              audio.play().catch(() => {
+                const ctx = new AudioContext()
+                const osc = ctx.createOscillator()
+                const gain = ctx.createGain()
+                osc.connect(gain)
+                gain.connect(ctx.destination)
+                osc.frequency.value = 880
+                gain.gain.setValueAtTime(0.3, ctx.currentTime)
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6)
+                osc.start(ctx.currentTime)
+                osc.stop(ctx.currentTime + 0.6)
+              })
+            } catch {}
+            setNewBadge((prev) => prev + 1)
+            onRefresh()
+            return
+          }
+
           // Notifica admin apenas quando o status muda para 'cancelado'
           if (updated.status === 'cancelado' && old.status !== 'cancelado') {
             const d = updated.date ?? ''

@@ -109,7 +109,7 @@ export function calculateAvailableSlots({
     }
 
     const hasConflict = existingAppointments
-      .filter((appt) => appt.deleted_at == null && (appt.status == null || appt.status === 'confirmado'))
+      .filter((appt) => appt.deleted_at == null && (appt.status == null || appt.status === 'confirmado' || appt.status === 'aguardando_pagamento'))
       .some((appt) => {
         const apptStart = parseTimeOnDate(date, appt.start_time)
         const apptEnd = addMinutes(apptStart, appt.duration_minutes > 0 ? appt.duration_minutes : 30)
