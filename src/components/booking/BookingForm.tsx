@@ -140,6 +140,8 @@ export function BookingForm({
   // WhatsApp obrigatório
   const [savedPhone, setSavedPhone] = useState<string | null>(userPhone)
   const [showWhatsCapture, setShowWhatsCapture] = useState(false)
+  // Quando true, após salvar WhatsApp vai para o payment step (em vez de confirmar diretamente)
+  const [pendingGoToPayment, setPendingGoToPayment] = useState(false)
   const [whatsInput, setWhatsInput] = useState('')
   const [whatsError, setWhatsError] = useState('')
   const [savingWhats, setSavingWhats] = useState(false)
@@ -423,7 +425,8 @@ const handleConfirm = async () => {
       }
     }
 
-    // Se logado mas sem WhatsApp salvo, exige captura antes de prosseguir
+    // Se logado mas sem WhatsApp salvo e não veio pelo payment step, exige captura
+    // (no fluxo com payment step o WhatsApp é capturado antes de entrar no step)
     if (isAuthenticatedUser && !savedPhone) {
       setShowWhatsCapture(true)
       return
@@ -448,6 +451,13 @@ const handleConfirm = async () => {
     }
     setSavedPhone(whatsInput)
     setShowWhatsCapture(false)
+    // Se a captura foi acionada pelo botão "Avançar" (antes do payment step),
+    // vai para o payment step — não confirma o agendamento ainda
+    if (pendingGoToPayment) {
+      setPendingGoToPayment(false)
+      setShowPaymentStep(true)
+      return
+    }
     submitBooking(whatsInput)
   }
 
@@ -1070,7 +1080,15 @@ const handleConfirm = async () => {
               ← Voltar
             </button>
             <Button
-              onClick={needsPaymentStep ? () => setShowPaymentStep(true) : handleConfirm}
+              onClick={needsPaymentStep ? () => {
+                // Verifica WhatsApp antes de entrar no payment step
+                if (isAuthenticatedUser && !savedPhone) {
+                  setPendingGoToPayment(true)
+                  setShowWhatsCapture(true)
+                  return
+                }
+                setShowPaymentStep(true)
+              } : handleConfirm}
               disabled={!canConfirm || isPending}
               className="flex-1 h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50 flex items-center justify-center gap-1.5"
             >

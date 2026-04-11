@@ -567,8 +567,7 @@ export async function saveUserPhone(phone: string): Promise<{ success: boolean; 
 
   const { error } = await supabase
     .from('profiles')
-    .update({ phone })
-    .eq('id', user.id)
+    .upsert({ id: user.id, phone }, { onConflict: 'id' })
 
   if (error) return { success: false, error: error.message }
   return { success: true }
@@ -589,8 +588,7 @@ export async function saveUserProfile(data: {
 
   const { error } = await supabase
     .from('profiles')
-    .update(updates)
-    .eq('id', user.id)
+    .upsert({ id: user.id, ...updates }, { onConflict: 'id' })
 
   if (error) return { success: false, error: error.message }
   revalidatePath('/perfil')
