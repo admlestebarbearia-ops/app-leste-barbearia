@@ -37,10 +37,10 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error && data.session) {
-      // Verifica se o usuario é admin
+      // Verifica se o usuario é admin e se tem WhatsApp salvo
       const { data: profile } = await supabase
         .from('profiles')
-        .select('is_admin')
+        .select('is_admin, phone')
         .eq('id', data.session.user.id)
         .single()
 
@@ -48,7 +48,11 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(`${resolvedOrigin}/admin`)
       }
 
-      return NextResponse.redirect(`${resolvedOrigin}${next}`)
+      // Usuário logado sem WhatsApp salvo → redireciona para /agendar com flag de onboarding
+      const hasPhone = profile?.phone && profile.phone.replace(/\D/g, '').length >= 10
+      const destination = hasPhone ? next : `${next}${next.includes('?') ? '&' : '?'}setup_phone=1`
+
+      return NextResponse.redirect(`${resolvedOrigin}${destination}`)
     }
   }
 

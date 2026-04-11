@@ -50,6 +50,8 @@ interface Props {
   isAdmin?: boolean
   isAuthenticatedUser: boolean
   canViewAppointments: boolean
+  /** Quando true (login recém-feito sem WhatsApp salvo), abre o modal de captura automaticamente */
+  setupPhone?: boolean
 }
 
 export function BookingForm({
@@ -64,6 +66,7 @@ export function BookingForm({
   isAdmin = false,
   isAuthenticatedUser,
   canViewAppointments,
+  setupPhone = false,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -145,6 +148,16 @@ export function BookingForm({
   const [whatsInput, setWhatsInput] = useState('')
   const [whatsError, setWhatsError] = useState('')
   const [savingWhats, setSavingWhats] = useState(false)
+
+  // Abre o modal de captura de WhatsApp automaticamente quando o usuário acabou de fazer login
+  // e ainda não tem WhatsApp salvo (flag setupPhone vinda do redirect do callback OAuth)
+  useEffect(() => {
+    if (setupPhone && !savedPhone) {
+      setShowWhatsCapture(true)
+    }
+    // Intencionalmente sem setupPhone nas deps para rodar só na montagem
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
@@ -1226,7 +1239,7 @@ const handleConfirm = async () => {
               disabled={savingWhats || whatsInput.replace(/\D/g, '').length !== 11}
               className="w-full h-12 rounded-xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 disabled:opacity-50"
             >
-              {savingWhats ? 'Salvando...' : 'Salvar e confirmar reserva'}
+              {savingWhats ? 'Salvando...' : (pendingGoToPayment || selectedTime) ? 'Salvar e continuar' : 'Salvar WhatsApp'}
             </Button>
           </div>
         </div>

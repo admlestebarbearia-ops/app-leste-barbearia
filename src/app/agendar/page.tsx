@@ -5,9 +5,10 @@ import { BookingForm } from '@/components/booking/BookingForm'
 import { GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
 import type { BusinessConfig, Barber, Service, WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
 
-export default async function AgendarPage() {
+export default async function AgendarPage({ searchParams }: { searchParams?: Promise<Record<string, string>> }) {
   const supabase = await createClient()
   const cookieStore = await cookies()
+  const resolvedParams = await (searchParams ?? Promise.resolve({}))
 
   const { data: { user } } = await supabase.auth.getUser()
   const signedInWithGoogle = isAuthenticatedUser(user)
@@ -58,6 +59,7 @@ export default async function AgendarPage() {
   }
 
   const canViewAppointments = signedInWithGoogle || !!guestBookingPhone || !!user
+  const setupPhone = resolvedParams['setup_phone'] === '1' && signedInWithGoogle && !userPhone
 
   return (
     <main className="min-h-screen bg-background pb-32">
@@ -73,6 +75,7 @@ export default async function AgendarPage() {
         isAdmin={isAdmin}
         isAuthenticatedUser={signedInWithGoogle}
         canViewAppointments={canViewAppointments}
+        setupPhone={setupPhone}
       />
     </main>
   )
