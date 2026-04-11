@@ -588,6 +588,7 @@ function TabHoje({
   const [newBadge, setNewBadge] = useState(0)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   const [notifLoading, setNotifLoading] = useState(false)
+  const [isStandalone, setIsStandalone] = useState(false)
   const swRef = useRef<ServiceWorkerRegistration | null>(null)
   const [calMonth, setCalMonth] = useState(() => todayStr.slice(0, 7))
   const [selectedDay, setSelectedDay] = useState<string | null>(todayStr)
@@ -598,6 +599,10 @@ function TabHoje({
   useEffect(() => {
     if (typeof window !== 'undefined') {
       if ('Notification' in window) setNotifPermission(Notification.permission)
+      setIsStandalone(
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as unknown as { standalone?: boolean }).standalone === true
+      )
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').then((reg) => {
           swRef.current = reg
@@ -610,9 +615,17 @@ function TabHoje({
     if (!('Notification' in window)) return
     if (notifLoading) return
 
+    const isStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as unknown as { standalone?: boolean }).standalone === true
+
     // Se já negado, o browser não abre mais diálogo — orienta o usuário
     if (Notification.permission === 'denied') {
-      toast.error('Notificações bloqueadas. Clique no cadeado 🔒 na barra de endereço e permita notificações para este site.')
+      if (isStandalone) {
+        toast.error('Para ativar notificações, vá em Configurações do celular → Aplicativos → Barbearia Leste → Notificações e permita.')
+      } else {
+        toast.error('Notificações bloqueadas. Clique no cadeado 🔒 na barra de endereço e permita notificações para este site.')
+      }
       return
     }
 
@@ -648,8 +661,8 @@ function TabHoje({
         icon,
         badge: icon,
         // vibrate não está nos tipos TS mas é suportado pelo SW spec
-        ...({ vibrate: [300, 100, 300, 100, 300] } as object),
-        requireInteraction: false,
+        ...({ vibrate: [200, 100, 200, 100, 200] } as object),
+        requireInteraction: true,
         tag: 'barbearia-leste-notif',
         renotify: true,
       } as NotificationOptions).catch(() => {
@@ -899,7 +912,9 @@ function TabHoje({
             </span>
             <span className="text-[11px] text-amber-400/70 leading-tight">
               {notifPermission === 'denied'
-                ? 'Clique para ver como desbloquear no navegador'
+                ? isStandalone
+                  ? 'Toque para ver como ativar nas Configurações do celular'
+                  : 'Clique para ver como desbloquear no navegador'
                 : 'Receba alertas de novos agendamentos mesmo com a tela bloqueada'}
             </span>
           </div>
@@ -3658,11 +3673,10 @@ function TabFinanceiro({
   const [debitRateInput, setDebitRateInput] = useState(String(config.debit_rate_pct ?? config.default_card_rate_pct ?? ''))
   const [creditRateInput, setCreditRateInput] = useState(String(config.credit_rate_pct ?? config.default_card_rate_pct ?? ''))
   const [savingMachine, setSavingMachine] = useState(false)
-  const [machineSetup, setMachineSetup] = useState(false) // mostrar form de setup
+  const [machineSetup, setMachineSetup] = useState(false)
 
   // Modal novo lançamento
   const [showForm, setShowForm] = useState(false)
-  // Tipo simplificado: 'entrada' (dinheiro que entrou) | 'saida' (dinheiro que saiu)
   const [formKind, setFormKind] = useState<'entrada' | 'saida'>('saida')
   const [formDesc, setFormDesc] = useState('')
   const [formAmount, setFormAmount] = useState('')
@@ -3770,174 +3784,188 @@ function TabFinanceiro({
     return m
   }
 
-  return (
-    <div className="flex flex-col gap-5">
+  // Ícone por método de pagamento
+  const MethodIcon = ({ method }: { method: string }) => {
+    const base = 'text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider'
+    if (method === 'pix')      return <span className={`${base} bg-[#00BDAE]/10 text-[#00BDAE]`}>PIX</span>
+    if (method === 'debito')   return <span className={`${base} bg-sky-500/10 text-sky-400`}>DEB</span>
+    if (method === 'credito')  return <span className={`${base} bg-violet-500/10 text-violet-400`}>CRÉ</span>
+    if (method === 'dinheiro') return <span className={`${base} bg-amber-500/10 text-amber-400`}>DIN</span>
+    return null
+  }
 
-      {/* Cabeçalho + seletor de período */}
-      <div className="flex flex-col gap-3">
+  return (
+    <div className="flex flex-col gap-6">
+
+      {/* ── Cabeçalho ────────────────────────────────────────────── */}
+      <div className="flex items-end justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-white">Financeiro</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">Controle de entradas e saídas do caixa</p>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500 mb-1">Painel</h2>
+          <p className="text-xl font-semibold text-white leading-none">Financeiro</p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* Seletor período */}
+        <div className="flex items-center gap-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-3 py-2">
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="bg-black/30 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/30"
+            className="bg-transparent text-[11px] text-zinc-400 focus:outline-none focus:text-white cursor-pointer"
           />
-          <span className="text-zinc-600 text-xs">→</span>
+          <span className="text-zinc-700 text-xs">—</span>
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="bg-black/30 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/30"
+            className="bg-transparent text-[11px] text-zinc-400 focus:outline-none focus:text-white cursor-pointer"
           />
         </div>
       </div>
 
-      {/* Cards de resumo */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="flex flex-col gap-1 p-3.5 rounded-xl bg-emerald-500/8 border border-emerald-500/15">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-500">Entradas</span>
-          <span className="text-lg font-bold text-emerald-400 leading-tight tabular-nums">{brl(totalEntradas)}</span>
-          <span className="text-[10px] text-zinc-500">Hoje: {brl(todayEntradas)}</span>
+      {/* ── Card de Saldo (destaque) ──────────────────────────────── */}
+      <div className={`relative overflow-hidden rounded-2xl p-6 ${saldo >= 0 ? 'bg-[#1a1a1a]' : 'bg-[#1a0f0f]'}`}>
+        {/* Linha decorativa sutil */}
+        <div className={`absolute top-0 left-0 right-0 h-[2px] ${saldo >= 0 ? 'bg-gradient-to-r from-transparent via-[#3a3a3a] to-transparent' : 'bg-gradient-to-r from-transparent via-red-900/60 to-transparent'}`} />
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500 mb-2">Saldo do Período</p>
+        <p className={`text-3xl font-semibold tabular-nums tracking-tight ${saldo >= 0 ? 'text-white' : 'text-red-400'}`}>
+          {brl(saldo)}
+        </p>
+        <p className="text-[11px] text-zinc-600 mt-1.5">
+          {saldo >= 0 ? 'Caixa positivo' : 'Caixa negativo'} · {entries.length} lançamento{entries.length !== 1 ? 's' : ''}
+        </p>
+      </div>
+
+      {/* ── Cards Entradas / Saídas ───────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Entradas */}
+        <div className="bg-[#1a1a1a] rounded-xl p-4 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-[#34a853] opacity-80" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-500">Entradas</span>
+          </div>
+          <p className="text-xl font-semibold tabular-nums text-[#34a853] leading-none">{brl(totalEntradas)}</p>
+          <div className="h-px bg-[#262626]" />
+          <p className="text-[10px] text-zinc-600">Hoje: <span className="text-zinc-400">{brl(todayEntradas)}</span></p>
         </div>
-        <div className="flex flex-col gap-1 p-3.5 rounded-xl bg-red-500/8 border border-red-500/15">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-red-500">Saídas</span>
-          <span className="text-lg font-bold text-red-400 leading-tight tabular-nums">{brl(totalSaidas)}</span>
-          <span className="text-[10px] text-zinc-500">Hoje: {brl(todaySaidas)}</span>
-        </div>
-        <div className={`flex flex-col gap-1 p-3.5 rounded-xl border ${saldo >= 0 ? 'bg-white/4 border-white/10' : 'bg-red-500/8 border-red-500/15'}`}>
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">Saldo</span>
-          <span className={`text-lg font-bold leading-tight tabular-nums ${saldo >= 0 ? 'text-white' : 'text-red-400'}`}>{brl(saldo)}</span>
-          <span className="text-[10px] text-zinc-500">{saldo >= 0 ? 'Positivo' : 'Negativo'}</span>
+        {/* Saídas */}
+        <div className="bg-[#1a1a1a] rounded-xl p-4 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-[#e05c5c] opacity-80" />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-500">Saídas</span>
+          </div>
+          <p className="text-xl font-semibold tabular-nums text-[#e05c5c] leading-none">{brl(totalSaidas)}</p>
+          <div className="h-px bg-[#262626]" />
+          <p className="text-[10px] text-zinc-600">Hoje: <span className="text-zinc-400">{brl(todaySaidas)}</span></p>
         </div>
       </div>
 
-      {/* Configuração de maquininha */}
-      <div className="border border-white/8 rounded-xl overflow-hidden">
+      {/* ── Configuração de maquininha ────────────────────────────── */}
+      <div className="bg-[#1a1a1a] border border-[#262626] rounded-xl overflow-hidden">
         <button
           onClick={() => setMachineSetup(v => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/3 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
         >
           <div className="flex items-center gap-2.5">
-            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasMachine ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
-            <span className="text-sm text-white">
+            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasMachine ? 'bg-[#34a853]' : 'bg-zinc-700'}`} />
+            <span className="text-sm text-zinc-300">
               {hasMachine
                 ? `Maquininha — Déb ${config.debit_rate_pct ?? 0}% · Créd ${config.credit_rate_pct ?? 0}%`
                 : 'Sem maquininha'}
             </span>
           </div>
-          <span className="text-[10px] text-zinc-500">{machineSetup ? 'Fechar' : 'Configurar'}</span>
+          <span className="text-[10px] text-zinc-600 uppercase tracking-wider">{machineSetup ? 'Fechar' : 'Configurar'}</span>
         </button>
         {machineSetup && (
-          <div className="px-4 pb-4 border-t border-white/8 flex flex-col gap-4">
-            <p className="text-xs text-zinc-400 pt-3">
+          <div className="px-4 pb-4 border-t border-[#262626] flex flex-col gap-4">
+            <p className="text-xs text-zinc-500 pt-3">
               Informe a taxa cobrada pela operadora. Ela será descontada automaticamente das receitas com cartão.
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setHasMachine(false)}
-                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${!hasMachine ? 'bg-white text-black border-white' : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/20'}`}
-              >
-                Sem maquininha
-              </button>
+                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${!hasMachine ? 'bg-white text-black border-white' : 'bg-transparent text-zinc-500 border-[#2a2a2a] hover:border-[#3a3a3a]'}`}
+              >Sem maquininha</button>
               <button
                 onClick={() => setHasMachine(true)}
-                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${hasMachine ? 'bg-white text-black border-white' : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/20'}`}
-              >
-                Com maquininha
-              </button>
+                className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${hasMachine ? 'bg-white text-black border-white' : 'bg-transparent text-zinc-500 border-[#2a2a2a] hover:border-[#3a3a3a]'}`}
+              >Com maquininha</button>
             </div>
             {hasMachine && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-zinc-400">Taxa Débito (%)</label>
-                  <input
-                    type="number" min="0" max="50" step="0.1" placeholder="Ex: 1.5"
+                  <label className="text-xs text-zinc-500">Taxa Débito (%)</label>
+                  <input type="number" min="0" max="50" step="0.1" placeholder="Ex: 1.5"
                     value={debitRateInput} onChange={(e) => setDebitRateInput(e.target.value)}
-                    className="w-full bg-transparent border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/40 placeholder-zinc-600"
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#3a3a3a] placeholder-zinc-700"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs text-zinc-400">Taxa Crédito (%)</label>
-                  <input
-                    type="number" min="0" max="50" step="0.1" placeholder="Ex: 2.5"
+                  <label className="text-xs text-zinc-500">Taxa Crédito (%)</label>
+                  <input type="number" min="0" max="50" step="0.1" placeholder="Ex: 2.5"
                     value={creditRateInput} onChange={(e) => setCreditRateInput(e.target.value)}
-                    className="w-full bg-transparent border border-white/15 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/40 placeholder-zinc-600"
+                    className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-[#3a3a3a] placeholder-zinc-700"
                   />
                 </div>
               </div>
             )}
-            <p className="text-[11px] text-zinc-600">Encontre as taxas no contrato ou app da sua maquininha.</p>
-            <button
-              onClick={handleSaveMachine}
-              disabled={savingMachine}
-              className="self-start px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold disabled:opacity-40 hover:bg-zinc-100 transition-colors"
-            >
+            <p className="text-[11px] text-zinc-700">Encontre as taxas no contrato ou app da sua maquininha.</p>
+            <button onClick={handleSaveMachine} disabled={savingMachine}
+              className="self-start px-4 py-2 rounded-lg bg-white text-black text-sm font-semibold disabled:opacity-40 hover:bg-zinc-100 transition-colors">
               {savingMachine ? 'Salvando...' : 'Salvar'}
             </button>
           </div>
         )}
       </div>
 
-      {/* Botão + formulário de novo lançamento */}
-      {!showForm ? (
+      {/* ── CTA Registrar Lançamento ──────────────────────────────── */}
+      {!showForm && (
         <button
           onClick={() => setShowForm(true)}
-          className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-white/10 text-sm text-zinc-300 hover:border-white/20 hover:bg-white/2 transition-colors"
+          className="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm text-black bg-[#FFBF00] hover:bg-[#e6ac00] active:scale-[0.98] transition-all shadow-[0_4px_20px_rgba(255,191,0,0.18)]"
         >
-          <span className="text-base leading-none">+</span>
-          Registrar lançamento
+          <span className="text-base leading-none font-bold">+</span>
+          Registrar Lançamento
         </button>
-      ) : (
-        <div className="border border-white/10 rounded-xl p-4 flex flex-col gap-4">
-          <p className="text-sm font-semibold text-white">Novo lançamento</p>
+      )}
+
+      {/* ── Formulário inline ─────────────────────────────────────── */}
+      {showForm && (
+        <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-white">Novo Lançamento</p>
+            <button onClick={() => { setShowForm(false); setFormDesc(''); setFormAmount(''); setFormPaymentMethod('') }}
+              className="text-zinc-600 hover:text-zinc-300 transition-colors text-xs uppercase tracking-wider">
+              Cancelar
+            </button>
+          </div>
 
           <div className="flex gap-2">
-            <button
-              onClick={() => setFormKind('entrada')}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${formKind === 'entrada' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-transparent text-zinc-500 border-white/8 hover:border-white/15'}`}
-            >
+            <button onClick={() => setFormKind('entrada')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${formKind === 'entrada' ? 'bg-[#34a853]/15 text-[#34a853] border-[#34a853]/30' : 'bg-transparent text-zinc-600 border-[#2a2a2a] hover:border-[#3a3a3a]'}`}>
               Entrada
             </button>
-            <button
-              onClick={() => setFormKind('saida')}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${formKind === 'saida' ? 'bg-red-500/15 text-red-300 border-red-500/30' : 'bg-transparent text-zinc-500 border-white/8 hover:border-white/15'}`}
-            >
+            <button onClick={() => setFormKind('saida')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-semibold border transition-colors ${formKind === 'saida' ? 'bg-[#e05c5c]/15 text-[#e05c5c] border-[#e05c5c]/30' : 'bg-transparent text-zinc-600 border-[#2a2a2a] hover:border-[#3a3a3a]'}`}>
               Saída
             </button>
           </div>
 
           <div className="flex flex-col gap-2.5">
-            <input
-              type="text"
+            <input type="text"
               placeholder={formKind === 'entrada' ? 'Descrição (ex: Corte avulso)' : 'Descrição (ex: Aluguel, Produto)'}
-              value={formDesc}
-              onChange={(e) => setFormDesc(e.target.value)}
-              className="w-full bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
+              value={formDesc} onChange={(e) => setFormDesc(e.target.value)}
+              className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-700 focus:outline-none focus:border-[#3a3a3a]"
             />
             <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                placeholder="Valor em R$"
-                value={formAmount}
-                onChange={(e) => setFormAmount(e.target.value)}
-                className="bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
+              <input type="number" placeholder="Valor em R$"
+                value={formAmount} onChange={(e) => setFormAmount(e.target.value)}
+                className="bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-sm text-white placeholder-zinc-700 focus:outline-none focus:border-[#3a3a3a]"
               />
-              <input
-                type="date"
-                value={formDate}
-                onChange={(e) => setFormDate(e.target.value)}
-                className="bg-transparent border border-white/10 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-white/30"
+              <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)}
+                className="bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-[#3a3a3a]"
               />
             </div>
-            <select
-              value={formPaymentMethod}
-              onChange={(e) => setFormPaymentMethod(e.target.value as PaymentMethod | '')}
-              className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-white/30"
-            >
+            <select value={formPaymentMethod} onChange={(e) => setFormPaymentMethod(e.target.value as PaymentMethod | '')}
+              className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-sm text-zinc-300 focus:outline-none focus:border-[#3a3a3a]">
               <option value="">Forma de pagamento (opcional)</option>
               <option value="dinheiro">Dinheiro</option>
               <option value="pix">PIX</option>
@@ -3945,87 +3973,100 @@ function TabFinanceiro({
               <option value="credito">Crédito</option>
             </select>
             {(formPaymentMethod === 'debito' || formPaymentMethod === 'credito') && hasMachine && (
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-[11px] text-zinc-600">
                 Taxa {formPaymentMethod === 'debito' ? config.debit_rate_pct ?? 0 : config.credit_rate_pct ?? 0}% será aplicada automaticamente.
               </p>
             )}
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setShowForm(false); setFormDesc(''); setFormAmount(''); setFormPaymentMethod('') }}
-              className="flex-1 py-2.5 rounded-lg text-sm text-zinc-500 border border-white/8 hover:border-white/15 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleAddEntry}
-              disabled={savingForm}
-              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-white text-black disabled:opacity-40 hover:bg-zinc-100 transition-colors"
-            >
-              {savingForm ? 'Salvando...' : 'Salvar'}
-            </button>
-          </div>
+          <button onClick={handleAddEntry} disabled={savingForm}
+            className="w-full py-3 rounded-xl text-sm font-semibold text-black bg-[#FFBF00] hover:bg-[#e6ac00] disabled:opacity-40 active:scale-[0.98] transition-all shadow-[0_4px_20px_rgba(255,191,0,0.1)]">
+            {savingForm ? 'Salvando...' : 'Salvar Lançamento'}
+          </button>
         </div>
       )}
 
-      {/* Lista de lançamentos */}
-      <div className="flex flex-col">
+      {/* ── Tabela de Lançamentos ──────────────────────────────────── */}
+      <div className="bg-[#1a1a1a] rounded-xl overflow-hidden">
+        {/* Cabeçalho da tabela */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#262626]">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-600 flex-1">Lançamentos</span>
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-600 w-20 text-right">Valor</span>
+        </div>
+
         {loadingEntries ? (
-          <p className="text-center py-10 text-zinc-600 text-sm">Carregando...</p>
+          /* Skeleton */
+          <div className="flex flex-col">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3.5 border-b border-[#262626] last:border-0">
+                <div className="w-1 h-8 rounded-full bg-[#262626] shrink-0" />
+                <div className="flex-1 flex flex-col gap-1.5">
+                  <div className="h-3 w-2/3 rounded bg-[#262626] animate-pulse" />
+                  <div className="h-2 w-1/3 rounded bg-[#1e1e1e] animate-pulse" />
+                </div>
+                <div className="h-3 w-16 rounded bg-[#262626] animate-pulse" />
+              </div>
+            ))}
+          </div>
         ) : entries.length === 0 ? (
-          <p className="text-center py-10 text-zinc-600 text-sm">Nenhum lançamento no período selecionado.</p>
+          /* Empty state estruturado */
+          <div className="flex flex-col">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="flex items-center gap-3 px-4 py-4 border-b border-[#262626] last:border-0 opacity-20">
+                <div className={`w-1 h-8 rounded-full shrink-0 ${i % 2 === 0 ? 'bg-[#34a853]' : 'bg-[#e05c5c]'}`} />
+                <div className="flex-1 flex flex-col gap-1.5">
+                  <div className={`h-3 rounded bg-[#2a2a2a] ${i === 0 ? 'w-2/3' : i === 1 ? 'w-1/2' : 'w-3/4'}`} />
+                  <div className="h-2 w-1/4 rounded bg-[#222]" />
+                </div>
+                <div className="h-3 w-14 rounded bg-[#2a2a2a]" />
+              </div>
+            ))}
+            <div className="px-4 py-5 text-center">
+              <p className="text-xs text-zinc-600 font-medium">Nenhum lançamento no período</p>
+              <p className="text-[10px] text-zinc-700 mt-0.5">Use o botão acima para registrar</p>
+            </div>
+          </div>
         ) : (
           entries.map((entry) => (
             <div
               key={entry.id}
-              className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-white/3 transition-colors group border-b border-white/4 last:border-0"
+              className="flex items-center gap-3 px-4 py-3.5 border-b border-[#262626] last:border-0 hover:bg-[#1f1f1f] transition-colors group"
             >
-              <div className={`w-0.5 h-9 rounded-full shrink-0 ${entry.type === 'receita' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <div className={`w-1 h-8 rounded-full shrink-0 ${entry.type === 'receita' ? 'bg-[#34a853]' : 'bg-[#e05c5c]'}`} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-white truncate">{entry.description}</p>
+                <p className="text-sm text-zinc-200 truncate">{entry.description}</p>
                 <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                   <span className="text-[10px] text-zinc-600">{entry.date?.split('-').reverse().join('/')}</span>
                   <span className="text-[10px] text-zinc-700">·</span>
-                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md ${
+                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${
                     entry.source === 'agendamento' ? 'text-sky-400 bg-sky-500/10' :
                     entry.source === 'produto'     ? 'text-violet-400 bg-violet-500/10' :
                     entry.source === 'estorno'     ? 'text-orange-400 bg-orange-500/10' :
-                    'text-zinc-400 bg-zinc-500/10'
+                    'text-zinc-500 bg-zinc-500/10'
                   }`}>{sourceLabel(entry.source)}</span>
-                  {entry.payment_method && (
-                    <>
-                      <span className="text-[10px] text-zinc-700">·</span>
-                      <span className="text-[10px] text-zinc-500">{methodLabel(entry.payment_method)}</span>
-                    </>
-                  )}
+                  {entry.payment_method && <MethodIcon method={entry.payment_method} />}
                   {entry.card_rate_pct != null && entry.card_rate_pct > 0 && (
-                    <>
-                      <span className="text-[10px] text-zinc-700">·</span>
-                      <span className="text-[10px] text-zinc-600">{entry.card_rate_pct}% taxa</span>
-                    </>
+                    <span className="text-[10px] text-zinc-700">{entry.card_rate_pct}% taxa</span>
                   )}
                 </div>
               </div>
               <div className="flex flex-col items-end gap-0.5 shrink-0">
-                <span className={`text-sm font-semibold tabular-nums ${entry.type === 'receita' ? 'text-emerald-400' : 'text-red-400'}`}>
+                <span className={`text-sm font-semibold tabular-nums ${entry.type === 'receita' ? 'text-[#34a853]' : 'text-[#e05c5c]'}`}>
                   {entry.type === 'receita' ? '+' : '−'}{brl(entry.type === 'receita' ? (entry.net_amount ?? entry.amount) : entry.amount)}
                 </span>
                 {entry.net_amount != null && entry.net_amount !== entry.amount && entry.type === 'receita' && (
-                  <span className="text-[10px] text-zinc-600 tabular-nums">bruto {brl(entry.amount)}</span>
+                  <span className="text-[10px] text-zinc-700 tabular-nums">bruto {brl(entry.amount)}</span>
                 )}
               </div>
               {entry.source === 'manual' && (
                 deleteConfirmId === entry.id ? (
                   <div className="flex gap-1 shrink-0">
-                    <button onClick={() => handleDelete(entry.id)} className="text-[10px] text-red-400 border border-red-500/20 px-2 py-1 rounded-md">Sim</button>
-                    <button onClick={() => setDeleteConfirmId(null)} className="text-[10px] text-zinc-500 border border-white/10 px-2 py-1 rounded-md">Não</button>
+                    <button onClick={() => handleDelete(entry.id)} className="text-[10px] text-red-400 border border-red-900/40 px-2 py-1 rounded-md">Sim</button>
+                    <button onClick={() => setDeleteConfirmId(null)} className="text-[10px] text-zinc-600 border border-[#2a2a2a] px-2 py-1 rounded-md">Não</button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setDeleteConfirmId(entry.id)}
-                    className="text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0 ml-1"
-                  >
+                  <button onClick={() => setDeleteConfirmId(entry.id)}
+                    className="text-zinc-700 hover:text-[#e05c5c] transition-colors opacity-0 group-hover:opacity-100 shrink-0 ml-1">
                     <Trash2 size={13} />
                   </button>
                 )

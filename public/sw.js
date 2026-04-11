@@ -69,7 +69,7 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   let title = 'Leste Barbearia'
   let body = 'Você tem um lembrete.'
-  let url = '/'
+  let url = '/reservas'
   let tag = 'barbearia-leste-notif'
 
   try {
@@ -86,8 +86,8 @@ self.addEventListener('push', (e) => {
       icon: NOTIF_ICON,
       badge: NOTIF_ICON,
       // vibrate é ignorado no iOS — funciona apenas no Android
-      vibrate: [300, 100, 300, 100, 300],
-      requireInteraction: false,
+      vibrate: [200, 100, 200, 100, 200],
+      requireInteraction: true,
       tag,
       renotify: true,
       data: { url },
@@ -98,7 +98,7 @@ self.addEventListener('push', (e) => {
 // ─── Clique na notificação — abre/foca o app ────────────────────────────────
 self.addEventListener('notificationclick', (e) => {
   e.notification.close()
-  const url = e.notification.data?.url ?? '/'
+  const url = e.notification.data?.url ?? '/reservas'
 
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -124,54 +124,11 @@ self.addEventListener('message', (event) => {
         body,
         icon: icon || NOTIF_ICON,
         badge: NOTIF_ICON,
-        vibrate: [300, 100, 300, 100, 300],
-        requireInteraction: false,
+        vibrate: [200, 100, 200, 100, 200],
+        requireInteraction: true,
         tag: 'barbearia-leste-notif',
         renotify: true,
       })
     )
   }
-})
-
-
-// ─── Web Push (lembretes do servidor) ────────────────────────────────────
-self.addEventListener('push', (event) => {
-  let payload = { title: 'Leste Barbearia', body: 'Você tem um lembrete.', url: '/agendar', tag: 'lembrete' }
-
-  try {
-    if (event.data) {
-      const parsed = event.data.json()
-      payload = { ...payload, ...parsed }
-    }
-  } catch (_) { /* ignora erro de parse */ }
-
-  event.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: '/android-chrome-192x192.png',
-      badge: '/android-chrome-192x192.png',
-      vibrate: [300, 100, 300],
-      tag: payload.tag || 'lembrete',
-      renotify: true,
-      data: { url: payload.url || '/agendar' },
-    })
-  )
-})
-
-// Ao clicar na notificação, abre ou foca a URL correta
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close()
-  const targetUrl = event.notification.data?.url || '/agendar'
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url.includes(targetUrl) && 'focus' in client) {
-          return client.focus()
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl)
-      }
-    })
-  )
 })
