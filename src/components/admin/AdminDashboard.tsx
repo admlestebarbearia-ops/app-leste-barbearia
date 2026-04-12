@@ -690,7 +690,10 @@ function TabHoje({
 
           // Só notifica (toast + som) quando o agendamento já entrou confirmado (dinheiro presencial).
           // Pagamentos online entram como 'aguardando_pagamento' — a notificação real vem no UPDATE abaixo.
+          // Bug 05: também notifica para 'aguardando_pagamento' pois o admin precisa saber que
+          // o cliente está ativamente no checkout (MP pode demorar ou o cliente pode desistir).
           const isConfirmed = newRow.status === 'confirmado'
+          const isAwaitingPayment = newRow.status === 'aguardando_pagamento'
           if (isConfirmed) {
             toast.success(`Novo agendamento! ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '📅' })
             sendBrowserNotif(d, t)
@@ -711,6 +714,9 @@ function TabHoje({
                 osc.stop(ctx.currentTime + 0.6)
               })
             } catch {}
+          } else if (isAwaitingPayment) {
+            // Notificação visual discreta — cliente no checkout, aguardando pagamento
+            toast(`🕐 Aguardando pagamento — ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 6000 })
           }
 
           // Adicionar ao estado local imediatamente (com services buscados)
@@ -730,7 +736,7 @@ function TabHoje({
               return [...prev, newRow]
             })
           }
-          if (isConfirmed) setNewBadge((prev) => prev + 1)
+          if (isConfirmed || isAwaitingPayment) setNewBadge((prev) => prev + 1)
           onRefresh()
         })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'appointments' },
@@ -1759,6 +1765,28 @@ function TabConfiguracoes({
     }
   }
 
+  // Melhoria 01: copia os horários do primeiro dia útil aberto (Seg-Sex) para todos os outros dias úteis
+  const applyToWeekdays = () => {
+    // Dias úteis = 1 (Seg) a 5 (Sex)
+    const firstOpen = hours.find(h => h.day_of_week >= 1 && h.day_of_week <= 5 && h.is_open)
+    if (!firstOpen) {
+      toast.error('Nenhum dia útil aberto para usar como referência.')
+      return
+    }
+    setHours(prev => prev.map(h => {
+      if (h.day_of_week < 1 || h.day_of_week > 5) return h
+      return {
+        ...h,
+        is_open: firstOpen.is_open,
+        open_time: firstOpen.open_time,
+        close_time: firstOpen.close_time,
+        lunch_start: firstOpen.lunch_start,
+        lunch_end: firstOpen.lunch_end,
+      }
+    }))
+    toast.success('Horário aplicado a todos os dias úteis. Clique em Salvar para confirmar.')
+  }
+
   const handleSaveContacts = async () => {
     setSavingContacts(true)
     const result = await saveBusinessConfig({
@@ -2163,9 +2191,14 @@ function TabConfiguracoes({
                   </div>
                 ))}
               </div>
-              <Button onClick={handleSaveHours} disabled={savingHours} size="sm">
-                {savingHours ? 'Salvando...' : 'Salvar horários'}
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={applyToWeekdays} variant="outline" size="sm" className="flex-1">
+                  Aplicar a dias úteis
+                </Button>
+                <Button onClick={handleSaveHours} disabled={savingHours} size="sm" className="flex-1">
+                  {savingHours ? 'Salvando...' : 'Salvar horários'}
+                </Button>
+              </div>
             </section>
 
             {/* Folgas e Feriados */}

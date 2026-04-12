@@ -314,12 +314,21 @@ export function BookingForm({
       }, 250)
     }
 
+    // Bug 01: business_config altera props de servidor (ex: calendar_max_days_ahead).
+    // Como essas props chegam via Server Component, precisamos de router.refresh() para
+    // que isDateDisabled use os valores atualizados. É uma ação rara (só admin) então
+    // não gera o problema de rajadas que appointments causaria.
+    const scheduleSyncWithRefresh = () => {
+      scheduleSync()
+      router.refresh()
+    }
+
     const channel = supabase
       .channel('booking-public-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, scheduleSync)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_config' }, scheduleSync)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'working_hours' }, scheduleSync)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'special_schedules' }, scheduleSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_config' }, scheduleSyncWithRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'working_hours' }, scheduleSyncWithRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'special_schedules' }, scheduleSyncWithRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, scheduleSync)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'barbers' }, scheduleSync)
       .subscribe()
@@ -498,36 +507,45 @@ const handleConfirm = async () => {
 
     setIsSubmitting(true)
     startTransition(async () => {
-      const result = await createAppointment({
-        serviceId: selectedService.id,
-        barberId: barber.id,
-        date: format(selectedDate, 'yyyy-MM-dd'),
-        startTime: selectedTime + ':00',
-        clientName: showFreeMode ? clientName : undefined,
-        clientPhone: showFreeMode ? clientPhone : undefined,
-        loggedUserPhone: isAuthenticatedUser ? (overridePhone ?? savedPhone ?? undefined) : undefined,
-        payCash: paymentChoice === 'cash',
-      })
+      try {
+        const result = await createAppointment({
+          serviceId: selectedService.id,
+          barberId: barber.id,
+          date: format(selectedDate, 'yyyy-MM-dd'),
+          startTime: selectedTime + ':00',
+          clientName: showFreeMode ? clientName : undefined,
+          clientPhone: showFreeMode ? clientPhone : undefined,
+          loggedUserPhone: isAuthenticatedUser ? (overridePhone ?? savedPhone ?? undefined) : undefined,
+          payCash: paymentChoice === 'cash',
+        })
 
-      if (result.success && result.appointmentId) {
-        if (result.preferenceId && result.amount) {
-          // Modo pagamento online: exibe Payment Brick inline (sem redirecionamento)
-          setPaymentData({
-            preferenceId: result.preferenceId,
-            amount: result.amount,
-            appointmentId: result.appointmentId,
-            serviceName: selectedService.name,
-            serviceDate: format(selectedDate, 'dd/MM/yyyy'),
-            serviceTime: selectedTime,
-            mpMethod: selectedMpMethod ?? undefined,
-          })
+        if (result.success && result.appointmentId) {
+          if (result.preferenceId && result.amount) {
+            // Modo pagamento online: exibe Payment Brick inline (sem redirecionamento)
+            setPaymentData({
+              preferenceId: result.preferenceId,
+              amount: result.amount,
+              appointmentId: result.appointmentId,
+              serviceName: selectedService.name,
+              serviceDate: format(selectedDate, 'dd/MM/yyyy'),
+              serviceTime: selectedTime,
+              mpMethod: selectedMpMethod ?? undefined,
+            })
+            // isSubmitting fica false após o setPaymentData — o brick assume o controle
+            setIsSubmitting(false)
+          } else {
+            // cash=1 informa a página de sucesso para exibir aviso de pagamento presencial
+            const cashFlag = paymentChoice === 'cash' ? '&cash=1' : ''
+            router.push(`/agendar/sucesso?id=${result.appointmentId}${cashFlag}`)
+          }
         } else {
-          // cash=1 informa a página de sucesso para exibir aviso de pagamento presencial
-          const cashFlag = paymentChoice === 'cash' ? '&cash=1' : ''
-          router.push(`/agendar/sucesso?id=${result.appointmentId}${cashFlag}`)
+          toast.error(result.error ?? 'Erro ao confirmar agendamento.')
+          setIsSubmitting(false)
         }
-      } else {
-        toast.error(result.error ?? 'Erro ao confirmar agendamento.')
+      } catch {
+        // Bug 02/03/04: captura falhas de rede ou timeout na chamada ao servidor
+        // (ex: API do Mercado Pago lenta/indisponível), evitando tela travada
+        toast.error('Erro de conexão. Verifique sua internet e tente novamente.')
         setIsSubmitting(false)
       }
     })
@@ -584,7 +602,7 @@ const handleConfirm = async () => {
         {/* Header */}
         <div className="sticky top-0 z-50 flex items-center gap-3 px-4 py-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
           <button
-            onClick={() => { setShowPaymentStep(false); setPaymentChoice(null); setSelectedMpMethod(null) }}
+            onClick={() => { setShowPaymentStep(false); setPaymentChoice(null); setSelectedMpMethod(null); setIsSubmitting(false) }}
             className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/50 hover:text-white/80 transition-colors"
           >
             <span className="text-base">←</span> Voltar
