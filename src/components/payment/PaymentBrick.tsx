@@ -8,7 +8,7 @@ type OnSubmitParam = Parameters<TPaymentType['onSubmit']>[0]
 
 interface Props {
   amount: number
-  preferenceId: string
+  preferenceId?: string // não usado no Checkout Bricks — mantido para compatibilidade futura
   appointmentId: string
   publicKey: string
   paymentMethod?: 'pix' | 'card'
@@ -111,7 +111,7 @@ export function PaymentBrick({
   return (
     <div className={submitting ? 'opacity-70 pointer-events-none' : ''}>
       <Payment
-        initialization={{ amount, preferenceId }}
+        initialization={{ amount }}
         customization={{
           paymentMethods: paymentMethod === 'pix'
             ? { bankTransfer: 'all' }

@@ -23,7 +23,6 @@ import {
 import { revalidatePath } from 'next/cache'
 import { format } from 'date-fns'
 import type { WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
-import { createMpPreference } from '@/lib/mercadopago/create-preference'
 
 function buildOwnershipFilter(userId: string | null, lookupPhones: string[]) {
   return [
@@ -434,44 +433,18 @@ export async function createAppointment(data: {
 
   // ─── Bifurcar por payment_mode ────────────────────────────────────────────
   if (isOnlinePayment) {
-    try {
-      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL
-        ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-      const expiryMinutes = agendaConfig?.payment_expiry_minutes ?? 15
+    const expiryMinutes = agendaConfig?.payment_expiry_minutes ?? 15
+    const adminForMp = createAdminClient()
+    await adminForMp.from('payment_intents').insert({
+      appointment_id: appointment.id,
+      mp_preference_id: null,
+      status: 'pending',
+      amount: Number(serviceSnapshot.price),
+      expires_at: new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString(),
+    })
 
-      const mpResult = await createMpPreference({
-        accessToken: mpToken!,
-        appointmentId: appointment.id,
-        serviceName: serviceSnapshot.name,
-        servicePrice: Number(serviceSnapshot.price),
-        clientEmail: signedInWithGoogle ? (user.email ?? null) : null,
-        baseUrl,
-        expiryMinutes,
-      })
-
-      // Registra o payment_intent no banco para rastreamento e cron de expiração
-      const adminForMp = createAdminClient()
-      await adminForMp.from('payment_intents').insert({
-        appointment_id: appointment.id,
-        mp_preference_id: mpResult.preferenceId,
-        status: 'pending',
-        amount: Number(serviceSnapshot.price),
-        expires_at: new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString(),
-      })
-
-      revalidatePath('/agendar')
-      return { success: true, appointmentId: appointment.id, preferenceId: mpResult.preferenceId, amount: Number(serviceSnapshot.price) }
-    } catch (mpError) {
-      // Reverter: cancela o agendamento criado para não bloquear o slot indefinidamente
-      const adminForRevert = createAdminClient()
-      await adminForRevert
-        .from('appointments')
-        .update({ status: 'cancelado' })
-        .eq('id', appointment.id)
-
-      console.error('Erro ao criar preferência MP:', mpError)
-      return { success: false, error: 'Erro ao iniciar pagamento online. Tente novamente.' }
-    }
+    revalidatePath('/agendar')
+    return { success: true, appointmentId: appointment.id, amount: Number(serviceSnapshot.price) }
   }
 
   revalidatePath('/agendar')
@@ -775,5 +748,37 @@ export async function cancelPendingPayment(
     .eq('id', appointmentId)
 
   revalidatePath('/agendar')
+  return { success: true }
+}
+
+// ─── Dispensar alerta de cancelamento pelo admin ───────────────────────────
+// Oculta o card de aviso da página "Minhas Reservas" usando o soft-delete
+// (deleted_at) — o agendamento já está cancelado, não afeta disponibilidade.
+export async function dismissCancelledAppointment(
+  appointmentId: string
+): Promise<{ success: boolean; error?: string }> {
+  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+
+  if (!ownershipFilter) return { success: false, error: 'Identificacao nao encontrada.' }
+
+  // Valida propriedade antes de usar admin client
+  const { data: appt } = await supabase
+    .from('appointments')
+    .select('id, status')
+    .eq('id', appointmentId)
+    .eq('status', 'cancelado')
+    .or(ownershipFilter)
+    .single()
+
+  if (!appt) return { success: false, error: 'Agendamento nao encontrado.' }
+
+  const adminClient = createAdminClient()
+  await adminClient
+    .from('appointments')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', appointmentId)
+
+  revalidatePath('/reservas')
   return { success: true }
 }

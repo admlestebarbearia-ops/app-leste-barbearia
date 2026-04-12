@@ -6,8 +6,8 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { parseISO, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle } from 'lucide-react'
-import { cancelMyAppointment } from '@/app/agendar/actions'
+import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle, X } from 'lucide-react'
+import { cancelMyAppointment, dismissCancelledAppointment } from '@/app/agendar/actions'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
 
@@ -36,8 +36,10 @@ interface Props {
 export function ReservasClient({ appointments: initial, cancelledByAdmin, cancellationWindowMinutes, whatsappNumber, productReservations }: Props) {
   const router = useRouter()
   const [appointments, setAppointments] = useState<Appt[]>(initial)
+  const [cancelledAlerts, setCancelledAlerts] = useState<CancelledAppt[]>(cancelledByAdmin)
   const [cancelling, setCancelling] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [dismissing, setDismissing] = useState<string | null>(null)
 
   const handleCancel = async (id: string) => {
     setCancelling(id)
@@ -50,6 +52,17 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
       toast.error(result.error ?? 'Erro ao cancelar.')
     }
     setCancelling(null)
+  }
+
+  const handleDismiss = async (id: string) => {
+    setDismissing(id)
+    const result = await dismissCancelledAppointment(id)
+    if (result.success) {
+      setCancelledAlerts((prev) => prev.filter((a) => a.id !== id))
+    } else {
+      toast.error(result.error ?? 'Erro ao dispensar aviso.')
+    }
+    setDismissing(null)
   }
 
   const canCancel = (appt: Appt) => {
@@ -84,9 +97,9 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
         <PushNotificationToggle />
 
         {/* ── Avisos de cancelamento pelo admin ── */}
-        {cancelledByAdmin.length > 0 && (
+        {cancelledAlerts.length > 0 && (
           <div className="flex flex-col gap-3">
-            {cancelledByAdmin.map((appt) => {
+            {cancelledAlerts.map((appt) => {
               const date = parseISO(appt.date)
               const timeLabel = appt.start_time?.slice(0, 5) ?? ''
               const whatsappHref = whatsappNumber
@@ -101,9 +114,21 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                   {/* Barra de alerta */}
                   <div className="bg-red-500/15 px-4 py-2 flex items-center gap-2">
                     <AlertTriangle size={13} className="text-red-400 shrink-0" />
-                    <span className="text-xs font-bold text-red-300 uppercase tracking-widest">
+                    <span className="text-xs font-bold text-red-300 uppercase tracking-widest flex-1">
                       Agendamento cancelado
                     </span>
+                    <button
+                      onClick={() => handleDismiss(appt.id)}
+                      disabled={dismissing === appt.id}
+                      className="w-6 h-6 flex items-center justify-center rounded-full text-red-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-40"
+                      title="Dispensar aviso"
+                    >
+                      {dismissing === appt.id ? (
+                        <div className="w-3 h-3 rounded-full border border-red-400 border-t-transparent animate-spin" />
+                      ) : (
+                        <X size={13} />
+                      )}
+                    </button>
                   </div>
 
                   {/* Corpo */}

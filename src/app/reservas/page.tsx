@@ -63,6 +63,7 @@ export default async function ReservasPage() {
       .select('id, date, start_time, service_name_snapshot')
       .eq('status', 'cancelado')
       .eq('cancelled_by_admin', true)
+      .is('deleted_at', null)
       .gte('date', sevenDaysAgo)
       .or(ownershipFilter)
       .order('date', { ascending: false }),

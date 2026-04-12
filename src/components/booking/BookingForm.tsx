@@ -173,7 +173,7 @@ export function BookingForm({
 
   // Estado do Payment Brick inline (substitui redirecionamento externo)
   const [paymentData, setPaymentData] = useState<{
-    preferenceId: string
+    preferenceId?: string
     amount: number
     appointmentId: string
     serviceName: string
@@ -520,10 +520,9 @@ const handleConfirm = async () => {
         })
 
         if (result.success && result.appointmentId) {
-          if (result.preferenceId && result.amount) {
+          if (result.amount) {
             // Modo pagamento online: exibe Payment Brick inline (sem redirecionamento)
             setPaymentData({
-              preferenceId: result.preferenceId,
               amount: result.amount,
               appointmentId: result.appointmentId,
               serviceName: selectedService.name,
