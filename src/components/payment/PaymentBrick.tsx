@@ -121,6 +121,12 @@ export function PaymentBrick({
           visual: {
             style: { theme: 'dark' },
             hideFormTitle: true,
+            // Abre o formulário do método escolhido diretamente, sem clique extra.
+            ...(paymentMethod === 'pix'
+              ? ({ defaultPaymentOption: { bankTransferForm: true } } as object)
+              : paymentMethod === 'card'
+              ? ({ defaultPaymentOption: { creditCardForm: true } } as object)
+              : {}),
           },
         }}
         onSubmit={handleSubmit}

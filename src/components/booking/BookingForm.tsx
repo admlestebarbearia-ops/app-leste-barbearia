@@ -250,6 +250,9 @@ export function BookingForm({
   // Ref sempre aponta para a versão mais recente do refetch — evita stale closure
   const refetchRef = useRef<() => Promise<void>>(async () => {})
   const realtimeRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Ref usada pelo realtime para não resetar a tela enquanto um agendamento está sendo criado
+  const isSubmittingRef = useRef(false)
+  useEffect(() => { isSubmittingRef.current = isSubmitting }, [isSubmitting])
   const prevAvailabilityKeyRef = useRef('')
   const prevBarberIdRef = useRef<string | null>(barber?.id ?? null)
 
@@ -302,6 +305,11 @@ export function BookingForm({
     const supabase = createClient()
 
     const scheduleSync = () => {
+      // Bug 01: ignora atualizações de realtime enquanto um agendamento está sendo processado.
+      // Sem isso, o INSERT no banco dispara o evento realtime antes da resposta do servidor,
+      // o refetch remove o slot recém-reservado da lista e selectedTime vira null,
+      // o que reseta showPaymentStep e exibe o botão "Ir para pagamento" novamente.
+      if (isSubmittingRef.current) return
       if (realtimeRefreshRef.current) {
         clearTimeout(realtimeRefreshRef.current)
       }
