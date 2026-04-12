@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -8,6 +8,7 @@ import { parseISO, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle, X } from 'lucide-react'
 import { cancelMyAppointment, dismissCancelledAppointment } from '@/app/agendar/actions'
+import { DayPicker } from 'react-day-picker'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
 
@@ -25,21 +26,61 @@ interface CancelledAppt {
   service_name_snapshot: string | null
 }
 
+interface HistoryAppt {
+  id: string
+  date: string
+  start_time: string
+  status: string
+  service_name_snapshot: string | null
+  services: { name: string } | null
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  confirmado: 'Confirmado',
+  concluido: 'Concluído',
+  cancelado: 'Cancelado',
+  faltou: 'Faltou',
+  aguardando_pagamento: 'Aguardando pagamento',
+}
+const STATUS_COLOR: Record<string, string> = {
+  confirmado: 'text-emerald-400',
+  concluido: 'text-blue-400',
+  cancelado: 'text-zinc-500',
+  faltou: 'text-amber-400',
+  aguardando_pagamento: 'text-yellow-400',
+}
+
 interface Props {
   appointments: Appt[]
   cancelledByAdmin: CancelledAppt[]
   cancellationWindowMinutes: number
   whatsappNumber: string | null
   productReservations: ProductReservation[]
+  historyAppts: HistoryAppt[]
 }
 
-export function ReservasClient({ appointments: initial, cancelledByAdmin, cancellationWindowMinutes, whatsappNumber, productReservations }: Props) {
+export function ReservasClient({ appointments: initial, cancelledByAdmin, cancellationWindowMinutes, whatsappNumber, productReservations, historyAppts }: Props) {
   const router = useRouter()
   const [appointments, setAppointments] = useState<Appt[]>(initial)
   const [cancelledAlerts, setCancelledAlerts] = useState<CancelledAppt[]>(cancelledByAdmin)
   const [cancelling, setCancelling] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [dismissing, setDismissing] = useState<string | null>(null)
+  const [selectedHistoryDate, setSelectedHistoryDate] = useState<Date | undefined>(undefined)
+  const [historyMonth, setHistoryMonth] = useState<Date>(new Date())
+
+  const datesWithAppts = useMemo(
+    () => historyAppts.map((a) => new Date(a.date + 'T12:00:00')),
+    [historyAppts]
+  )
+
+  const selectedDayAppts = useMemo(() => {
+    if (!selectedHistoryDate) return []
+    const dateStr = format(selectedHistoryDate, 'yyyy-MM-dd')
+    return historyAppts
+      .filter((a) => a.date === dateStr)
+      .sort((a, b) => a.start_time.localeCompare(b.start_time))
+  }, [historyAppts, selectedHistoryDate])
 
   const handleCancel = async (id: string) => {
     setCancelling(id)
@@ -285,6 +326,74 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
             >
               + Fazer nova reserva
             </Link>
+          </div>
+        )}
+
+        {/* ── Histórico ── */}
+        {historyAppts.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <CalendarDays size={14} className="text-zinc-500" />
+              <h2 className="text-xs font-extrabold uppercase tracking-widest text-zinc-400">
+                Histórico
+              </h2>
+            </div>
+
+            <div className="bg-neutral-900 rounded-2xl border border-white/5 p-4 flex flex-col items-center">
+              <DayPicker
+                mode="single"
+                locale={ptBR}
+                selected={selectedHistoryDate}
+                onSelect={setSelectedHistoryDate}
+                month={historyMonth}
+                onMonthChange={setHistoryMonth}
+                disabled={(date) => {
+                  const todayMidnight = new Date()
+                  todayMidnight.setHours(0, 0, 0, 0)
+                  return date >= todayMidnight
+                }}
+                startMonth={new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)}
+                endMonth={new Date()}
+                modifiers={{ hasAppt: datesWithAppts }}
+                modifiersStyles={{
+                  hasAppt: {
+                    backgroundImage: 'radial-gradient(circle at 50% calc(100% - 3px), #10b981 2px, transparent 2px)',
+                  },
+                }}
+              />
+
+              {selectedHistoryDate && (
+                <div className="w-full border-t border-white/10 pt-4 mt-1 flex flex-col gap-2">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                    {format(selectedHistoryDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
+                  </p>
+                  {selectedDayAppts.length === 0 ? (
+                    <p className="text-sm text-zinc-500">Nenhum agendamento neste dia.</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {selectedDayAppts.map((appt) => (
+                        <div
+                          key={appt.id}
+                          className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-3"
+                        >
+                          <span className="text-base font-black text-white tabular-nums w-10 shrink-0">
+                            {appt.start_time.slice(0, 5)}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-white truncate">
+                              {appt.service_name_snapshot ?? (appt.services as { name: string } | null)?.name ?? 'Serviço'}
+                            </p>
+                            <p className={`text-[11px] font-bold uppercase tracking-widest ${STATUS_COLOR[appt.status] ?? 'text-zinc-500'}`}>
+                              {STATUS_LABEL[appt.status] ?? appt.status}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

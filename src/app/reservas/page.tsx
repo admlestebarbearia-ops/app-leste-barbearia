@@ -6,6 +6,15 @@ import { ReservasClient } from './ReservasClient'
 import { dedupeById, GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
 import type { BusinessConfig, ProductReservation } from '@/lib/supabase/types'
 
+interface HistoryAppt {
+  id: string
+  date: string
+  start_time: string
+  status: string
+  service_name_snapshot: string | null
+  services: { name: string } | null
+}
+
 export const metadata = {
   title: 'Minhas Reservas — Leste Barbearia',
 }
@@ -40,6 +49,7 @@ export default async function ReservasPage() {
 
   const today = new Date().toISOString().split('T')[0]
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   // Usa adminClient para buscar reservas de produtos (evita complexidade de RLS com visitantes)
   const adminClient = createAdminClient()
@@ -49,7 +59,7 @@ export default async function ReservasPage() {
     ...lookupPhones.map((phone) => `client_phone.eq.${phone}`),
   ].join(',')
 
-  const [{ data: appointments }, { data: cancelledByAdmin }, { data: configRaw }, { data: productReservationsRaw }] = await Promise.all([
+  const [{ data: appointments }, { data: cancelledByAdmin }, { data: configRaw }, { data: productReservationsRaw }, { data: historyApptsRaw }] = await Promise.all([
     supabase
       .from('appointments')
       .select('*, services(name, price, duration_minutes)')
@@ -76,6 +86,15 @@ export default async function ReservasPage() {
           .neq('status', 'cancelado')
           .order('created_at', { ascending: false })
       : Promise.resolve({ data: [] }),
+    supabase
+      .from('appointments')
+      .select('id, date, start_time, status, service_name_snapshot, services(name)')
+      .or(ownershipFilter)
+      .lt('date', today)
+      .gte('date', sixMonthsAgo)
+      .is('deleted_at', null)
+      .order('date', { ascending: false })
+      .limit(200),
   ])
 
   const config = configRaw as Pick<BusinessConfig, 'cancellation_window_minutes' | 'whatsapp_number'> | null
@@ -87,6 +106,7 @@ export default async function ReservasPage() {
       cancellationWindowMinutes={config?.cancellation_window_minutes ?? 60}
       whatsappNumber={config?.whatsapp_number ?? null}
       productReservations={(productReservationsRaw ?? []) as ProductReservation[]}
+      historyAppts={(historyApptsRaw ?? []) as HistoryAppt[]}
     />
   )
 }
