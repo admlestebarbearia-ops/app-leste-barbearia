@@ -284,7 +284,7 @@ export function BookingForm({
   // Reflexo imediato: ao voltar para a aba busca slots frescos + atualiza server props
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !isSubmittingRef.current) {
         refetchRef.current()
         router.refresh()
       }
@@ -296,6 +296,7 @@ export function BookingForm({
   // Polling a cada 30s: reflexo automático sem precisar trocar de aba
   useEffect(() => {
     const id = setInterval(() => {
+      if (isSubmittingRef.current) return
       refetchRef.current()
       router.refresh()
     }, 30_000)
@@ -550,6 +551,9 @@ const handleConfirm = async () => {
         if (result.success && result.appointmentId) {
           if (result.amount) {
             // Modo pagamento online: exibe Payment Brick inline (sem redirecionamento)
+            // showPaymentStep DEVE ser false antes de setar paymentData,
+            // senão o bloco de seleção de método engole o render e o Brick nunca aparece.
+            setShowPaymentStep(false)
             setPaymentData({
               amount: result.amount,
               appointmentId: result.appointmentId,
