@@ -50,7 +50,8 @@ export function PaymentBrick({
     _mpInitialized = true
     initMercadoPago(publicKey, { locale: 'pt-BR' })
     setReady(true)
-  }, [publicKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey, retryKey])
 
   const handleSubmit = async (param: OnSubmitParam) => {
     const { formData } = param
@@ -102,7 +103,20 @@ export function PaymentBrick({
   }
 
   const handleRetry = () => {
+    // Limpa script tags do SDK MercadoPago para forçar re-download limpo.
+    // Necessário quando deploy skew (Vercel) causa 404 em chunks ou quando
+    // o SDK falhou na inicialização e ficou com estado corrompido.
+    document.querySelectorAll('script[src*="sdk.mercadopago"], script[src*="secure-fields"]').forEach(s => s.remove())
+    // Remove iframes residuais do Secure Fields que o Brick criou
+    document.querySelectorAll('[class*="mercadopago"], [id*="mercadopago"]').forEach(el => el.remove())
+    // Limpa a instância global do SDK
+    if (typeof window !== 'undefined' && 'MercadoPago' in window) {
+      delete (window as Record<string, unknown>).MercadoPago
+    }
+    // Permite que initMercadoPago rode novamente
+    _mpInitialized = false
     setBrickFailed(false)
+    setReady(false)
     setRetryKey(k => k + 1)
   }
 
@@ -143,6 +157,9 @@ export function PaymentBrick({
   // Tela de recuperação após erro crítico do Brick.
   // O agendamento continua "aguardando_pagamento" — não é cancelado.
   if (brickFailed) {
+    // Na segunda falha (retryKey > 0), o SDK está irrecuperável nesta sessão
+    // (provável deploy skew ou bloqueio de rede). Recarregar a página é a única saída.
+    const isSecondFailure = retryKey > 0
     return (
       <div className="flex flex-col items-center gap-5 py-8 px-2 text-center">
         <div className="w-12 h-12 rounded-full bg-destructive/15 flex items-center justify-center">
@@ -152,15 +169,26 @@ export function PaymentBrick({
           <p className="text-sm font-bold text-foreground">Formulário de pagamento indisponível</p>
           <p className="text-xs text-white/50 leading-relaxed max-w-xs mx-auto">
             Seu agendamento está <strong className="text-white/70">confirmado e reservado</strong>.
-            Tente recarregar o formulário para concluir o pagamento.
+            {isSecondFailure
+              ? ' Recarregue a página para tentar novamente.'
+              : ' Tente recarregar o formulário para concluir o pagamento.'}
           </p>
         </div>
-        <button
-          onClick={handleRetry}
-          className="h-12 px-8 rounded-2xl text-xs font-extrabold uppercase tracking-widest bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          Tentar novamente
-        </button>
+        {isSecondFailure ? (
+          <button
+            onClick={() => window.location.reload()}
+            className="h-12 px-8 rounded-2xl text-xs font-extrabold uppercase tracking-widest bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Recarregar página
+          </button>
+        ) : (
+          <button
+            onClick={handleRetry}
+            className="h-12 px-8 rounded-2xl text-xs font-extrabold uppercase tracking-widest bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Tentar novamente
+          </button>
+        )}
         <p className="text-[10px] text-white/30">
           Se o problema persistir, entre em contato com a barbearia.
         </p>
