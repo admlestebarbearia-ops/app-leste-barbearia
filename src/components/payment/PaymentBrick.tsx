@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { initMercadoPago, Payment, StatusScreen } from '@mercadopago/sdk-react'
 import type { TPaymentType } from '@mercadopago/sdk-react/esm/bricks/payment/type'
+import type { IBrickError } from '@mercadopago/sdk-react/esm/bricks/util/types/common'
 
 type OnSubmitParam = Parameters<TPaymentType['onSubmit']>[0]
 
@@ -88,7 +89,7 @@ export function PaymentBrick({
     }
   }
 
-  const handleBrickError = (e: Record<string, unknown>) => {
+  const handleBrickError = (e: IBrickError) => {
     console.error('[MP Brick]', e)
     const isCritical = e?.type === 'critical'
     if (isCritical) {
