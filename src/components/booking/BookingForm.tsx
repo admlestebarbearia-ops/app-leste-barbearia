@@ -182,6 +182,8 @@ export function BookingForm({
     mpMethod?: 'pix' | 'card'
   } | null>(null)
   const [cancellingPaymentStep, setCancellingPaymentStep] = useState(false)
+  // Bug 02/03: previne duplo clique no botão de pagamento
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
@@ -331,7 +333,19 @@ export function BookingForm({
   }, [router])
 
   const isDateDisabled = (date: Date) => {
-    return isBookingDateDisabled(date, workingHours, specialSchedules)
+    if (isBookingDateDisabled(date, workingHours, specialSchedules)) return true
+    // Bug 01: bloqueia datas fora da janela de agendamento configurada
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    if (config?.calendar_open_until_date) {
+      const limitDate = new Date(config.calendar_open_until_date + 'T00:00:00')
+      if (date > limitDate) return true
+    } else if (config?.calendar_max_days_ahead) {
+      const maxDate = new Date(today)
+      maxDate.setDate(maxDate.getDate() + config.calendar_max_days_ahead)
+      if (date > maxDate) return true
+    }
+    return false
   }
 
   useEffect(() => {
@@ -417,6 +431,7 @@ export function BookingForm({
   )
 
 const handleConfirm = async () => {
+    if (isSubmitting || isPending) return
     if (!selectedService || !selectedDate || !selectedTime) return
     if (!barber) {
       toast.error('Nenhum barbeiro esta disponivel no momento. Tente novamente em instantes.')
@@ -481,6 +496,7 @@ const handleConfirm = async () => {
       return
     }
 
+    setIsSubmitting(true)
     startTransition(async () => {
       const result = await createAppointment({
         serviceId: selectedService.id,
@@ -512,6 +528,7 @@ const handleConfirm = async () => {
         }
       } else {
         toast.error(result.error ?? 'Erro ao confirmar agendamento.')
+        setIsSubmitting(false)
       }
     })
   }
@@ -714,10 +731,10 @@ const handleConfirm = async () => {
           {/* Botão confirmar */}
           <Button
             onClick={handleConfirm}
-            disabled={paymentChoice === null || isPending}
+            disabled={paymentChoice === null || isPending || isSubmitting}
             className="w-full h-14 rounded-2xl text-sm font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-40 shadow-[0_8px_30px_rgba(0,0,0,0.5)] border border-primary/50 mt-2 overflow-hidden relative"
           >
-            {isPending ? (
+            {(isPending || isSubmitting) ? (
               <span className="flex items-center justify-center gap-3">
                 <span className="w-4 h-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin shrink-0" />
                 <span className="flex flex-col items-start leading-tight text-left">
@@ -762,6 +779,17 @@ const handleConfirm = async () => {
         </div>
 
         <div className="flex flex-col gap-6 px-4 pt-6 pb-12 max-w-lg mx-auto w-full">
+          {/* Melhoria 02: badge de método de pagamento selecionado */}
+          {paymentData.mpMethod && (
+            <div className="flex items-center justify-center gap-2">
+              {paymentData.mpMethod === 'pix'
+                ? <QrCode size={13} className="text-[#00BDAE]" />
+                : <CreditCard size={13} className="text-primary" />}
+              <span className="text-[11px] font-bold uppercase tracking-widest text-white/40">
+                {paymentData.mpMethod === 'pix' ? 'Pagamento via PIX' : 'Pagamento via Cartão'}
+              </span>
+            </div>
+          )}
           {/* Resumo do agendamento */}
           <div className="bg-card border border-white/[0.08] rounded-2xl p-5 flex flex-col gap-3">
             <p className="text-[10px] uppercase tracking-widest font-bold text-white/40">Resumo</p>
@@ -950,6 +978,14 @@ const handleConfirm = async () => {
                 }}
               />
             </div>
+            {/* Melhoria 01: legenda com o período disponível para agendamento */}
+            {(config?.calendar_max_days_ahead || config?.calendar_open_until_date) && (
+              <p className="text-[10px] uppercase tracking-widest font-semibold text-white/25 text-center mt-3">
+                {config.calendar_open_until_date
+                  ? `Agend. até ${format(new Date(config.calendar_open_until_date + 'T00:00:00'), "dd/MM/yy", { locale: ptBR })}`
+                  : `Disponível: próximos ${config.calendar_max_days_ahead} dias`}
+              </p>
+            )}
           </section>
         )}
 
