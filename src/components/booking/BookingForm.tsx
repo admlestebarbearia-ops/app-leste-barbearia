@@ -250,9 +250,10 @@ export function BookingForm({
   // Ref sempre aponta para a versão mais recente do refetch — evita stale closure
   const refetchRef = useRef<() => Promise<void>>(async () => {})
   const realtimeRefreshRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Ref usada pelo realtime para não resetar a tela enquanto um agendamento está sendo criado
+  // Ref usada pelo realtime para não resetar a tela enquanto um agendamento está sendo criado.
+  // Deve ser atualizada de forma SÍNCRONA (não via useEffect) para evitar race condition
+  // com startTransition, que adia o render e impede o useEffect de rodar a tempo.
   const isSubmittingRef = useRef(false)
-  useEffect(() => { isSubmittingRef.current = isSubmitting }, [isSubmitting])
   const prevAvailabilityKeyRef = useRef('')
   const prevBarberIdRef = useRef<string | null>(barber?.id ?? null)
 
@@ -531,6 +532,7 @@ const handleConfirm = async () => {
       return
     }
 
+    isSubmittingRef.current = true
     setIsSubmitting(true)
     startTransition(async () => {
       try {
@@ -557,6 +559,7 @@ const handleConfirm = async () => {
               mpMethod: selectedMpMethod ?? undefined,
             })
             // isSubmitting fica false após o setPaymentData — o brick assume o controle
+            isSubmittingRef.current = false
             setIsSubmitting(false)
           } else {
             // cash=1 informa a página de sucesso para exibir aviso de pagamento presencial
@@ -565,12 +568,14 @@ const handleConfirm = async () => {
           }
         } else {
           toast.error(result.error ?? 'Erro ao confirmar agendamento.')
+          isSubmittingRef.current = false
           setIsSubmitting(false)
         }
       } catch {
         // Bug 02/03/04: captura falhas de rede ou timeout na chamada ao servidor
         // (ex: API do Mercado Pago lenta/indisponível), evitando tela travada
         toast.error('Erro de conexão. Verifique sua internet e tente novamente.')
+        isSubmittingRef.current = false
         setIsSubmitting(false)
       }
     })
@@ -627,7 +632,7 @@ const handleConfirm = async () => {
         {/* Header */}
         <div className="sticky top-0 z-50 flex items-center gap-3 px-4 py-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
           <button
-            onClick={() => { setShowPaymentStep(false); setPaymentChoice(null); setSelectedMpMethod(null); setIsSubmitting(false) }}
+            onClick={() => { setShowPaymentStep(false); setPaymentChoice(null); setSelectedMpMethod(null); isSubmittingRef.current = false; setIsSubmitting(false) }}
             className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/50 hover:text-white/80 transition-colors"
           >
             <span className="text-base">←</span> Voltar
