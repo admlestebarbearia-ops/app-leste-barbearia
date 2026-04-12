@@ -106,7 +106,7 @@ export default async function ReservasPage() {
       cancellationWindowMinutes={config?.cancellation_window_minutes ?? 60}
       whatsappNumber={config?.whatsapp_number ?? null}
       productReservations={(productReservationsRaw ?? []) as ProductReservation[]}
-      historyAppts={(historyApptsRaw ?? []) as HistoryAppt[]}
+      historyAppts={(historyApptsRaw ?? []) as unknown as HistoryAppt[]}
     />
   )
 }
