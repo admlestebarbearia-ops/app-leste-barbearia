@@ -118,7 +118,7 @@ self.addEventListener('notificationclick', (e) => {
 // ─── postMessage da página (fallback quando app está aberto) ─────────────────
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SHOW_NOTIFICATION') {
-    const { title, body, icon } = event.data
+    const { title, body, icon, url: notifUrl } = event.data
     event.waitUntil(
       self.registration.showNotification(title, {
         body,
@@ -128,6 +128,7 @@ self.addEventListener('message', (event) => {
         requireInteraction: true,
         tag: 'barbearia-leste-notif',
         renotify: true,
+        data: { url: notifUrl || '/reservas' },
       })
     )
   }

@@ -665,13 +665,14 @@ function TabHoje({
         requireInteraction: true,
         tag: 'barbearia-leste-notif',
         renotify: true,
+        data: { url: '/admin' },
       } as NotificationOptions).catch(() => {
         new Notification(title, { body, icon })
       })
     } else {
       // Fallback: prefere postMessage ao SW; só usa new Notification se o SW controller não tiver
       if (navigator.serviceWorker?.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title, body, icon })
+        navigator.serviceWorker.controller.postMessage({ type: 'SHOW_NOTIFICATION', title, body, icon, url: '/admin' })
       } else {
         new Notification(title, { body, icon })
       }

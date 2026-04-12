@@ -325,7 +325,25 @@ export function BookingForm({
 
     const channel = supabase
       .channel('booking-public-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, scheduleSync)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'appointments' }, scheduleSync)
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'appointments' }, scheduleSync)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'appointments' },
+        (payload: { new: Record<string, unknown> }) => {
+          scheduleSync()
+          // Bug 03: avisa o cliente quando o barbeiro cancela o agendamento dele
+          const appt = payload.new as { status?: string; cancelled_by_admin?: boolean; client_id?: string }
+          if (
+            appt.status === 'cancelado' &&
+            appt.cancelled_by_admin === true &&
+            userId &&
+            appt.client_id === userId
+          ) {
+            toast.error('Seu agendamento foi cancelado pelo barbeiro. Entre em contato para remarcar.', {
+              duration: 10000,
+            })
+          }
+        }
+      )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'business_config' }, scheduleSyncWithRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'working_hours' }, scheduleSyncWithRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'special_schedules' }, scheduleSyncWithRefresh)
