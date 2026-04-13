@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { parseISO, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle, X } from 'lucide-react'
+import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle, X, Check, QrCode } from 'lucide-react'
 import { cancelMyAppointment, cancelPendingPayment, dismissCancelledAppointment } from '@/app/agendar/actions'
 import { DayPicker } from 'react-day-picker'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
@@ -58,9 +58,32 @@ interface Props {
   whatsappNumber: string | null
   productReservations: ProductReservation[]
   historyAppts: HistoryAppt[]
+  notice: string | null
+  highlightedAppointmentId: string | null
 }
 
-export function ReservasClient({ appointments: initial, cancelledByAdmin, cancellationWindowMinutes, whatsappNumber, productReservations, historyAppts }: Props) {
+function AppointmentStatusBadge({ status }: { status: string }) {
+  const isConfirmed = status === 'confirmado'
+  const isPending = status === 'aguardando_pagamento'
+
+  return (
+    <span
+      className={[
+        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest',
+        isConfirmed
+          ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300'
+          : isPending
+          ? 'border-yellow-500/30 bg-yellow-500/12 text-yellow-300'
+          : 'border-white/10 bg-white/5 text-zinc-400',
+      ].join(' ')}
+    >
+      {isConfirmed ? <Check size={11} /> : isPending ? <QrCode size={11} /> : null}
+      {STATUS_LABEL[status] ?? status}
+    </span>
+  )
+}
+
+export function ReservasClient({ appointments: initial, cancelledByAdmin, cancellationWindowMinutes, whatsappNumber, productReservations, historyAppts, notice, highlightedAppointmentId }: Props) {
   const router = useRouter()
   const [appointments, setAppointments] = useState<Appt[]>(initial)
   const [cancelledAlerts, setCancelledAlerts] = useState<CancelledAppt[]>(cancelledByAdmin)
@@ -149,6 +172,15 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
 
         {/* Toggle lembretes push */}
         <PushNotificationToggle />
+
+        {notice === 'pending-payment' && (
+          <div className="rounded-2xl border border-yellow-500/25 bg-yellow-500/10 px-4 py-4 flex flex-col gap-1.5">
+            <span className="text-[10px] font-black uppercase tracking-[0.18em] text-yellow-300">Pagamento pendente</span>
+            <p className="text-sm text-yellow-100/90 leading-relaxed">
+              Seu agendamento ainda não foi confirmado. Ele continua reservado aguardando pagamento. Use o botão abaixo para concluir o pagamento e confirmar o horário.
+            </p>
+          </div>
+        )}
 
         {/* ── Avisos de cancelamento pelo admin ── */}
         {cancelledAlerts.length > 0 && (
@@ -255,7 +287,12 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
               return (
                 <div
                   key={appt.id}
-                  className="bg-neutral-900 rounded-2xl border border-white/5 overflow-hidden"
+                  className={[
+                    'bg-neutral-900 rounded-2xl border overflow-hidden',
+                    highlightedAppointmentId === appt.id
+                      ? 'border-yellow-500/30 ring-1 ring-yellow-500/30'
+                      : 'border-white/5',
+                  ].join(' ')}
                 >
                   {/* Barra de data */}
                   <div className="bg-white/5 px-4 py-2 flex items-center gap-2">
@@ -293,9 +330,9 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                           R$ {appt.services.price.toFixed(2).replace('.', ',')}
                         </span>
                       )}
-                      <span className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 ${STATUS_COLOR[appt.status] ?? 'text-zinc-500'}`}>
-                        {STATUS_LABEL[appt.status] ?? appt.status}
-                      </span>
+                      <div className="mt-1">
+                        <AppointmentStatusBadge status={appt.status} />
+                      </div>
                     </div>
                   </div>
 

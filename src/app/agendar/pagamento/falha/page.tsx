@@ -10,7 +10,34 @@ interface Props {
 export default async function PagamentoFalhaPage({ searchParams }: Props) {
   const { appt_id } = await searchParams
 
+  if (!appt_id) return null
+
   const supabase = await createClient()
+  const { data: appt } = await supabase
+    .from('appointments')
+    .select('id, status')
+    .eq('id', appt_id)
+    .single()
+
+  if (appt?.status === 'confirmado') {
+    return (
+      <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-background">
+        <div className="w-full max-w-sm flex flex-col items-center gap-6 text-center">
+          <h1 className="text-2xl font-semibold text-foreground">Pagamento já confirmado</h1>
+          <p className="text-sm text-muted-foreground">
+            Seu pagamento já foi compensado. Abra a confirmação do agendamento para ver os detalhes.
+          </p>
+          <Link
+            href={`/agendar/pagamento/sucesso?appt_id=${appt_id}`}
+            className="w-full py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold text-center"
+          >
+            Ver confirmação
+          </Link>
+        </div>
+      </main>
+    )
+  }
+
   const { data: config } = await supabase
     .from('business_config')
     .select('logo_url, whatsapp_number')
@@ -21,6 +48,16 @@ export default async function PagamentoFalhaPage({ searchParams }: Props) {
   const whatsappUrl = typedConfig?.whatsapp_number
     ? `https://wa.me/55${typedConfig.whatsapp_number.replace(/\D/g, '')}`
     : null
+
+  const isStillPending = appt?.status === 'aguardando_pagamento'
+  const title = isStillPending ? 'Seu agendamento ainda não foi confirmado' : 'Seu agendamento não foi confirmado'
+  const description = isStillPending
+    ? 'Ele continua ativo em Minhas Reservas aguardando pagamento. Conclua o pagamento para confirmar o horário.'
+    : 'Refaça seu agendamento para reservar um novo horário.'
+  const primaryHref = isStillPending
+    ? `/reservas?notice=pending-payment&appt_id=${appt_id}`
+    : '/agendar'
+  const primaryLabel = isStillPending ? 'Ver minhas reservas' : 'Refazer agendamento'
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-background">
@@ -41,22 +78,24 @@ export default async function PagamentoFalhaPage({ searchParams }: Props) {
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </div>
-          <h1 className="text-2xl font-semibold text-foreground">Pagamento não realizado</h1>
+          <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Houve um problema com seu pagamento. O horário foi liberado automaticamente.
+            {description}
           </p>
         </div>
 
         <div className="w-full bg-card border border-border rounded-xl p-5 text-sm text-muted-foreground">
-          Você pode tentar novamente fazendo um novo agendamento. Se o problema persistir, entre em contato com a barbearia.
+          {isStillPending
+            ? 'Se você sair agora, o agendamento continuará pendente até você concluir o pagamento, expirar o prazo ou cancelar em Minhas Reservas.'
+            : 'Se o problema persistir, entre em contato com a barbearia para validar o que aconteceu com a cobrança.'}
         </div>
 
         <div className="w-full flex flex-col gap-3">
           <Link
-            href="/agendar"
+            href={primaryHref}
             className="w-full py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold text-center"
           >
-            Tentar novamente
+            {primaryLabel}
           </Link>
 
           {whatsappUrl && (

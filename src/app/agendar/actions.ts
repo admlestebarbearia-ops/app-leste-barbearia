@@ -871,6 +871,12 @@ export async function cancelPendingPayment(
     .update({ status: 'cancelado' })
     .eq('id', appointmentId)
 
+  await adminClient
+    .from('payment_intents')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('appointment_id', appointmentId)
+    .eq('status', 'pending')
+
   revalidatePath('/agendar')
   revalidatePath('/reservas')
   revalidatePath('/perfil')

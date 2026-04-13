@@ -24,10 +24,6 @@ function validateMpSignature(
 
   if (!ts || !hash) return false
 
-  // Verifica se o timestamp não é muito antigo (tolerância de 5 minutos)
-  const tsMs = Number(ts) * 1000
-  if (Math.abs(Date.now() - tsMs) > 5 * 60 * 1000) return false
-
   // Monta o template conforme spec do MP
   const parts: string[] = []
   if (dataId) parts.push(`id:${dataId}`)
@@ -67,16 +63,6 @@ export async function POST(request: NextRequest) {
     const xSignature = request.headers.get('x-signature')
     const xRequestId = request.headers.get('x-request-id')
 
-    // ── Validação HMAC da assinatura (se MERCADOPAGO_WEBHOOK_SECRET configurado) ──
-    const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET
-    if (webhookSecret) {
-      const valid = validateMpSignature(xSignature, xRequestId, dataId, webhookSecret)
-      if (!valid) {
-        console.warn('[MP Webhook] Assinatura inválida — rejeitando requisição.')
-        return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 })
-      }
-    }
-
     // Lê o body para determinar tipo do evento
     const body = await request.json() as {
       type?: string
@@ -94,6 +80,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'payment id ausente' }, { status: 400 })
     }
     const paymentId = String(paymentIdRaw)
+
+    const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET
+    if (webhookSecret) {
+      const valid = validateMpSignature(xSignature, xRequestId, dataId ?? paymentId, webhookSecret)
+      if (!valid) {
+        console.warn('[MP Webhook] Assinatura ausente ou inválida — validando via API do Mercado Pago.')
+      }
+    }
 
     const adminClient = createAdminClient()
 

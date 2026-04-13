@@ -57,14 +57,14 @@ export default async function PagamentoSucessoPage({ searchParams }: Props) {
         />
 
         <div className="text-center">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${isPending ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-primary/10 border border-primary/30'}`}>
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${isPending ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-emerald-500/10 border border-emerald-500/30'}`}>
             {isPending ? (
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-500">
                 <circle cx="12" cy="12" r="10"/>
                 <polyline points="12 6 12 12 16 14"/>
               </svg>
             ) : (
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
                 <path d="M20 6L9 17l-5-5"/>
               </svg>
             )}
@@ -105,7 +105,17 @@ export default async function PagamentoSucessoPage({ searchParams }: Props) {
             <div className="h-px bg-border" />
             <div className="flex justify-between items-start">
               <span className="text-xs text-muted-foreground uppercase tracking-wider">Status</span>
-              <span className={`text-sm font-medium ${isConfirmed ? 'text-primary' : 'text-yellow-500'}`}>
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${isConfirmed ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300'}`}>
+                {isConfirmed ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17l-5-5"/>
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                )}
                 {isConfirmed ? 'Confirmado' : 'Aguardando confirmação'}
               </span>
             </div>

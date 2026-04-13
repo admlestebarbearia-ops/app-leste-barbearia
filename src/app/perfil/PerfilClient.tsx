@@ -20,6 +20,24 @@ const APPOINTMENT_STATUS_COLOR: Record<string, string> = {
   aguardando_pagamento: 'text-yellow-400',
 }
 
+function AppointmentStatusBadge({ status }: { status: string }) {
+  const isConfirmed = status === 'confirmado'
+
+  return (
+    <span
+      className={[
+        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest mt-1',
+        isConfirmed
+          ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300'
+          : 'border-yellow-500/30 bg-yellow-500/12 text-yellow-300',
+      ].join(' ')}
+    >
+      {isConfirmed ? <Check size={11} /> : null}
+      {APPOINTMENT_STATUS_LABEL[status] ?? status}
+    </span>
+  )
+}
+
 function formatPhone(raw: string): string {
   const d = raw.replace(/\D/g, '').slice(0, 11)
   if (d.length <= 2) return d.length ? `(${d}` : ''
@@ -330,9 +348,7 @@ export function PerfilClient({
                         <p className="text-xs text-zinc-500">
                           {format(parseISO(appt.date), "dd 'de' MMM", { locale: ptBR })} às {appt.start_time?.slice(0, 5)}
                         </p>
-                        <p className={['text-[10px] font-bold uppercase tracking-widest mt-1', APPOINTMENT_STATUS_COLOR[appt.status] ?? 'text-zinc-500'].join(' ')}>
-                          {APPOINTMENT_STATUS_LABEL[appt.status] ?? appt.status}
-                        </p>
+                        <AppointmentStatusBadge status={appt.status} />
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

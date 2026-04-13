@@ -19,7 +19,12 @@ export const metadata = {
   title: 'Minhas Reservas — Leste Barbearia',
 }
 
-export default async function ReservasPage() {
+interface Props {
+  searchParams: Promise<{ notice?: string; appt_id?: string }>
+}
+
+export default async function ReservasPage({ searchParams }: Props) {
+  const { notice, appt_id } = await searchParams
   const supabase = await createClient()
   const cookieStore = await cookies()
 
@@ -107,6 +112,8 @@ export default async function ReservasPage() {
       whatsappNumber={config?.whatsapp_number ?? null}
       productReservations={(productReservationsRaw ?? []) as ProductReservation[]}
       historyAppts={(historyApptsRaw ?? []) as unknown as HistoryAppt[]}
+      notice={notice ?? null}
+      highlightedAppointmentId={appt_id ?? null}
     />
   )
 }

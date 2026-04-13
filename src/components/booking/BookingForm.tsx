@@ -7,7 +7,7 @@ import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
-import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone, cancelPendingPayment } from '@/app/agendar/actions'
+import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone, cancelPendingPayment, getPendingPaymentStatus } from '@/app/agendar/actions'
 import { PaymentBrick } from '@/components/payment/PaymentBrick'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -620,9 +620,28 @@ const handleConfirm = async () => {
   const handleCancelPayment = async () => {
     if (!paymentData || cancellingPaymentStep) return
     setCancellingPaymentStep(true)
-    await cancelPendingPayment(paymentData.appointmentId)
-    setPaymentData(null)
-    setCancellingPaymentStep(false)
+    try {
+      const snapshot = await getPendingPaymentStatus(paymentData.appointmentId)
+      setPaymentData(null)
+
+      if (snapshot.appointmentStatus === 'confirmado') {
+        router.push(`/agendar/pagamento/sucesso?appt_id=${paymentData.appointmentId}`)
+        return
+      }
+
+      if (
+        snapshot.appointmentStatus === 'aguardando_pagamento' &&
+        snapshot.paymentIntentStatus !== 'cancelled' &&
+        snapshot.paymentIntentStatus !== 'expired'
+      ) {
+        router.push(`/reservas?notice=pending-payment&appt_id=${paymentData.appointmentId}`)
+        return
+      }
+
+      router.push(`/agendar/pagamento/falha?appt_id=${paymentData.appointmentId}&reason=not-confirmed`)
+    } finally {
+      setCancellingPaymentStep(false)
+    }
   }
 
   const mpPublicKey = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY ?? ''
@@ -871,7 +890,10 @@ const handleConfirm = async () => {
               publicKey={mpPublicKey}
               paymentMethod={paymentData.mpMethod}
               onSuccess={(apptId) => router.push(`/agendar/pagamento/sucesso?appt_id=${apptId}`)}
-              onError={(msg) => toast.error(msg)}
+              onError={(msg) => {
+                toast.error(msg)
+                router.push(`/agendar/pagamento/falha?appt_id=${paymentData.appointmentId}`)
+              }}
             />
           ) : (
             <div className="bg-destructive/10 border border-destructive/30 rounded-2xl p-5 text-center">
@@ -1581,9 +1603,15 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
           <p className="text-xs text-white/50">
             {format(parseISO(nextAppt.date), "dd 'de' MMMM", { locale: ptBR })} às {nextAppt.start_time?.slice(0, 5)}
           </p>
-          <p className={['text-[10px] uppercase tracking-widest font-bold mt-1', isPendingPayment ? 'text-yellow-400' : 'text-emerald-400'].join(' ')}>
+          <span className={[
+            'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest mt-1 w-fit',
+            isPendingPayment
+              ? 'border-yellow-500/30 bg-yellow-500/12 text-yellow-300'
+              : 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300',
+          ].join(' ')}>
+            {isPendingPayment ? <QrCode size={11} /> : <Check size={11} />}
             {isPendingPayment ? 'Aguardando pagamento' : 'Confirmado'}
-          </p>
+          </span>
         </div>
         {canCancel && (
           confirmId === nextAppt.id ? (

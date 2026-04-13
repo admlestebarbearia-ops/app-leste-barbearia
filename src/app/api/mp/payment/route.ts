@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
         statement_descriptor: 'BARBEARIA LESTE',
         external_reference: appointmentId,
         installments: 1,
-        notification_url: `${baseUrl}/api/webhooks/mercadopago`,
+        notification_url: `${baseUrl}/api/webhooks/mercadopago?source_news=webhooks`,
       },
       requestOptions: {
         idempotencyKey: paymentIntent.mp_payment_id
