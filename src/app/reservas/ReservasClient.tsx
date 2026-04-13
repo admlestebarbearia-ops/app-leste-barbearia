@@ -9,6 +9,7 @@ import { ptBR } from 'date-fns/locale'
 import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle, X, Check, QrCode } from 'lucide-react'
 import { cancelMyAppointment, cancelPendingPayment, dismissCancelledAppointment } from '@/app/agendar/actions'
 import { DayPicker } from 'react-day-picker'
+import { getReservationHistoryCalendarMeta } from '@/lib/booking/reservation-history'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
 
@@ -90,12 +91,20 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
   const [cancelling, setCancelling] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [dismissing, setDismissing] = useState<string | null>(null)
-  const [selectedHistoryDate, setSelectedHistoryDate] = useState<Date | undefined>(undefined)
-  const [historyMonth, setHistoryMonth] = useState<Date>(new Date())
+  const historyCalendar = useMemo(
+    () => getReservationHistoryCalendarMeta(historyAppts),
+    [historyAppts]
+  )
+  const [selectedHistoryDate, setSelectedHistoryDate] = useState<Date | undefined>(historyCalendar.selectedDate)
+  const [historyMonth, setHistoryMonth] = useState<Date>(historyCalendar.initialMonth)
+  const historyDateKeys = useMemo(
+    () => new Set(historyCalendar.selectableDateKeys),
+    [historyCalendar.selectableDateKeys]
+  )
 
   const datesWithAppts = useMemo(
-    () => historyAppts.map((a) => new Date(a.date + 'T12:00:00')),
-    [historyAppts]
+    () => historyCalendar.selectableDateKeys.map((dateKey) => new Date(`${dateKey}T12:00:00`)),
+    [historyCalendar.selectableDateKeys]
   )
 
   const selectedDayAppts = useMemo(() => {
@@ -416,13 +425,9 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                 onSelect={setSelectedHistoryDate}
                 month={historyMonth}
                 onMonthChange={setHistoryMonth}
-                disabled={(date) => {
-                  const todayMidnight = new Date()
-                  todayMidnight.setHours(0, 0, 0, 0)
-                  return date >= todayMidnight
-                }}
-                startMonth={new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)}
-                endMonth={new Date()}
+                disabled={(date) => !historyDateKeys.has(format(date, 'yyyy-MM-dd'))}
+                startMonth={historyCalendar.startMonth}
+                endMonth={historyCalendar.endMonth}
                 modifiers={{ hasAppt: datesWithAppts }}
                 modifiersStyles={{
                   hasAppt: {
@@ -452,9 +457,9 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                             <p className="text-sm font-semibold text-white truncate">
                               {appt.service_name_snapshot ?? (appt.services as { name: string } | null)?.name ?? 'Serviço'}
                             </p>
-                            <p className={`text-[11px] font-bold uppercase tracking-widest ${STATUS_COLOR[appt.status] ?? 'text-zinc-500'}`}>
-                              {STATUS_LABEL[appt.status] ?? appt.status}
-                            </p>
+                            <div className="mt-1">
+                              <AppointmentStatusBadge status={appt.status} />
+                            </div>
                           </div>
                         </div>
                       ))}

@@ -1,18 +1,55 @@
 Como rodar os testes E2E
-1. Setup (apenas uma vez — ou quando a sessão expirar)
 
-npm run e2e:setup
-Abre dois browsers sequencialmente:
+1. Escolha o ambiente
 
-Primeiro: faça login com Google como usuário comum → aguarde redirecionar para /agendar → o Playwright salva a sessão automaticamente
-Segundo: faça login com Google como admin → aguarde redirecionar para /admin → sessão salva
-As sessões ficam em e2e/.auth/ (ignorado pelo git, nunca vai para o repositório).
+Por padrão, o Playwright usa a produção:
 
-2. Rodar os testes
+PLAYWRIGHT_BASE_URL=https://lestebarbearia.agenciajn.com.br
 
-# Todos os 41 testes (recomendado)npm run e2e# Por perfil:npm run e2e:publico   # 13 testes — sem loginnpm run e2e:usuario   # 14 testes — usuário Googlenpm run e2e:admin     # 14 testes — admin# Ver relatório HTML após rodar:npm run e2e:report
-O que cada perfil testa
-Perfil	Destaques
-Público	favicon, og:image WhatsApp, site.webmanifest, proteção de rotas, páginas estáticas
-Usuário	fluxo completo de agendamento → cancelamento, loja → reserva → cancelamento
-Admin	CRUD de serviços e produtos, upload de imagem (valida bucket Storage), agenda especial, pausa
+Para rodar com segurança cenários de pagamento, prefira staging ou local:
+
+PLAYWRIGHT_BASE_URL=http://localhost:3000
+
+2. Setup de autenticação
+
+Rode uma vez por ambiente, ou sempre que a sessão expirar:
+
+npm run e2e:setup
+
+O setup abre dois logins sequenciais:
+
+Primeiro: faça login com Google como usuário comum e aguarde redirecionar para /agendar.
+Segundo: faça login com a conta admin e aguarde redirecionar para /admin.
+
+As sessões ficam em e2e/.auth/ e não devem ser commitadas.
+
+3. Rodar os testes
+
+Todos os perfis principais:
+
+npm run e2e
+
+Perfis isolados:
+
+npm run e2e:publico
+npm run e2e:usuario
+npm run e2e:admin
+
+Suíte de pagamentos:
+
+npm run e2e:payments
+
+Importante: a suíte de pagamentos fica bloqueada por padrão quando PLAYWRIGHT_BASE_URL aponta para produção real. Para liberar conscientemente em produção, use:
+
+ALLOW_PROD_PAYMENT_E2E=true
+
+4. Relatório HTML
+
+npm run e2e:report
+
+Cobertura por perfil
+
+Público: favicon, og:image, site.webmanifest, páginas estáticas e proteção de rotas.
+Usuário: fluxo de agendamento, reservas, cancelamento e loja.
+Admin: serviços, produtos, upload, agenda especial e pausa.
+Pagamentos: criação de reserva pendente, retorno para reservas, retomada do checkout e cancelamento seguro da reserva pendente.

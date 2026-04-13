@@ -1,11 +1,12 @@
 import { test as setup, expect } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
+import { PLAYWRIGHT_BASE_URL } from '../support/environment'
 
-const BASE_URL = 'https://lestebarbearia.agenciajn.com.br'
+const BASE_URL = PLAYWRIGHT_BASE_URL
 
-// Garante que a pasta existe
-const authDir = path.join(__dirname, '.auth')
+// Garante que a pasta existe no mesmo caminho usado pelo playwright.config.ts
+const authDir = path.join(__dirname, '..', '.auth')
 if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true })
 
 const usuarioFile = path.join(authDir, 'usuario.json')

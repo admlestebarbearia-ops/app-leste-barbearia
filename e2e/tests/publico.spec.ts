@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { PLAYWRIGHT_BASE_URL } from '../support/environment'
 
 /**
  * TESTES PÚBLICOS — usuário sem login
@@ -9,7 +10,7 @@ import { test, expect } from '@playwright/test'
  *  - PWA e metadados SEO/OG
  */
 
-const BASE = 'https://lestebarbearia.agenciajn.com.br'
+const BASE = PLAYWRIGHT_BASE_URL
 
 test.describe('Página inicial — sem login', () => {
   test('carrega e exibe botão de login com Google', async ({ page }) => {

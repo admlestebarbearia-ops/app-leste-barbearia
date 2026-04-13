@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { PLAYWRIGHT_BASE_URL } from '../support/environment'
 
 /**
  * TESTES DO USUÁRIO COMUM — logado com Google
@@ -18,7 +19,7 @@ import { test, expect } from '@playwright/test'
  *     de observação para fácil identificação.
  */
 
-const BASE = 'https://lestebarbearia.agenciajn.com.br'
+const BASE = PLAYWRIGHT_BASE_URL
 
 // ID do agendamento criado — compartilhado entre testes do mesmo describe
 let appointmentId: string | null = null

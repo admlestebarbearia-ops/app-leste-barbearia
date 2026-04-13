@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { PLAYWRIGHT_BASE_URL } from './e2e/support/environment'
 
 /**
  * Configuração do Playwright para testes E2E contra o ambiente real de produção.
@@ -8,8 +9,6 @@ import { defineConfig, devices } from '@playwright/test'
  * 2. Testes:       npm run e2e          → roda todos os testes com sessão salva
  * 3. Ver relatório: npm run e2e:report
  */
-
-const BASE_URL = 'https://lestebarbearia.agenciajn.com.br'
 
 export default defineConfig({
   testDir: './e2e',
@@ -21,7 +20,7 @@ export default defineConfig({
   reporter: [['html', { outputFolder: 'playwright-report', open: 'never' }], ['list']],
 
   use: {
-    baseURL: BASE_URL,
+    baseURL: PLAYWRIGHT_BASE_URL,
     locale: 'pt-BR',
     timezoneId: 'America/Sao_Paulo',
     screenshot: 'only-on-failure',
@@ -48,6 +47,16 @@ export default defineConfig({
     {
       name: 'usuario',
       testMatch: '**/tests/usuario.spec.ts',
+      dependencies: ['setup'],
+      use: {
+        ...devices['Mobile Chrome'],
+        storageState: 'e2e/.auth/usuario.json',
+      },
+    },
+
+    {
+      name: 'usuario-pagamentos',
+      testMatch: '**/tests/pagamentos.spec.ts',
       dependencies: ['setup'],
       use: {
         ...devices['Mobile Chrome'],

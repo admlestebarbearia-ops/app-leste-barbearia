@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { PLAYWRIGHT_BASE_URL } from '../support/environment'
 
 /**
  * TESTES DO ADMINISTRADOR
@@ -21,7 +22,7 @@ import { test, expect } from '@playwright/test'
  *     "[TESTE_E2E]" para fácil identificação e remoção em cleanup.
  */
 
-const BASE = 'https://lestebarbearia.agenciajn.com.br'
+const BASE = PLAYWRIGHT_BASE_URL
 const PREFIXO_TESTE = '[TESTE_E2E]'
 
 test.describe('Acesso ao painel admin', () => {

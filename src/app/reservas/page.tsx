@@ -4,15 +4,27 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { ReservasClient } from './ReservasClient'
 import { dedupeById, GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
-import type { BusinessConfig, ProductReservation } from '@/lib/supabase/types'
+import { isReservationHistoryEntry } from '@/lib/booking/reservation-history'
+import type { AppointmentStatus, BusinessConfig, ProductReservation } from '@/lib/supabase/types'
 
 interface HistoryAppt {
   id: string
   date: string
   start_time: string
-  status: string
+  status: AppointmentStatus
   service_name_snapshot: string | null
   services: { name: string } | null
+}
+
+interface HistoryApptRow extends Omit<HistoryAppt, 'services'> {
+  services: { name: string } | { name: string }[] | null
+}
+
+function normalizeHistoryAppt(row: HistoryApptRow): HistoryAppt {
+  return {
+    ...row,
+    services: Array.isArray(row.services) ? row.services[0] ?? null : row.services,
+  }
 }
 
 export const metadata = {
@@ -54,7 +66,6 @@ export default async function ReservasPage({ searchParams }: Props) {
 
   const today = new Date().toISOString().split('T')[0]
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-  const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   // Usa adminClient para buscar reservas de produtos (evita complexidade de RLS com visitantes)
   const adminClient = createAdminClient()
@@ -69,6 +80,7 @@ export default async function ReservasPage({ searchParams }: Props) {
       .from('appointments')
       .select('*, services(name, price, duration_minutes)')
       .in('status', ['confirmado', 'aguardando_pagamento'])
+      .is('deleted_at', null)
       .gte('date', today)
       .or(ownershipFilter)
       .order('date', { ascending: true })
@@ -95,14 +107,17 @@ export default async function ReservasPage({ searchParams }: Props) {
       .from('appointments')
       .select('id, date, start_time, status, service_name_snapshot, services(name)')
       .or(ownershipFilter)
-      .lt('date', today)
-      .gte('date', sixMonthsAgo)
       .is('deleted_at', null)
       .order('date', { ascending: false })
-      .limit(200),
+      .order('start_time', { ascending: false }),
   ])
 
   const config = configRaw as Pick<BusinessConfig, 'cancellation_window_minutes' | 'whatsapp_number'> | null
+  const historyAppts = dedupeById(
+    ((historyApptsRaw ?? []) as HistoryApptRow[])
+      .map(normalizeHistoryAppt)
+      .filter((appt) => isReservationHistoryEntry(appt, today))
+  )
 
   return (
     <ReservasClient
@@ -111,7 +126,7 @@ export default async function ReservasPage({ searchParams }: Props) {
       cancellationWindowMinutes={config?.cancellation_window_minutes ?? 60}
       whatsappNumber={config?.whatsapp_number ?? null}
       productReservations={(productReservationsRaw ?? []) as ProductReservation[]}
-      historyAppts={(historyApptsRaw ?? []) as unknown as HistoryAppt[]}
+      historyAppts={historyAppts}
       notice={notice ?? null}
       highlightedAppointmentId={appt_id ?? null}
     />
