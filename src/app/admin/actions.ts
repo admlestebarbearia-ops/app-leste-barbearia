@@ -9,6 +9,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { MAX_PAYMENT_EXPIRY_MINUTES, normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
 import type { BusinessConfig, WorkingHours } from '@/lib/supabase/types'
 
 // ─── Guard: verifica se o usuário atual é admin ──────────────────────────
@@ -74,15 +75,18 @@ export async function updateAppointmentStatus(
   }
 }
 
-// ─── Excluir agendamento (soft delete — apenas admin) ───────────────────────
+// ─── Excluir agendamento (oculta do painel admin, mas cliente ainda vê) ──────
 export async function deleteAppointment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
+    // admin_hidden_at oculta apenas do painel do admin.
+    // O status fica 'cancelado' para o cliente saber que foi cancelado,
+    // mas o agendamento NÃO desaparece do painel do cliente (deleted_at não é tocado).
     const { error } = await supabase
       .from('appointments')
-      .update({ status: 'cancelado', deleted_at: new Date().toISOString() })
+      .update({ status: 'cancelado', admin_hidden_at: new Date().toISOString() })
       .eq('id', appointmentId)
     if (error) throw error
     revalidatePath('/admin')
@@ -1224,16 +1228,18 @@ export async function saveMercadoPagoConfig(data: {
   try {
     await requireAdmin()
 
-    if (data.payment_expiry_minutes < 1 || data.payment_expiry_minutes > 60) {
-      return { success: false, error: 'Tempo de expiração deve ser entre 1 e 60 minutos.' }
+    if (!Number.isFinite(data.payment_expiry_minutes) || data.payment_expiry_minutes < 1 || data.payment_expiry_minutes > MAX_PAYMENT_EXPIRY_MINUTES) {
+      return { success: false, error: `Tempo de expiração deve ser entre 1 e ${MAX_PAYMENT_EXPIRY_MINUTES} minutos.` }
     }
+
+    const normalizedExpiry = normalizePaymentExpiryMinutes(data.payment_expiry_minutes)
 
     const adminClient = createAdminClient()
     const { error } = await adminClient
       .from('business_config')
       .update({
         payment_mode: data.payment_mode,
-        payment_expiry_minutes: data.payment_expiry_minutes,
+        payment_expiry_minutes: normalizedExpiry,
         aceita_dinheiro: data.aceita_dinheiro,
       })
       .eq('id', 1)

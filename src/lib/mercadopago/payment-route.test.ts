@@ -32,14 +32,14 @@ function buildPaymentIntent(overrides: Partial<PaymentIntentRecord> = {}): Payme
 function createDeps(overrides: Partial<Parameters<typeof processMercadoPagoPaymentRequest>[1]> = {}) {
   const updates: Array<{ intentId: string; patch: { status: string; mp_payment_id?: string | null; updated_at: string } }> = []
   const creations: Array<{ body: Record<string, unknown>; idempotencyKey: string; accessToken: string }> = []
-  const expirations: string[] = []
+  const expirations: Array<{ intentId: string; appointmentId: string }> = []
   const baseNow = new Date('2026-04-13T14:00:00.000Z')
 
   const deps: Parameters<typeof processMercadoPagoPaymentRequest>[1] = {
     getPendingAppointment: async () => buildPendingAppointment(),
     getPaymentIntent: async () => buildPaymentIntent(),
-    expirePendingIntent: async (intentId) => {
-      expirations.push(intentId)
+    expirePendingIntent: async (intentId, appointmentId) => {
+      expirations.push({ intentId, appointmentId })
     },
     getAccessToken: async () => 'mp_token_prod',
     fetchExistingPaymentStatus: async () => ({
@@ -104,7 +104,7 @@ describe('mercadopago payment route logic', () => {
       status: 409,
       body: { error: 'Prazo de pagamento expirado. Faça um novo agendamento.' },
     })
-    assert.deepEqual(expirations, ['intent-1'])
+    assert.deepEqual(expirations, [{ intentId: 'intent-1', appointmentId: '123e4567-e89b-12d3-a456-426614174000' }])
   })
 
   it('reutiliza payment ainda vivo e atualiza o payment_intent local', async () => {

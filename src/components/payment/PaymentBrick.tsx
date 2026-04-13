@@ -6,6 +6,7 @@ import type { IPaymentBrickCustomization } from '@mercadopago/sdk-react/esm/bric
 import type { TPaymentType } from '@mercadopago/sdk-react/esm/bricks/payment/type'
 import type { IBrickError } from '@mercadopago/sdk-react/esm/bricks/util/types/common'
 import { getPendingPaymentStatus } from '@/app/agendar/actions'
+import { buildPaymentBrickCustomization, type PublicMpMethod } from '@/lib/mercadopago/checkout-config'
 
 type OnSubmitParam = Parameters<TPaymentType['onSubmit']>[0]
 const MP_STATUS_POLL_ATTEMPTS = 6
@@ -23,7 +24,7 @@ interface Props {
   preferenceId?: string
   appointmentId: string
   publicKey: string
-  paymentMethod?: 'pix' | 'card'
+  paymentMethod?: PublicMpMethod
   existingPaymentId?: string
   onSuccess: (appointmentId: string) => void
   onError?: (message: string) => void
@@ -70,28 +71,10 @@ export function PaymentBrick({
     ...(preferenceId ? { preferenceId } : {}),
   }), [amount, preferenceId])
 
-  const paymentCustomization = useMemo<IPaymentBrickCustomization>(() => {
-    const paymentMethods: IPaymentBrickCustomization['paymentMethods'] = paymentMethod === 'pix'
-      ? { bankTransfer: 'all' }
-      : paymentMethod === 'card'
-      ? { creditCard: 'all' }
-      : { mercadoPago: 'all', creditCard: 'all', bankTransfer: 'all' }
-
-    const visual: NonNullable<IPaymentBrickCustomization['visual']> = {
-      style: { theme: 'dark' },
-      hideFormTitle: true,
-      ...(paymentMethod === 'pix'
-        ? { defaultPaymentOption: { bankTransferForm: true } }
-        : paymentMethod === 'card'
-        ? { defaultPaymentOption: { creditCardForm: true } }
-        : {}),
-    }
-
-    return {
-      paymentMethods,
-      visual,
-    }
-  }, [paymentMethod])
+  const paymentCustomization = useMemo<IPaymentBrickCustomization>(
+    () => buildPaymentBrickCustomization(paymentMethod),
+    [paymentMethod]
+  )
 
   const checkBackendConfirmation = useCallback(async (options?: { attempts?: number; silent?: boolean }) => {
     if (statusPollInFlightRef.current) return false

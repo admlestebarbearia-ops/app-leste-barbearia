@@ -66,6 +66,17 @@ test('validateMercadoPagoPaymentRequest valida PIX e cartão sem aceitar payload
   }), null)
 
   assert.equal(validateMercadoPagoPaymentRequest({
+    appointmentId: '123e4567-e89b-12d3-a456-426614174000',
+    amount: 25,
+    description: 'Barba',
+    formData: {
+      payment_method_id: 'account_money',
+      payment_type_id: 'account_money',
+      payer: { email: 'cliente@teste.com' },
+    },
+  }), null)
+
+  assert.equal(validateMercadoPagoPaymentRequest({
     appointmentId: 'invalido',
     amount: 25,
     description: 'Barba',

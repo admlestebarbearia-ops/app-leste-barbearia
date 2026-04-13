@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 // Crawlers de redes sociais — não têm cookies, não precisam de auth
 const SOCIAL_CRAWLERS = /facebookexternalhit|Twitterbot|WhatsApp|LinkedInBot|Slackbot|TelegramBot|Discordbot|Pinterest/i
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   // Bypassa auth completamente para crawlers sociais (OG image preview)
   const ua = request.headers.get('user-agent') ?? ''
   if (SOCIAL_CRAWLERS.test(ua)) {

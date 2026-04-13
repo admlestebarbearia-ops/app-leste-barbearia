@@ -10,6 +10,8 @@ import { toast } from 'sonner'
 import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone, cancelPendingPayment, getPendingPaymentStatus } from '@/app/agendar/actions'
 import { PaymentBrick } from '@/components/payment/PaymentBrick'
 import { createClient } from '@/lib/supabase/client'
+import { PUBLIC_MP_METHOD_OPTIONS, getPublicMpMethodBadge, type PublicMpMethod } from '@/lib/mercadopago/checkout-config'
+import { normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
 import {
   buildAvailabilitySyncKey,
   getBarberAvailabilityChangeMessage,
@@ -169,7 +171,7 @@ export function BookingForm({
   // Tela de seleção de pagamento (aparece após escolher horário, antes de criar agendamento)
   const [showPaymentStep, setShowPaymentStep] = useState(false)
   // Método MP destacado no passo de pagamento (só visual — ambos usam o mesmo brick)
-  const [selectedMpMethod, setSelectedMpMethod] = useState<'pix' | 'card' | null>(null)
+  const [selectedMpMethod, setSelectedMpMethod] = useState<PublicMpMethod | null>(null)
 
   // Estado do Payment Brick inline (substitui redirecionamento externo)
   const [paymentData, setPaymentData] = useState<{
@@ -179,7 +181,7 @@ export function BookingForm({
     serviceName: string
     serviceDate: string
     serviceTime: string
-    mpMethod?: 'pix' | 'card'
+    mpMethod?: PublicMpMethod
   } | null>(null)
   const [cancellingPaymentStep, setCancellingPaymentStep] = useState(false)
   // Bug 02/03: previne duplo clique no botão de pagamento
@@ -648,6 +650,26 @@ const handleConfirm = async () => {
 
   const needsPaymentStep = config?.payment_mode === 'online_obrigatorio'
   const aceitaDinheiro = config?.aceita_dinheiro ?? false
+  const paymentHoldMinutes = normalizePaymentExpiryMinutes(config?.payment_expiry_minutes)
+
+  const renderMpMethodIcon = (method: PublicMpMethod, isSelected: boolean) => {
+    if (method === 'pix') {
+      return <QrCode size={22} className={isSelected ? 'text-[#00BDAE]' : 'text-white/40'} />
+    }
+
+    if (method === 'mercado_pago') {
+      return (
+        <span className={[
+          'text-xs font-black uppercase tracking-[0.18em]',
+          isSelected ? 'text-cyan-200' : 'text-white/40',
+        ].join(' ')}>
+          MP
+        </span>
+      )
+    }
+
+    return <CreditCard size={22} className={isSelected ? (method === 'debito' ? 'text-sky-300' : 'text-primary') : 'text-white/40'} />
+  }
 
   // ─── Tela de seleção de forma de pagamento ────────────────────────────────
   if (showPaymentStep && selectedService && selectedDate && selectedTime) {
@@ -693,60 +715,65 @@ const handleConfirm = async () => {
           <div className="flex flex-col gap-3">
             <p className="text-[10px] uppercase tracking-widest font-bold text-white/40">Forma de pagamento</p>
 
-            {/* Grid PIX + Cartão */}
             <div className="grid grid-cols-2 gap-3">
-              {/* PIX */}
-              <button
-                onClick={() => { setSelectedMpMethod('pix'); setPaymentChoice('mp') }}
-                className={[
-                  'relative flex flex-col items-center justify-center gap-2.5 rounded-2xl border p-5 transition-all duration-200',
-                  selectedMpMethod === 'pix' && paymentChoice === 'mp'
-                    ? 'border-[#00BDAE] bg-[#00BDAE]/10 ring-2 ring-[#00BDAE]/30 scale-[1.02]'
-                    : 'border-white/[0.06] bg-[#1a1a1a] hover:border-white/20 active:scale-[0.97]',
-                ].join(' ')}
-              >
-                {/* Ícone PIX estilizado */}
-                <div className={['w-10 h-10 rounded-xl flex items-center justify-center transition-colors', selectedMpMethod === 'pix' && paymentChoice === 'mp' ? 'bg-[#00BDAE]/20' : 'bg-white/5'].join(' ')}>
-                  <QrCode size={22} className={selectedMpMethod === 'pix' && paymentChoice === 'mp' ? 'text-[#00BDAE]' : 'text-white/40'} />
-                </div>
-                <div className="flex flex-col items-center gap-0.5">
-                  <span className={['text-xs font-extrabold uppercase tracking-wider', selectedMpMethod === 'pix' && paymentChoice === 'mp' ? 'text-[#00BDAE]' : 'text-white/60'].join(' ')}>
-                    PIX
-                  </span>
-                  <span className="text-[10px] text-white/30 font-medium">Instantâneo</span>
-                </div>
-                {selectedMpMethod === 'pix' && paymentChoice === 'mp' && (
-                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-[#00BDAE] flex items-center justify-center">
-                    <Check size={10} className="text-black" strokeWidth={3} />
-                  </div>
-                )}
-              </button>
+              {PUBLIC_MP_METHOD_OPTIONS.map((option) => {
+                const isSelected = selectedMpMethod === option.id && paymentChoice === 'mp'
+                const accent = option.id === 'pix'
+                  ? {
+                      border: 'border-[#00BDAE] bg-[#00BDAE]/10 ring-2 ring-[#00BDAE]/30 scale-[1.02]',
+                      icon: 'bg-[#00BDAE]/20',
+                      text: 'text-[#00BDAE]',
+                      check: 'bg-[#00BDAE] text-black',
+                    }
+                  : option.id === 'debito'
+                  ? {
+                      border: 'border-sky-400/60 bg-sky-400/10 ring-2 ring-sky-400/20 scale-[1.02]',
+                      icon: 'bg-sky-400/20',
+                      text: 'text-sky-300',
+                      check: 'bg-sky-400 text-slate-950',
+                    }
+                  : option.id === 'mercado_pago'
+                  ? {
+                      border: 'border-cyan-400/60 bg-cyan-400/10 ring-2 ring-cyan-400/20 scale-[1.02]',
+                      icon: 'bg-cyan-400/20',
+                      text: 'text-cyan-200',
+                      check: 'bg-cyan-400 text-slate-950',
+                    }
+                  : {
+                      border: 'border-primary bg-primary/10 ring-2 ring-primary/30 scale-[1.02]',
+                      icon: 'bg-primary/20',
+                      text: 'text-primary',
+                      check: 'bg-primary text-white',
+                    }
 
-              {/* Cartão */}
-              <button
-                onClick={() => { setSelectedMpMethod('card'); setPaymentChoice('mp') }}
-                className={[
-                  'relative flex flex-col items-center justify-center gap-2.5 rounded-2xl border p-5 transition-all duration-200',
-                  selectedMpMethod === 'card' && paymentChoice === 'mp'
-                    ? 'border-primary bg-primary/10 ring-2 ring-primary/30 scale-[1.02]'
-                    : 'border-white/[0.06] bg-[#1a1a1a] hover:border-white/20 active:scale-[0.97]',
-                ].join(' ')}
-              >
-                <div className={['w-10 h-10 rounded-xl flex items-center justify-center transition-colors', selectedMpMethod === 'card' && paymentChoice === 'mp' ? 'bg-primary/20' : 'bg-white/5'].join(' ')}>
-                  <CreditCard size={22} className={selectedMpMethod === 'card' && paymentChoice === 'mp' ? 'text-primary' : 'text-white/40'} />
-                </div>
-                <div className="flex flex-col items-center gap-0.5">
-                  <span className={['text-xs font-extrabold uppercase tracking-wider', selectedMpMethod === 'card' && paymentChoice === 'mp' ? 'text-primary' : 'text-white/60'].join(' ')}>
-                    Cartão
-                  </span>
-                  <span className="text-[10px] text-white/30 font-medium">Crédito ou Débito</span>
-                </div>
-                {selectedMpMethod === 'card' && paymentChoice === 'mp' && (
-                  <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
-                    <Check size={10} className="text-white" strokeWidth={3} />
-                  </div>
-                )}
-              </button>
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => { setSelectedMpMethod(option.id); setPaymentChoice('mp') }}
+                    className={[
+                      'relative flex flex-col items-center justify-center gap-2.5 rounded-2xl border p-5 transition-all duration-200',
+                      isSelected
+                        ? accent.border
+                        : 'border-white/[0.06] bg-[#1a1a1a] hover:border-white/20 active:scale-[0.97]',
+                    ].join(' ')}
+                  >
+                    <div className={['w-10 h-10 rounded-xl flex items-center justify-center transition-colors', isSelected ? accent.icon : 'bg-white/5'].join(' ')}>
+                      {renderMpMethodIcon(option.id, isSelected)}
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className={['text-xs font-extrabold uppercase tracking-wider', isSelected ? accent.text : 'text-white/60'].join(' ')}>
+                        {option.label}
+                      </span>
+                      <span className="text-[10px] text-white/30 font-medium">{option.subtitle}</span>
+                    </div>
+                    {isSelected && (
+                      <div className={['absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded-full', accent.check].join(' ')}>
+                        <Check size={10} strokeWidth={3} />
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
             </div>
 
             {/* Dinheiro (se barbearia aceita) */}
@@ -797,9 +824,14 @@ const handleConfirm = async () => {
 
           {/* Selo de segurança MP */}
           {paymentChoice === 'mp' && (
-            <div className="flex items-center justify-center gap-2 opacity-50">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/60"><path d="M12 22s8-4 8-10V5l-8-2-8 2v7c0 6 8 10 8 10z"/></svg>
-              <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">Pagamento seguro via Mercado Pago</span>
+            <div className="flex flex-col items-center gap-2 opacity-70">
+              <div className="flex items-center justify-center gap-2 opacity-80">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/60"><path d="M12 22s8-4 8-10V5l-8-2-8 2v7c0 6 8 10 8 10z"/></svg>
+                <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">Pagamento seguro via Mercado Pago</span>
+              </div>
+              <span className="text-[10px] text-white/35 text-center">
+                O horário fica reservado por até {paymentHoldMinutes} min enquanto o pagamento é concluído.
+              </span>
             </div>
           )}
 
@@ -859,9 +891,11 @@ const handleConfirm = async () => {
             <div className="flex items-center justify-center gap-2">
               {paymentData.mpMethod === 'pix'
                 ? <QrCode size={13} className="text-[#00BDAE]" />
-                : <CreditCard size={13} className="text-primary" />}
+                : paymentData.mpMethod === 'mercado_pago'
+                ? <span className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">MP</span>
+                : <CreditCard size={13} className={paymentData.mpMethod === 'debito' ? 'text-sky-300' : 'text-primary'} />}
               <span className="text-[11px] font-bold uppercase tracking-widest text-white/40">
-                {paymentData.mpMethod === 'pix' ? 'Pagamento via PIX' : 'Pagamento via Cartão'}
+                {getPublicMpMethodBadge(paymentData.mpMethod)}
               </span>
             </div>
           )}

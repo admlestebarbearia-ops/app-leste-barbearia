@@ -48,7 +48,7 @@ export interface MercadoPagoCreatedPayment {
 export interface ProcessMercadoPagoPaymentRequestDeps {
   getPendingAppointment(appointmentId: string): Promise<PendingAppointmentRecord | null>
   getPaymentIntent(appointmentId: string): Promise<PaymentIntentRecord | null>
-  expirePendingIntent(intentId: string): Promise<void>
+  expirePendingIntent(intentId: string, appointmentId: string): Promise<void>
   getAccessToken(): Promise<string | null>
   fetchExistingPaymentStatus(paymentId: string, accessToken: string): Promise<MercadoPagoPaymentStatusResponse>
   createPayment(input: {
@@ -106,7 +106,7 @@ export async function processMercadoPagoPaymentRequest(
   }
 
   if (isPaymentIntentExpired(paymentIntent.expires_at, deps.getNow())) {
-    await deps.expirePendingIntent(paymentIntent.id)
+    await deps.expirePendingIntent(paymentIntent.id, appointmentId)
     return {
       status: 409,
       body: { error: 'Prazo de pagamento expirado. Faça um novo agendamento.' },

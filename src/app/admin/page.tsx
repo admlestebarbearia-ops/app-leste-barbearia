@@ -77,7 +77,7 @@ export default async function AdminPage({
       services(name, price, duration_minutes)
     `)
     .gte('date', thirtyDaysAgo)
-    .is('deleted_at', null)
+    .is('admin_hidden_at', null)
     .order('date', { ascending: true })
     .order('start_time', { ascending: true })
 
@@ -107,13 +107,37 @@ export default async function AdminPage({
   // Busca reservas de produtos vinculadas aos agendamentos do período
   let productReservations: ProductReservation[] = []
   const apptIds = (allAppointments ?? []).map((a) => a.id).filter(Boolean)
+
+  // Forma de pagamento: busca financial_entries (agendamentos presenciais concluídos)
+  // e payment_intents aprovados (pagamentos online via MP)
+  let paymentMethodByApptId: Record<string, string | null> = {}
+  const onlineMpApptIds = new Set<string>()
+
   if (apptIds.length > 0) {
-    const { data: prData } = await adminClient
-      .from('product_reservations')
-      .select('*')
-      .in('appointment_id', apptIds)
-      .in('status', ['reservado', 'retirado'])
+    const [{ data: prData }, { data: feData }, { data: piData }] = await Promise.all([
+      adminClient
+        .from('product_reservations')
+        .select('*')
+        .in('appointment_id', apptIds)
+        .in('status', ['reservado', 'retirado']),
+      adminClient
+        .from('financial_entries')
+        .select('reference_id, payment_method')
+        .eq('source', 'agendamento')
+        .in('reference_id', apptIds),
+      adminClient
+        .from('payment_intents')
+        .select('appointment_id, status')
+        .in('appointment_id', apptIds)
+        .in('status', ['approved', 'pending']),
+    ])
     productReservations = (prData ?? []) as ProductReservation[]
+    paymentMethodByApptId = Object.fromEntries(
+      (feData ?? []).map((fe) => [fe.reference_id, fe.payment_method])
+    )
+    for (const pi of piData ?? []) {
+      onlineMpApptIds.add(pi.appointment_id)
+    }
   }
 
   // Busca reservas standalone da loja (sem agendamento) — inclui canceladas para o admin excluir
@@ -160,6 +184,8 @@ export default async function AdminPage({
         appointmentsError={apptError?.message ?? null}
         mpStatus={mpStatus}
         mpReason={mpReason}
+        paymentMethodByApptId={paymentMethodByApptId}
+        onlineMpApptIds={onlineMpApptIds}
       />
     </main>
   )

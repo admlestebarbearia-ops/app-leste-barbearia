@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import React, { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -97,10 +97,6 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
   )
   const [selectedHistoryDate, setSelectedHistoryDate] = useState<Date | undefined>(historyCalendar.selectedDate)
   const [historyMonth, setHistoryMonth] = useState<Date>(historyCalendar.initialMonth)
-  const historyDateKeys = useMemo(
-    () => new Set(historyCalendar.selectableDateKeys),
-    [historyCalendar.selectableDateKeys]
-  )
 
   const datesWithAppts = useMemo(
     () => historyCalendar.selectableDateKeys.map((dateKey) => new Date(`${dateKey}T12:00:00`)),
@@ -407,17 +403,18 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
           </div>
         )}
 
-        {/* ── Histórico ── */}
-        {historyAppts.length > 0 && (
-          <div className="flex flex-col gap-3">
+        {/* ── Calendário ── */}
+        <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <CalendarDays size={14} className="text-zinc-500" />
               <h2 className="text-xs font-extrabold uppercase tracking-widest text-zinc-400">
-                Histórico
+                Calendário
               </h2>
             </div>
 
             <div className="bg-neutral-900 rounded-2xl border border-white/5 p-4 flex flex-col items-center">
+              {/* Sobrepõe variáveis CSS do DayPicker para remover o azul padrão */}
+              <div style={{ '--rdp-accent-color': '#dc2626', '--rdp-background-color': '#dc2626' } as React.CSSProperties} className="w-full flex flex-col items-center">
               <DayPicker
                 mode="single"
                 locale={ptBR}
@@ -425,20 +422,25 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                 onSelect={setSelectedHistoryDate}
                 month={historyMonth}
                 onMonthChange={setHistoryMonth}
-                disabled={(date) => !historyDateKeys.has(format(date, 'yyyy-MM-dd'))}
                 startMonth={historyCalendar.startMonth}
                 endMonth={historyCalendar.endMonth}
                 modifiers={{ hasAppt: datesWithAppts }}
                 modifiersStyles={{
                   hasAppt: {
-                    backgroundImage: 'radial-gradient(circle at 50% calc(100% - 3px), #10b981 2px, transparent 2px)',
+                    backgroundImage: 'radial-gradient(circle at 50% calc(100% - 3px), #dc2626 2px, transparent 2px)',
                   },
                 }}
+                classNames={{
+                  chevron: 'fill-zinc-300',
+                  today: 'font-extrabold !text-white',
+                  selected: '!bg-red-600 !text-white rounded-full',
+                }}
               />
+              </div>
 
               {selectedHistoryDate && (
                 <div className="w-full border-t border-white/10 pt-4 mt-1 flex flex-col gap-2">
-                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest capitalize">
                     {format(selectedHistoryDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
                   </p>
                   {selectedDayAppts.length === 0 ? (
@@ -469,7 +471,6 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
               )}
             </div>
           </div>
-        )}
       </div>
 
       {/* ── Reservas de Produtos ── */}

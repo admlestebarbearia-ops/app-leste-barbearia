@@ -40,16 +40,19 @@ export function getReservationHistoryCalendarMeta(
     ? parseDateAtMidday(selectableDateKeys[0])
     : fallback
 
-  const latestHistoryDate = selectableDateKeys[selectableDateKeys.length - 1]
+  const latestDate = selectableDateKeys[selectableDateKeys.length - 1]
     ? parseDateAtMidday(selectableDateKeys[selectableDateKeys.length - 1])
     : fallback
 
-  const latestVisibleDate = latestHistoryDate > fallback ? latestHistoryDate : fallback
+  // endMonth inclui datas futuras para que agendamentos futuros sejam navegáveis
+  const latestVisibleDate = latestDate > fallback ? latestDate : fallback
 
   return {
     selectableDateKeys,
-    selectedDate: selectableDateKeys.length > 0 ? latestHistoryDate : undefined,
-    initialMonth: selectableDateKeys.length > 0 ? latestHistoryDate : fallback,
+    // Sem seleção automática — usuário navega livremente
+    selectedDate: undefined as Date | undefined,
+    // Começa no mês atual, não no último agendamento
+    initialMonth: fallback,
     startMonth: getMonthStart(earliestVisibleDate),
     endMonth: getMonthStart(latestVisibleDate),
   }

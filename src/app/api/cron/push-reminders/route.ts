@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToUser } from '@/app/api/push/actions'
 
-// Roda a cada 15 minutos via scheduler externo (GitHub Actions)
+// Roda a cada 5 minutos via scheduler externo (GitHub Actions)
 // Envia lembretes push: 1h30, 1h15, 1h, 45min, 30min e 15min antes do agendamento
 
 export async function GET(request: Request) {
@@ -30,8 +30,8 @@ export async function GET(request: Request) {
       return `${h}:${m}:00`
     }
 
-    // Janelas de ±7 min em torno de cada intervalo (cron roda a cada 15min)
-    // Garante que todo agendamento seja coberto sem reenvio duplo (flags no BD)
+    // Janelas de ±7 min em torno de cada intervalo para absorver atraso do scheduler.
+    // Garante que todo agendamento seja coberto sem reenvio duplo (flags no BD).
     const REMINDERS = [
       { label: '1h30',  minutes: 90, flag: 'reminder_90min_sent', title: '✂️ Daqui 1h30!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}.` },
       { label: '1h15',  minutes: 75, flag: 'reminder_75min_sent', title: '✂️ Daqui 1h15!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}.` },

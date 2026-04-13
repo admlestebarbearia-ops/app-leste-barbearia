@@ -47,7 +47,7 @@ describe('reservation history', () => {
     )
   })
 
-  it('calcula o alcance do calendario a partir da primeira e da ultima reserva do historico', () => {
+  it('calcula o alcance do calendario e abre no mes atual sem selecionar um dia automaticamente', () => {
     const meta = getReservationHistoryCalendarMeta(
       [
         { date: '2025-10-10', status: 'concluido' },
@@ -58,7 +58,8 @@ describe('reservation history', () => {
     )
 
     assert.deepEqual(meta.selectableDateKeys, ['2025-10-10', '2026-04-01', '2026-04-20'])
-    assert.equal(meta.selectedDate?.toISOString(), '2026-04-20T15:00:00.000Z')
+    assert.equal(meta.selectedDate, undefined)
+    assert.equal(meta.initialMonth.toISOString(), '2026-04-13T15:00:00.000Z')
     assert.equal(meta.startMonth.toISOString(), '2025-10-01T15:00:00.000Z')
     assert.equal(meta.endMonth.toISOString(), '2026-04-01T15:00:00.000Z')
   })

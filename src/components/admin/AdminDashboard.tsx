@@ -11,6 +11,7 @@ import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { MAX_PAYMENT_EXPIRY_MINUTES, normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
 import {
   Dialog,
   DialogContent,
@@ -90,6 +91,8 @@ interface Props {
   appointmentsError?: string | null
   mpStatus?: string
   mpReason?: string
+  paymentMethodByApptId?: Record<string, string | null>
+  onlineMpApptIds?: Set<string>
 }
 
 export function AdminDashboard({
@@ -104,6 +107,8 @@ export function AdminDashboard({
   appointmentsError,
   mpStatus,
   mpReason,
+  paymentMethodByApptId = {},
+  onlineMpApptIds = new Set(),
 }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('hoje')
@@ -430,6 +435,8 @@ export function AdminDashboard({
             queryError={appointmentsError}
             productReservationsByAppt={productReservationsByAppt}
             standaloneReservations={standaloneReservations}
+            paymentMethodByApptId={paymentMethodByApptId}
+            onlineMpApptIds={onlineMpApptIds}
             onStandaloneUpdated={(id, newStatus) => {
               if (newStatus === 'deleted') {
                 setStandaloneReservations(prev => prev.filter(r => r.id !== id))
@@ -563,6 +570,8 @@ function TabHoje({
   queryError,
   productReservationsByAppt = {},
   standaloneReservations = [],
+  paymentMethodByApptId = {},
+  onlineMpApptIds = new Set(),
   onStandaloneUpdated,
 }: {
   appointments: Appointment[]
@@ -572,6 +581,8 @@ function TabHoje({
   queryError?: string | null
   productReservationsByAppt?: Record<string, ProductReservation[]>
   standaloneReservations?: ProductReservation[]
+  paymentMethodByApptId?: Record<string, string | null>
+  onlineMpApptIds?: Set<string>
   onStandaloneUpdated?: (id: string, newStatus: 'reservado' | 'retirado' | 'cancelado' | 'deleted') => void
 }) {
   const todayStr = new Date().toISOString().split('T')[0]
@@ -1294,6 +1305,36 @@ function TabHoje({
                   <span className="text-sm font-bold text-emerald-400">R$ {selectedAppt.services.price.toFixed(2).replace('.', ',')}</span>
                 </div>
               )}
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Agendado em</span>
+                <span className="text-xs text-zinc-300 tabular-nums">
+                  {new Date(selectedAppt.created_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              {(() => {
+                const method = paymentMethodByApptId[selectedAppt.id]
+                const isOnline = onlineMpApptIds.has(selectedAppt.id)
+                const PAYMENT_LABEL: Record<string, string> = {
+                  dinheiro: 'Dinheiro',
+                  pix: 'PIX',
+                  debito: 'Débito',
+                  credito: 'Crédito',
+                }
+                const label = method
+                  ? PAYMENT_LABEL[method] ?? method
+                  : isOnline
+                  ? 'Online (Mercado Pago)'
+                  : selectedAppt.status === 'concluido'
+                  ? '—'
+                  : null
+                if (!label) return null
+                return (
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Pagamento</span>
+                    <span className="text-xs text-zinc-300">{label}</span>
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Info do cliente */}
@@ -1700,7 +1741,7 @@ function TabConfiguracoes({
   useEffect(() => { setMpConnected(!!config.mp_access_token) }, [config.mp_access_token])
   const [paymentMode, setPaymentMode] = useState<'presencial' | 'online_obrigatorio'>(config.payment_mode ?? 'presencial')
   const [aceitaDinheiro, setAceitaDinheiro] = useState<boolean>(config.aceita_dinheiro ?? true)
-  const [mpExpiryMinutes, setMpExpiryMinutes] = useState(String(config.payment_expiry_minutes ?? 15))
+  const [mpExpiryMinutes, setMpExpiryMinutes] = useState(String(normalizePaymentExpiryMinutes(config.payment_expiry_minutes)))
   const [savingMp, setSavingMp] = useState(false)
 
   // Contatos e localização
@@ -1856,8 +1897,8 @@ function TabConfiguracoes({
 
   const handleSaveMercadoPago = async () => {
     const expiryParsed = parseInt(mpExpiryMinutes, 10)
-    if (isNaN(expiryParsed) || expiryParsed < 1 || expiryParsed > 60) {
-      toast.error('Tempo de expiração deve ser entre 1 e 60 minutos.')
+    if (isNaN(expiryParsed) || expiryParsed < 1 || expiryParsed > MAX_PAYMENT_EXPIRY_MINUTES) {
+      toast.error(`Tempo de expiração deve ser entre 1 e ${MAX_PAYMENT_EXPIRY_MINUTES} minutos.`)
       return
     }
     setSavingMp(true)
@@ -2437,7 +2478,7 @@ function TabConfiguracoes({
               <Input
                 type="number"
                 min="1"
-                max="60"
+                max={MAX_PAYMENT_EXPIRY_MINUTES}
                 value={mpExpiryMinutes}
                 onChange={(e) => setMpExpiryMinutes(e.target.value)}
                 className="h-8 w-16 text-center text-xs"
@@ -2445,6 +2486,9 @@ function TabConfiguracoes({
               <span className="text-[11px] text-zinc-600">min</span>
             </div>
           </div>
+          <p className="text-[11px] text-zinc-500">
+            Reservas online ficam bloqueadas por no máximo {MAX_PAYMENT_EXPIRY_MINUTES} minutos antes de serem liberadas automaticamente.
+          </p>
 
           <Button onClick={handleSaveMercadoPago} disabled={savingMp} size="sm" className="w-full">
             {savingMp ? 'Salvando...' : 'Salvar'}

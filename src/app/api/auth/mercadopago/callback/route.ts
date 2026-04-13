@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache'
 /**
  * Callback do OAuth Mercado Pago.
  * Valida o estado HMAC-assinado (sem cookies) e troca o code pelo access_token.
- * Esta rota NAO passa pelo middleware (excluida no matcher) para evitar
+ * Esta rota NAO passa pelo proxy (excluida no matcher) para evitar
  * interferencia com cookies de sessao durante redirects cross-site do MP.
  */
 export async function GET(request: NextRequest) {

@@ -4,7 +4,6 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { ReservasClient } from './ReservasClient'
 import { dedupeById, GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
-import { isReservationHistoryEntry } from '@/lib/booking/reservation-history'
 import type { AppointmentStatus, BusinessConfig, ProductReservation } from '@/lib/supabase/types'
 
 interface HistoryAppt {
@@ -113,10 +112,10 @@ export default async function ReservasPage({ searchParams }: Props) {
   ])
 
   const config = configRaw as Pick<BusinessConfig, 'cancellation_window_minutes' | 'whatsapp_number'> | null
+  // Inclui TODOS os agendamentos no calendário — passados e futuros.
+  // isReservationHistoryEntry não é mais usado aqui para não excluir futuros confirmados.
   const historyAppts = dedupeById(
-    ((historyApptsRaw ?? []) as HistoryApptRow[])
-      .map(normalizeHistoryAppt)
-      .filter((appt) => isReservationHistoryEntry(appt, today))
+    ((historyApptsRaw ?? []) as HistoryApptRow[]).map(normalizeHistoryAppt)
   )
 
   return (

@@ -38,6 +38,20 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
 
+function isTokenlessMercadoPagoMethod(formData: Record<string, unknown>) {
+  const paymentMethodId = isNonEmptyString(formData.payment_method_id)
+    ? formData.payment_method_id.trim().toLowerCase()
+    : ''
+  const paymentTypeId = isNonEmptyString(formData.payment_type_id)
+    ? formData.payment_type_id.trim().toLowerCase()
+    : ''
+
+  return paymentMethodId === 'pix'
+    || paymentMethodId === 'account_money'
+    || paymentTypeId === 'account_money'
+    || paymentTypeId === 'bank_transfer'
+}
+
 export function validateMercadoPagoPaymentRequest(input: {
   appointmentId: string
   amount: number
@@ -74,7 +88,7 @@ export function validateMercadoPagoPaymentRequest(input: {
     return 'E-mail do pagador inválido.'
   }
 
-  const isCardPayment = input.formData.payment_method_id !== 'pix'
+  const isCardPayment = !isTokenlessMercadoPagoMethod(input.formData)
   if (isCardPayment) {
     if (!isNonEmptyString(input.formData.token)) {
       return 'Token de pagamento inválido.'

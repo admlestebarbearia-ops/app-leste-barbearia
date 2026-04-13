@@ -19,7 +19,7 @@ export async function createClient() {
             )
           } catch {
             // setAll called from a Server Component — cookies can't be mutated.
-            // This is expected during page renders; session refresh happens in middleware.
+            // This is expected during page renders; session refresh happens in proxy.
           }
         },
       },

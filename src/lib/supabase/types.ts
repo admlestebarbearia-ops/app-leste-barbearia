@@ -54,7 +54,7 @@ export interface BusinessConfig {
   mp_access_token: string | null            // token de acesso MP (null = não configurado)
   mp_refresh_token: string | null           // refresh token OAuth MP
   mp_webhook_secret: string | null          // assinatura secreta de webhook MP (legado)
-  payment_expiry_minutes: number            // minutos para expirar payment_intent (padrão 15)
+  payment_expiry_minutes: number            // minutos para expirar payment_intent (padrão 5, máximo 5)
   updated_at: string
 }
 
@@ -112,6 +112,7 @@ export interface Appointment {
   start_time: string
   status: AppointmentStatus
   deleted_at: string | null
+  admin_hidden_at: string | null
   created_at: string
   services?: Pick<Service, 'name' | 'price' | 'duration_minutes'>
   profiles?: Pick<Profile, 'is_blocked'> & { display_name?: string; email?: string | null; phone?: string | null }

@@ -24,12 +24,29 @@ import { revalidatePath } from 'next/cache'
 import { format } from 'date-fns'
 import type { WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
 import { isPaymentIntentExpired, shouldReuseMercadoPagoPayment } from '@/lib/mercadopago/payment-flow'
+import { buildPaymentExpirationIso } from '@/lib/mercadopago/payment-policy'
 
 function buildOwnershipFilter(userId: string | null, lookupPhones: string[]) {
   return [
     ...(userId ? [`client_id.eq.${userId}`] : []),
     ...lookupPhones.map((phone) => `client_phone.eq.${phone}`),
   ].join(',')
+}
+
+async function expirePendingAppointmentPayment(adminClient: ReturnType<typeof createAdminClient>, appointmentId: string) {
+  const nowIso = new Date().toISOString()
+
+  await adminClient
+    .from('payment_intents')
+    .update({ status: 'expired', updated_at: nowIso })
+    .eq('appointment_id', appointmentId)
+    .eq('status', 'pending')
+
+  await adminClient
+    .from('appointments')
+    .update({ status: 'cancelado' })
+    .eq('id', appointmentId)
+    .eq('status', 'aguardando_pagamento')
 }
 
 async function getAppointmentLookupContext() {
@@ -434,14 +451,13 @@ export async function createAppointment(data: {
 
   // ─── Bifurcar por payment_mode ────────────────────────────────────────────
   if (isOnlinePayment) {
-    const expiryMinutes = agendaConfig?.payment_expiry_minutes ?? 15
     const adminForMp = createAdminClient()
     await adminForMp.from('payment_intents').insert({
       appointment_id: appointment.id,
       mp_preference_id: null,
       status: 'pending',
       amount: Number(serviceSnapshot.price),
-      expires_at: new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString(),
+      expires_at: buildPaymentExpirationIso(new Date(), agendaConfig?.payment_expiry_minutes),
     })
 
     revalidatePath('/agendar')
@@ -577,12 +593,8 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
     return { error: 'Controle de pagamento nao encontrado.' }
   }
 
-  if (isPaymentIntentExpired(paymentIntent.expires_at)) {
-    await adminClient
-      .from('payment_intents')
-      .update({ status: 'expired', updated_at: new Date().toISOString() })
-      .eq('appointment_id', appointmentId)
-      .eq('status', 'pending')
+  if (paymentIntent.status === 'expired' || isPaymentIntentExpired(paymentIntent.expires_at)) {
+    await expirePendingAppointmentPayment(adminClient, appointmentId)
 
     return { error: 'Prazo de pagamento expirado. Faca um novo agendamento.' }
   }
@@ -639,12 +651,10 @@ export async function getPendingPaymentStatus(appointmentId: string): Promise<{
   }
 
   let resolvedPaymentIntentStatus = paymentIntent.status
-  if (isPaymentIntentExpired(paymentIntent.expires_at) && paymentIntent.status === 'pending') {
-    await adminClient
-      .from('payment_intents')
-      .update({ status: 'expired', updated_at: new Date().toISOString() })
-      .eq('appointment_id', appointmentId)
-      .eq('status', 'pending')
+  if (paymentIntent.status === 'expired') {
+    await expirePendingAppointmentPayment(adminClient, appointmentId)
+  } else if (isPaymentIntentExpired(paymentIntent.expires_at) && paymentIntent.status === 'pending') {
+    await expirePendingAppointmentPayment(adminClient, appointmentId)
 
     resolvedPaymentIntentStatus = 'expired'
   }

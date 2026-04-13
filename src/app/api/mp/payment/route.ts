@@ -52,12 +52,20 @@ export async function POST(req: NextRequest) {
 
       return data
     },
-    expirePendingIntent: async (intentId) => {
+    expirePendingIntent: async (intentId, appointmentId) => {
+      const nowIso = new Date().toISOString()
+
       await admin
         .from('payment_intents')
-        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .update({ status: 'expired', updated_at: nowIso })
         .eq('id', intentId)
         .eq('status', 'pending')
+
+      await admin
+        .from('appointments')
+        .update({ status: 'cancelado' })
+        .eq('id', appointmentId)
+        .eq('status', 'aguardando_pagamento')
     },
     getAccessToken: async () => {
       const { data } = await admin
