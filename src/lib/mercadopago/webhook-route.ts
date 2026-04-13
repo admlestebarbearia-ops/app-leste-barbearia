@@ -1,8 +1,10 @@
 import {
   getMercadoPagoWebhookTransition,
+  mapMercadoPagoPaymentMethod,
   parseMercadoPagoExternalReference,
   validateMercadoPagoWebhookSignature,
 } from '@/lib/mercadopago/integration-alignment'
+import type { PaymentMethod } from '@/lib/supabase/types'
 
 export interface MercadoPagoWebhookBody {
   type?: string
@@ -26,19 +28,19 @@ export interface ProcessMercadoPagoWebhookDeps {
   updatePaymentIntentByAppointmentId(appointmentId: string, patch: {
     status: string
     mp_payment_id: string
+    payment_method?: PaymentMethod | null
+    refunded_at?: string | null
     updated_at: string
   }): Promise<void>
   updateProductPaymentIntentByReservationId?(reservationId: string, patch: {
     status: string
     mp_payment_id: string
+    payment_method?: PaymentMethod | null
+    refunded_at?: string | null
     updated_at: string
   }): Promise<void>
   updateAppointmentStatus(appointmentId: string, status: 'confirmado' | 'cancelado'): Promise<void>
   updateProductReservationStatus?(reservationId: string, status: 'reservado' | 'cancelado'): Promise<void>
-  syncFinancialEntry?(input: {
-    target: { kind: 'appointment' | 'product_reservation'; id: string }
-    payment: MercadoPagoWebhookPayment
-  }): Promise<void>
   getNow(): Date
   webhookSecret?: string | null
   validateSignature?(input: {
@@ -114,12 +116,21 @@ export async function processMercadoPagoWebhook(
 
     const transition = getMercadoPagoWebhookTransition(payment.status)
     const nowIso = deps.getNow().toISOString()
+    const paymentMethod = mapMercadoPagoPaymentMethod(
+      payment.payment_method_id ?? null,
+      payment.payment_type_id ?? null
+    )
+    const refundedAt = payment.status === 'refunded' || payment.status === 'charged_back'
+      ? nowIso
+      : undefined
 
     if (target.kind === 'appointment') {
       if (transition.intentStatus) {
         await deps.updatePaymentIntentByAppointmentId(target.id, {
           status: transition.intentStatus,
           mp_payment_id: paymentId,
+          payment_method: paymentMethod,
+          refunded_at: refundedAt,
           updated_at: nowIso,
         })
       }
@@ -132,6 +143,8 @@ export async function processMercadoPagoWebhook(
         await deps.updateProductPaymentIntentByReservationId(target.id, {
           status: transition.intentStatus,
           mp_payment_id: paymentId,
+          payment_method: paymentMethod,
+          refunded_at: refundedAt,
           updated_at: nowIso,
         })
       }
@@ -145,17 +158,6 @@ export async function processMercadoPagoWebhook(
       if (productStatus && deps.updateProductReservationStatus) {
         await deps.updateProductReservationStatus(target.id, productStatus)
       }
-    }
-
-    if (
-      deps.syncFinancialEntry && (
-        payment.status === 'approved' ||
-        payment.status === 'cancelled' ||
-        payment.status === 'refunded' ||
-        payment.status === 'charged_back'
-      )
-    ) {
-      await deps.syncFinancialEntry({ target, payment })
     }
 
     return { status: 200, body: { received: true } }

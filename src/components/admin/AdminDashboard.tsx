@@ -57,7 +57,8 @@ import {
   addManualFinancialEntry,
   deleteManualFinancialEntry,
   saveCardRates,
-  listClientStats,
+  listClientDirectory,
+  getClientDirectoryDetails,
   saveMercadoPagoConfig,
   disconnectMercadoPago,
 } from '@/app/admin/actions'
@@ -93,6 +94,7 @@ interface Props {
   mpReason?: string
   paymentMethodByApptId?: Record<string, string | null>
   onlineMpApptIds?: Set<string>
+  refundedApptIds?: Set<string>
 }
 
 export function AdminDashboard({
@@ -109,6 +111,7 @@ export function AdminDashboard({
   mpReason,
   paymentMethodByApptId = {},
   onlineMpApptIds = new Set(),
+  refundedApptIds = new Set(),
 }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('hoje')
@@ -437,6 +440,7 @@ export function AdminDashboard({
             standaloneReservations={standaloneReservations}
             paymentMethodByApptId={paymentMethodByApptId}
             onlineMpApptIds={onlineMpApptIds}
+            refundedApptIds={refundedApptIds}
             onStandaloneUpdated={(id, newStatus) => {
               if (newStatus === 'deleted') {
                 setStandaloneReservations(prev => prev.filter(r => r.id !== id))
@@ -572,6 +576,7 @@ function TabHoje({
   standaloneReservations = [],
   paymentMethodByApptId = {},
   onlineMpApptIds = new Set(),
+  refundedApptIds = new Set(),
   onStandaloneUpdated,
 }: {
   appointments: Appointment[]
@@ -583,6 +588,7 @@ function TabHoje({
   standaloneReservations?: ProductReservation[]
   paymentMethodByApptId?: Record<string, string | null>
   onlineMpApptIds?: Set<string>
+  refundedApptIds?: Set<string>
   onStandaloneUpdated?: (id: string, newStatus: 'reservado' | 'retirado' | 'cancelado' | 'deleted') => void
 }) {
   const todayStr = new Date().toISOString().split('T')[0]
@@ -606,7 +612,13 @@ function TabHoje({
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
   const [pendingAppts, setPendingAppts] = useState<Appointment[]>([])
-  const concludeHasExistingRevenue = concludeAppt ? Boolean(paymentMethodByApptId[concludeAppt.id] || onlineMpApptIds.has(concludeAppt.id)) : false
+  const concludeHasApprovedOnlinePayment = concludeAppt
+    ? onlineMpApptIds.has(concludeAppt.id) && !refundedApptIds.has(concludeAppt.id)
+    : false
+  const concludeHasExistingRevenue = concludeAppt
+    ? Boolean(paymentMethodByApptId[concludeAppt.id]) && !refundedApptIds.has(concludeAppt.id)
+    : false
+  const concludeCanSkipManualPayment = concludeHasApprovedOnlinePayment || concludeHasExistingRevenue
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1079,7 +1091,10 @@ function TabHoje({
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {dayAppts.map((appt) => (
+              {dayAppts.map((appt) => {
+                const canRefund = !refundedApptIds.has(appt.id) && (Boolean(paymentMethodByApptId[appt.id]) || onlineMpApptIds.has(appt.id))
+
+                return (
                 <div
                   key={appt.id}
                   className={[
@@ -1237,45 +1252,67 @@ function TabHoje({
                     )}
 
                     {appt.status === 'concluido' && (
-                      <button
-                        disabled={estornoLoading === appt.id}
-                        onClick={() => handleEstorno(appt.id)}
-                        className="text-[10px] font-bold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
-                      >
-                        {estornoLoading === appt.id ? '...' : 'Estornar'}
-                      </button>
+                      canRefund ? (
+                        <button
+                          disabled={estornoLoading === appt.id}
+                          onClick={() => handleEstorno(appt.id)}
+                          className="text-[10px] font-bold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                        >
+                          {estornoLoading === appt.id ? '...' : 'Estornar'}
+                        </button>
+                      ) : refundedApptIds.has(appt.id) ? (
+                        <span className="text-[10px] font-bold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg">
+                          Estornado
+                        </span>
+                      ) : null
                     )}
 
                     {(appt.status === 'cancelado' || appt.status === 'faltou') && (
-                      deleteConfirm === appt.id ? (
-                        <>
-                          <span className="text-[10px] text-zinc-500 self-center">Confirmar?</span>
+                      <>
+                        {canRefund ? (
                           <button
-                            disabled={loading === 'del' + appt.id}
-                            onClick={() => handleDelete(appt.id)}
-                            className="text-[10px] font-black text-white bg-red-600 border border-red-500 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                            disabled={estornoLoading === appt.id}
+                            onClick={() => handleEstorno(appt.id)}
+                            className="text-[10px] font-bold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
                           >
-                            {loading === 'del' + appt.id ? '...' : 'Excluir'}
+                            {estornoLoading === appt.id ? '...' : 'Estornar'}
                           </button>
+                        ) : refundedApptIds.has(appt.id) ? (
+                          <span className="text-[10px] font-bold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg">
+                            Estornado
+                          </span>
+                        ) : null}
+                        {deleteConfirm === appt.id ? (
+                          <>
+                            <span className="text-[10px] text-zinc-500 self-center">Confirmar?</span>
+                            <button
+                              disabled={loading === 'del' + appt.id}
+                              onClick={() => handleDelete(appt.id)}
+                              className="text-[10px] font-black text-white bg-red-600 border border-red-500 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                            >
+                              {loading === 'del' + appt.id ? '...' : 'Excluir'}
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm(null)}
+                              className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg"
+                            >
+                              Não
+                            </button>
+                          </>
+                        ) : (
                           <button
-                            onClick={() => setDeleteConfirm(null)}
-                            className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg"
+                            onClick={() => setDeleteConfirm(appt.id)}
+                            className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
                           >
-                            Não
+                            Excluir
                           </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => setDeleteConfirm(appt.id)}
-                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
-                        >
-                          Excluir
-                        </button>
-                      )
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -1322,18 +1359,24 @@ function TabHoje({
               {(() => {
                 const method = paymentMethodByApptId[selectedAppt.id]
                 const isOnline = onlineMpApptIds.has(selectedAppt.id)
+                const isRefunded = refundedApptIds.has(selectedAppt.id)
                 const PAYMENT_LABEL: Record<string, string> = {
                   dinheiro: 'Dinheiro',
                   pix: 'PIX',
                   debito: 'Débito',
                   credito: 'Crédito',
+                  mercado_pago: 'Saldo MP',
                 }
-                const label = method
+                const label = isRefunded
+                  ? 'Estornado'
+                  : method
                   ? PAYMENT_LABEL[method] ?? method
                   : isOnline
-                  ? 'Online (Mercado Pago)'
+                  ? 'Pago online'
+                  : selectedAppt.status === 'confirmado'
+                  ? 'Pagar no local'
                   : selectedAppt.status === 'concluido'
-                  ? '—'
+                  ? 'Pago no local'
                   : null
                 if (!label) return null
                 return (
@@ -1430,21 +1473,23 @@ function TabHoje({
           {/* Forma de pagamento */}
           <div className="flex flex-col gap-2">
             <span className="text-xs text-zinc-400">Como foi pago?</span>
-            {concludeHasExistingRevenue ? (
+            {concludeCanSkipManualPayment ? (
               <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
-                <p className="text-sm font-semibold text-emerald-300">Pagamento já registrado</p>
+                <p className="text-sm font-semibold text-emerald-300">
+                  {concludeHasApprovedOnlinePayment ? 'Pagamento online aprovado' : 'Pagamento já registrado'}
+                </p>
                 <p className="mt-1 text-xs text-emerald-200/80">
-                  Este atendimento já entrou no financeiro via pagamento online. Você pode concluir sem lançar outra receita.
+                  {concludeHasApprovedOnlinePayment
+                    ? 'Ao concluir, a receita entra no financeiro com a forma já aprovada no checkout.'
+                    : 'Você pode concluir sem informar outra forma de pagamento.'}
                 </p>
               </div>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-2">
-                  {(['dinheiro', 'pix', 'debito', 'credito'] as PaymentMethod[]).map((pm) => {
+                  {(['dinheiro', 'pix', 'credito'] as PaymentMethod[]).map((pm) => {
                     const labels: Record<PaymentMethod, string> = { dinheiro: 'Dinheiro', pix: 'PIX', debito: 'Débito', credito: 'Crédito', mercado_pago: 'Mercado Pago' }
-                    const rate =
-                      pm === 'debito'  ? (config.debit_rate_pct  ?? 0) :
-                      pm === 'credito' ? (config.credit_rate_pct ?? 0) : 0
+                    const rate = pm === 'credito' ? (config.credit_rate_pct ?? 0) : 0
                     return (
                       <button
                         key={pm}
@@ -1463,9 +1508,7 @@ function TabHoje({
                 </div>
                 {concludePayment && concludeAppt?.service_price_snapshot != null && concludeAppt.service_price_snapshot > 0 && (() => {
                   const amount = concludeAppt.service_price_snapshot
-                  const rate =
-                    concludePayment === 'debito'  ? (config.debit_rate_pct  ?? 0) :
-                    concludePayment === 'credito' ? (config.credit_rate_pct ?? 0) : 0
+                  const rate = concludePayment === 'credito' ? (config.credit_rate_pct ?? 0) : 0
                   const net = amount * (1 - rate / 100)
                   return (
                     <p className="text-xs text-zinc-500 mt-1">
@@ -1510,7 +1553,7 @@ function TabHoje({
           </Button>
           <Button
             onClick={handleConclude}
-            disabled={concludeLoading || (!concludeHasExistingRevenue && !concludePayment)}
+            disabled={concludeLoading || (!concludeCanSkipManualPayment && !concludePayment)}
             className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40"
           >
             {concludeLoading ? 'Salvando...' : 'Confirmar Conclusão'}
@@ -1652,14 +1695,14 @@ function StandaloneReservasSection({
                 <div className="flex flex-col gap-1.5 w-full">
                   <span className="text-[10px] text-zinc-400">Como foi pago?</span>
                   <div className="flex gap-1.5 flex-wrap">
-                    {(['dinheiro', 'pix', 'debito', 'credito'] as PaymentMethod[]).map((m) => (
+                    {(['dinheiro', 'pix', 'credito'] as PaymentMethod[]).map((m) => (
                       <button
                         key={m}
                         disabled={!!loading}
                         onClick={() => handleStatus(r.id, 'retirado', m)}
                         className="text-[10px] font-bold capitalize text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
                       >
-                        {m === 'dinheiro' ? 'Dinheiro' : m === 'pix' ? 'PIX' : m === 'debito' ? 'Débito' : 'Crédito'}
+                        {m === 'dinheiro' ? 'Dinheiro' : m === 'pix' ? 'PIX' : 'Crédito'}
                       </button>
                     ))}
                     <button
@@ -3698,13 +3741,13 @@ function TabProdutos({
                       <div className="flex flex-col gap-1.5">
                         <span className="text-[10px] text-zinc-400">Como foi pago?</span>
                         <div className="flex gap-1.5 flex-wrap">
-                          {(['dinheiro', 'pix', 'debito', 'credito'] as PaymentMethod[]).map((m) => (
+                          {(['dinheiro', 'pix', 'credito'] as PaymentMethod[]).map((m) => (
                             <button
                               key={m}
                               onClick={() => handleReservationStatus(r.id, 'retirado', m)}
                               className="flex-1 text-[10px] font-black uppercase tracking-widest text-blue-400 border border-blue-400/20 bg-blue-400/5 py-1.5 rounded-lg"
                             >
-                              {m === 'dinheiro' ? 'Dinheiro' : m === 'pix' ? 'PIX' : m === 'debito' ? 'Débito' : 'Crédito'}
+                              {m === 'dinheiro' ? 'Dinheiro' : m === 'pix' ? 'PIX' : 'Crédito'}
                             </button>
                           ))}
                           <button
@@ -4117,12 +4160,11 @@ function TabFinanceiro({
               <option value="">Forma de pagamento (opcional)</option>
               <option value="dinheiro">Dinheiro</option>
               <option value="pix">PIX</option>
-              <option value="debito">Débito</option>
               <option value="credito">Crédito</option>
             </select>
-            {(formPaymentMethod === 'debito' || formPaymentMethod === 'credito') && hasMachine && (
+            {formPaymentMethod === 'credito' && hasMachine && (
               <p className="text-[11px] text-zinc-600">
-                Taxa {formPaymentMethod === 'debito' ? config.debit_rate_pct ?? 0 : config.credit_rate_pct ?? 0}% será aplicada automaticamente.
+                Taxa {config.credit_rate_pct ?? 0}% será aplicada automaticamente.
               </p>
             )}
           </div>
@@ -4231,107 +4273,508 @@ function TabFinanceiro({
 // Tab: Clientes
 // ------------------------------------------------------------------
 function TabClientes() {
-  type ClientStat = {
-    client_id: string
-    email: string | null
-    display_name: string | null
-    phone: string | null
-    total_services: number
-    total_spent: number
-    avg_rating: number | null
-    last_service_date: string | null
-    is_blocked: boolean
+  type ClientDirectoryItem = Awaited<ReturnType<typeof listClientDirectory>>['directory'][number]
+  type ClientDirectoryDetails = NonNullable<Awaited<ReturnType<typeof getClientDirectoryDetails>>['data']>
+  type ClientTimelineItem = ClientDirectoryDetails['appointments'][number]
+
+  const [directory, setDirectory] = useState<ClientDirectoryItem[]>([])
+  const [ranking, setRanking] = useState<ClientDirectoryItem[]>([])
+  const [dormant, setDormant] = useState<ClientDirectoryItem[]>([])
+  const [totals, setTotals] = useState({ total_clients: 0, registered_clients: 0, visitor_clients: 0 })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
+  const [selectedClientKey, setSelectedClientKey] = useState<string | null>(null)
+  const [selectedClientName, setSelectedClientName] = useState<string | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const [detailData, setDetailData] = useState<ClientDirectoryDetails | null>(null)
+
+  const loadDirectory = async () => {
+    setLoading(true)
+    setError(null)
+
+    const result = await listClientDirectory()
+
+    setDirectory(result.directory)
+    setRanking(result.ranking)
+    setDormant(result.dormant)
+    setTotals(result.totals)
+    setError(result.error ?? null)
+    setLoading(false)
   }
 
-  const [clients, setClients] = useState<ClientStat[]>([])
-  const [loading, setLoading] = useState(true)
-
   useEffect(() => {
-    listClientStats().then((r) => {
-      setClients(r.clients)
-      setLoading(false)
-    })
+    void loadDirectory()
   }, [])
 
-  const dormant = clients.filter((c) => {
-    if (!c.last_service_date) return false
-    const days = Math.floor((Date.now() - new Date(c.last_service_date).getTime()) / 86400000)
-    return days >= 30
-  })
+  const normalizeSearchValue = (value: string | null | undefined) =>
+    (value ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
 
-  const fmt = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`
+  const filteredDirectory = useMemo(() => {
+    const term = normalizeSearchValue(search.trim())
+    if (!term) return directory
+
+    return directory.filter((client) => {
+      const haystack = [client.name, client.email, client.phone]
+        .map((value) => normalizeSearchValue(value))
+        .join(' ')
+      return haystack.includes(term)
+    })
+  }, [directory, search])
+
+  const formatCurrency = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+  const formatDate = (value: string | null) => {
+    if (!value) return 'Sem registro'
+    return new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR')
+  }
+
+  const formatDateTime = (date: string | null, time: string | null) => {
+    if (!date) return 'Sem agendamento futuro'
+    return `${formatDate(date)}${time ? ` às ${time.slice(0, 5)}` : ''}`
+  }
+
+  const getDormantDays = (value: string | null) => {
+    if (!value) return null
+    return Math.max(0, Math.floor((Date.now() - new Date(`${value}T12:00:00`).getTime()) / 86400000))
+  }
+
+  const getWhatsAppHref = (phone: string | null) => {
+    if (!phone) return null
+    const digits = phone.replace(/\D/g, '')
+    if (!digits) return null
+    return `https://wa.me/${digits.startsWith('55') ? digits : `55${digits}`}`
+  }
+
+  const getStatusBadge = (status: ClientTimelineItem['status']) => {
+    switch (status) {
+      case 'confirmado':
+        return { label: 'Confirmado', className: 'border-sky-500/30 bg-sky-500/10 text-sky-300' }
+      case 'aguardando_pagamento':
+        return { label: 'Aguardando pagamento', className: 'border-amber-500/30 bg-amber-500/10 text-amber-300' }
+      case 'aguardando_acao_barbeiro':
+        return { label: 'Aguardando ação do barbeiro', className: 'border-orange-500/30 bg-orange-500/10 text-orange-200' }
+      case 'concluido':
+        return { label: 'Concluído', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' }
+      case 'cancelado':
+        return { label: 'Cancelado', className: 'border-zinc-600/40 bg-zinc-500/10 text-zinc-300' }
+      case 'faltou':
+        return { label: 'Faltou', className: 'border-rose-500/30 bg-rose-500/10 text-rose-300' }
+      default:
+        return { label: status, className: 'border-zinc-600/40 bg-zinc-500/10 text-zinc-300' }
+    }
+  }
+
+  const getPaymentBadge = (paymentContext: ClientTimelineItem['payment_context']) => {
+    switch (paymentContext) {
+      case 'paid_online':
+        return { label: 'Pago online', className: 'border-sky-500/30 bg-sky-500/10 text-sky-300' }
+      case 'pay_locally':
+        return { label: 'Pagar no local', className: 'border-zinc-600/40 bg-zinc-500/10 text-zinc-300' }
+      case 'paid':
+        return { label: 'Pago', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' }
+      case 'refunded':
+        return { label: 'Estornado', className: 'border-rose-500/30 bg-rose-500/10 text-rose-300' }
+      default:
+        return null
+    }
+  }
+
+  const openClientDetails = async (client: ClientDirectoryItem) => {
+    setSelectedClientKey(client.client_key)
+    setSelectedClientName(client.name)
+    setDetailLoading(true)
+    setDetailError(null)
+    setDetailData(null)
+
+    const result = await getClientDirectoryDetails(client.client_key)
+
+    setDetailLoading(false)
+    if (!result.success || !result.data) {
+      setDetailError(result.error ?? 'Não foi possível carregar a ficha do cliente.')
+      return
+    }
+
+    setDetailData(result.data)
+  }
+
+  const closeClientDetails = () => {
+    setSelectedClientKey(null)
+    setSelectedClientName(null)
+    setDetailLoading(false)
+    setDetailError(null)
+    setDetailData(null)
+  }
 
   return (
     <div className="flex flex-col gap-5">
-      <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">Clientes</h2>
+      <div className="flex flex-col gap-2">
+        <h2 className="text-xl font-extrabold uppercase tracking-widest text-white">Clientes</h2>
+        <p className="text-sm text-zinc-500">
+          Diretório em ordem alfabética com clientes cadastrados e visitantes, ficha completa por pessoa e ranking de recorrência.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Total</p>
+          <p className="mt-2 text-2xl font-black text-white">{totals.total_clients}</p>
+          <p className="text-xs text-zinc-500">Clientes identificados no histórico</p>
+        </div>
+        <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Cadastrados</p>
+          <p className="mt-2 text-2xl font-black text-white">{totals.registered_clients}</p>
+          <p className="text-xs text-zinc-500">Com conta vinculada</p>
+        </div>
+        <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Visitantes</p>
+          <p className="mt-2 text-2xl font-black text-white">{totals.visitor_clients}</p>
+          <p className="text-xs text-zinc-500">Atendidos sem cadastro</p>
+        </div>
+        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Sem retorno</p>
+          <p className="mt-2 text-2xl font-black text-white">{dormant.length}</p>
+          <p className="text-xs text-amber-100/70">30+ dias sem novo atendimento</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Busca rápida</p>
+          <p className="text-sm text-zinc-500">Procure por nome, e-mail ou telefone.</p>
+        </div>
+        <div className="w-full xl:max-w-sm">
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar cliente"
+            className="border-[#2a2a2a] bg-neutral-900 text-white placeholder:text-zinc-600"
+          />
+        </div>
+      </div>
 
       {loading ? (
-        <div className="text-center py-10 text-zinc-600 text-sm">Carregando...</div>
-      ) : clients.length === 0 ? (
-        <div className="text-center py-10 bg-neutral-900 rounded-2xl text-zinc-600 text-sm">
-          Nenhum atendimento concluído ainda.
-        </div>
-      ) : (
-        <>
-          {/* Clientes sumidos */}
-          {dormant.length > 0 && (
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex flex-col gap-3">
-              <p className="text-[10px] font-black uppercase tracking-widest text-amber-400">
-                {dormant.length} cliente(s) sumido(s) — sem visita há 30+ dias
-              </p>
-              {dormant.map((c) => (
-                <div key={c.client_id} className="flex items-center justify-between gap-2">
-                  <span className="text-sm text-white/80 truncate">{c.display_name ?? c.email ?? 'Cliente'}</span>
-                  {c.phone && (
-                    <a
-                      href={`https://wa.me/55${c.phone.replace(/\D/g, '')}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 rounded-lg shrink-0"
-                    >
-                      WhatsApp
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Ranking */}
-          <div className="flex flex-col gap-2">
-            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Ranking de Clientes</p>
-            {clients.map((c, i) => (
-              <div key={c.client_id} className="bg-neutral-900 rounded-xl p-3 flex items-center gap-3">
-                <span className="text-sm font-black text-zinc-600 w-5 text-center shrink-0">
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-white truncate">{c.display_name ?? c.email ?? 'Cliente'}</p>
-                  <p className="text-[10px] text-zinc-500">
-                    {c.total_services} serviço(s) · {fmt(c.total_spent)}
-                    {c.last_service_date && ` · último: ${c.last_service_date.split('-').reverse().join('/')}`}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end shrink-0 gap-0.5">
-                  {c.avg_rating != null && (
-                    <span className="text-[10px] font-bold text-amber-400">⭐ {c.avg_rating.toFixed(1)}</span>
-                  )}
-                  {c.phone && (
-                    <a
-                      href={`https://wa.me/55${c.phone.replace(/\D/g, '')}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[9px] font-bold text-emerald-500 hover:text-emerald-400"
-                    >
-                      WA
-                    </a>
-                  )}
-                </div>
-              </div>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)]">
+          <div className="flex flex-col gap-3">
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="h-28 rounded-2xl bg-neutral-900 animate-pulse" />
             ))}
           </div>
-        </>
+          <div className="flex flex-col gap-3">
+            <div className="h-64 rounded-2xl bg-neutral-900 animate-pulse" />
+            <div className="h-56 rounded-2xl bg-neutral-900 animate-pulse" />
+          </div>
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+          {error}
+        </div>
+      ) : directory.length === 0 ? (
+        <div className="text-center py-10 bg-neutral-900 rounded-2xl text-zinc-600 text-sm border border-[#2a2a2a]">
+          Nenhum cliente encontrado no histórico.
+        </div>
+      ) : (
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)]">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Diretório em ordem alfabética</p>
+              <span className="text-[11px] text-zinc-500">{filteredDirectory.length} resultado(s)</span>
+            </div>
+
+            {filteredDirectory.length === 0 ? (
+              <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-5 text-sm text-zinc-500">
+                Nenhum cliente corresponde à busca atual.
+              </div>
+            ) : (
+              filteredDirectory.map((client) => {
+                const whatsappHref = getWhatsAppHref(client.phone)
+
+                return (
+                  <div
+                    key={client.client_key}
+                    className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+                  >
+                    <div className="min-w-0 flex-1 flex flex-col gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-white truncate">{client.name}</p>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${client.is_registered ? 'border-sky-500/20 bg-sky-500/10 text-sky-300' : 'border-zinc-600/40 bg-zinc-500/10 text-zinc-300'}`}>
+                          {client.is_registered ? 'Cadastrado' : 'Visitante'}
+                        </span>
+                        {client.is_blocked && (
+                          <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">
+                            Bloqueado
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col gap-1 text-[11px] text-zinc-500">
+                        {client.email && <span className="break-all">{client.email}</span>}
+                        {client.phone && <span>{client.phone}</span>}
+                        {!client.email && !client.phone && <span>Sem contato informado</span>}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 text-[10px]">
+                        <span className="rounded-full border border-[#2f2f2f] bg-black/20 px-2 py-1 text-zinc-300">
+                          {client.total_bookings} reserva(s)
+                        </span>
+                        <span className="rounded-full border border-[#2f2f2f] bg-black/20 px-2 py-1 text-zinc-300">
+                          {client.total_services} concluído(s)
+                        </span>
+                        <span className="rounded-full border border-[#2f2f2f] bg-black/20 px-2 py-1 text-zinc-300">
+                          {formatCurrency(client.total_spent)}
+                        </span>
+                        {client.avg_rating != null && (
+                          <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">
+                            ⭐ {client.avg_rating.toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-zinc-500">
+                        Último atendimento: {formatDate(client.last_service_date)}
+                        {client.next_service_date ? ` · Próximo: ${formatDateTime(client.next_service_date, client.next_service_time)}` : ''}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {whatsappHref && (
+                        <a
+                          href={whatsappHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] font-bold text-emerald-300"
+                        >
+                          WhatsApp
+                        </a>
+                      )}
+                      <button
+                        onClick={() => void openClientDetails(client)}
+                        className="rounded-xl border border-[#2f2f2f] bg-black/20 px-3 py-2 text-[11px] font-bold text-white hover:border-white/20 transition-colors"
+                      >
+                        Abrir ficha
+                      </button>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Ranking de recorrência</p>
+                <span className="text-[11px] text-zinc-500">Top {ranking.length}</span>
+              </div>
+
+              {ranking.length === 0 ? (
+                <div className="rounded-xl border border-[#2a2a2a] bg-black/20 p-4 text-sm text-zinc-500">
+                  Ainda não há clientes com atendimento concluído.
+                </div>
+              ) : (
+                ranking.map((client, index) => (
+                  <button
+                    key={client.client_key}
+                    type="button"
+                    onClick={() => void openClientDetails(client)}
+                    className="rounded-xl border border-[#2a2a2a] bg-black/20 p-3 text-left hover:border-white/10 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">#{index + 1}</p>
+                        <p className="mt-1 text-sm font-semibold text-white truncate">{client.name}</p>
+                        <p className="text-[11px] text-zinc-500">
+                          {client.total_services} concluído(s) · {formatCurrency(client.total_spent)}
+                        </p>
+                      </div>
+                      {client.avg_rating != null && (
+                        <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-300">
+                          ⭐ {client.avg_rating.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+
+            {dormant.length > 0 && (
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Clientes sem retorno</p>
+                  <span className="text-[11px] text-amber-100/70">30+ dias</span>
+                </div>
+
+                {dormant.slice(0, 8).map((client) => {
+                  const whatsappHref = getWhatsAppHref(client.phone)
+                  const dormantDays = getDormantDays(client.last_service_date)
+
+                  return (
+                    <div
+                      key={client.client_key}
+                      className="rounded-xl border border-amber-500/20 bg-black/20 p-3 flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{client.name}</p>
+                        <p className="text-[11px] text-amber-100/70">
+                          {dormantDays != null ? `${dormantDays} dia(s) desde o último serviço concluído` : 'Sem data de atendimento concluído'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {whatsappHref && (
+                          <a
+                            href={whatsappHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[10px] font-bold text-emerald-300"
+                          >
+                            WhatsApp
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void openClientDetails(client)}
+                          className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[10px] font-bold text-amber-200"
+                        >
+                          Ver ficha
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       )}
+
+      <Dialog open={Boolean(selectedClientKey)} onOpenChange={(open) => { if (!open) closeClientDetails() }}>
+        <DialogContent className="max-w-4xl border-[#2a2a2a] bg-[#111111] text-white sm:max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle className="text-white">{detailData?.client.name ?? selectedClientName ?? 'Cliente'}</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Histórico operacional e financeiro consolidado por cliente.
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailLoading ? (
+            <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <div className="h-64 rounded-2xl bg-neutral-900 animate-pulse" />
+              <div className="h-64 rounded-2xl bg-neutral-900 animate-pulse" />
+            </div>
+          ) : detailError ? (
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+              {detailError}
+            </div>
+          ) : detailData ? (
+            <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] overflow-y-auto pr-1">
+              <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4 flex flex-col gap-4 h-fit">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${detailData.client.is_registered ? 'border-sky-500/20 bg-sky-500/10 text-sky-300' : 'border-zinc-600/40 bg-zinc-500/10 text-zinc-300'}`}>
+                    {detailData.client.is_registered ? 'Cadastrado' : 'Visitante'}
+                  </span>
+                  {detailData.client.is_blocked && (
+                    <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">
+                      Bloqueado
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1 text-sm text-zinc-300">
+                  {detailData.client.email && <span className="break-all">{detailData.client.email}</span>}
+                  {detailData.client.phone && <span>{detailData.client.phone}</span>}
+                  {!detailData.client.email && !detailData.client.phone && <span className="text-zinc-500">Sem contato informado</span>}
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                  <div className="rounded-xl border border-[#2a2a2a] bg-black/20 p-3">
+                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">Reservas</p>
+                    <p className="mt-1 text-lg font-black text-white">{detailData.client.total_bookings}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#2a2a2a] bg-black/20 p-3">
+                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">Concluídos</p>
+                    <p className="mt-1 text-lg font-black text-white">{detailData.client.total_services}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#2a2a2a] bg-black/20 p-3">
+                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">Faturado</p>
+                    <p className="mt-1 text-lg font-black text-white">{formatCurrency(detailData.client.total_spent)}</p>
+                  </div>
+                  <div className="rounded-xl border border-[#2a2a2a] bg-black/20 p-3">
+                    <p className="text-[10px] uppercase tracking-widest text-zinc-500">Nota média</p>
+                    <p className="mt-1 text-lg font-black text-white">
+                      {detailData.client.avg_rating != null ? detailData.client.avg_rating.toFixed(1) : 'Sem nota'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 rounded-xl border border-[#2a2a2a] bg-black/20 p-3 text-[11px] text-zinc-400">
+                  <p>Último concluído: <span className="text-zinc-200">{formatDate(detailData.client.last_service_date)}</span></p>
+                  <p>Próximo agendamento: <span className="text-zinc-200">{formatDateTime(detailData.client.next_service_date, detailData.client.next_service_time)}</span></p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4 flex flex-col gap-3 overflow-y-auto">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Linha do tempo</p>
+                  <span className="text-[11px] text-zinc-500">{detailData.appointments.length} registro(s)</span>
+                </div>
+
+                {detailData.appointments.length === 0 ? (
+                  <div className="rounded-xl border border-[#2a2a2a] bg-black/20 p-4 text-sm text-zinc-500">
+                    Nenhum histórico encontrado para este cliente.
+                  </div>
+                ) : (
+                  detailData.appointments.map((appointment) => {
+                    const statusBadge = getStatusBadge(appointment.status)
+                    const paymentBadge = getPaymentBadge(appointment.payment_context)
+
+                    return (
+                      <div key={appointment.id} className="rounded-2xl border border-[#2a2a2a] bg-black/20 p-4 flex flex-col gap-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-white">
+                              {appointment.service_name_snapshot ?? 'Serviço sem nome'}
+                            </p>
+                            <p className="text-[11px] text-zinc-500">
+                              {formatDateTime(appointment.date, appointment.start_time)}
+                              {appointment.service_price_snapshot != null && ` · ${formatCurrency(appointment.service_price_snapshot)}`}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${statusBadge.className}`}>
+                              {statusBadge.label}
+                            </span>
+                            {paymentBadge && (
+                              <span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${paymentBadge.className}`}>
+                                {paymentBadge.label}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {(appointment.rating_score != null || appointment.rating_note) && (
+                          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-[11px] text-amber-100/80">
+                            {appointment.rating_score != null && (
+                              <p className="font-semibold text-amber-200">Avaliação: {appointment.rating_score.toFixed(1)} / 5</p>
+                            )}
+                            {appointment.rating_note && (
+                              <p className="mt-1 leading-relaxed">{appointment.rating_note}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

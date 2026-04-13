@@ -47,6 +47,17 @@ describe('reservation history', () => {
     )
   })
 
+  it('move reserva confirmada para o historico quando o horario do mesmo dia ja passou', () => {
+    assert.equal(
+      isReservationHistoryEntry(
+        { date: '2026-04-13', start_time: '08:30:00', status: 'confirmado' },
+        '2026-04-13',
+        new Date('2026-04-13T09:00:00')
+      ),
+      true
+    )
+  })
+
   it('calcula o alcance do calendario e abre no mes atual sem selecionar um dia automaticamente', () => {
     const meta = getReservationHistoryCalendarMeta(
       [

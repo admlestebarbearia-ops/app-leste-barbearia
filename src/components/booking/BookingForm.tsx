@@ -166,7 +166,7 @@ export function BookingForm({
   const [availableSlots, setAvailableSlots] = useState<string[]>([])
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [loadingSlots, setLoadingSlots] = useState(false)
-  // null = usuário ainda não escolheu; 'mp' = Mercado Pago; 'cash' = dinheiro presencial
+  // null = usuário ainda não escolheu; 'mp' = Mercado Pago; 'cash' = pagamento presencial
   const [paymentChoice, setPaymentChoice] = useState<'mp' | 'cash' | null>(null)
   // Tela de seleção de pagamento (aparece após escolher horário, antes de criar agendamento)
   const [showPaymentStep, setShowPaymentStep] = useState(false)
@@ -668,7 +668,7 @@ const handleConfirm = async () => {
       )
     }
 
-    return <CreditCard size={22} className={isSelected ? (method === 'debito' ? 'text-sky-300' : 'text-primary') : 'text-white/40'} />
+    return <CreditCard size={22} className={isSelected ? 'text-primary' : 'text-white/40'} />
   }
 
   // ─── Tela de seleção de forma de pagamento ────────────────────────────────
@@ -724,13 +724,6 @@ const handleConfirm = async () => {
                       icon: 'bg-[#00BDAE]/20',
                       text: 'text-[#00BDAE]',
                       check: 'bg-[#00BDAE] text-black',
-                    }
-                  : option.id === 'debito'
-                  ? {
-                      border: 'border-sky-400/60 bg-sky-400/10 ring-2 ring-sky-400/20 scale-[1.02]',
-                      icon: 'bg-sky-400/20',
-                      text: 'text-sky-300',
-                      check: 'bg-sky-400 text-slate-950',
                     }
                   : option.id === 'mercado_pago'
                   ? {
@@ -794,7 +787,7 @@ const handleConfirm = async () => {
                   <span className={['text-xs font-extrabold uppercase tracking-wider', paymentChoice === 'cash' ? 'text-amber-400' : 'text-white/60'].join(' ')}>
                     Pagar na Barbearia
                   </span>
-                  <span className="text-[10px] text-white/30 font-medium">Pague ao barbeiro na chegada</span>
+                  <span className="text-[10px] text-white/30 font-medium">Você acerta presencialmente no atendimento</span>
                 </div>
                 {paymentChoice === 'cash' && (
                   <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
@@ -816,7 +809,7 @@ const handleConfirm = async () => {
                 <p className="text-sm text-amber-200 leading-relaxed">
                   Leve{' '}
                   <strong className="text-amber-300 text-base font-black">R$ {servicePrice.toFixed(2).replace('.', ',')}</strong>{' '}
-                  em dinheiro para pagar ao barbeiro ao chegar.
+                  para pagar presencialmente quando chegar à barbearia.
                 </p>
               </div>
             </div>
@@ -827,7 +820,7 @@ const handleConfirm = async () => {
             <div className="flex flex-col items-center gap-2 opacity-70">
               <div className="flex items-center justify-center gap-2 opacity-80">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/60"><path d="M12 22s8-4 8-10V5l-8-2-8 2v7c0 6 8 10 8 10z"/></svg>
-                <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">Pagamento seguro via Mercado Pago</span>
+                <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">PIX, crédito ou saldo Mercado Pago</span>
               </div>
               <span className="text-[10px] text-white/35 text-center">
                 O horário fica reservado por até {paymentHoldMinutes} min enquanto o pagamento é concluído.
@@ -893,7 +886,7 @@ const handleConfirm = async () => {
                 ? <QrCode size={13} className="text-[#00BDAE]" />
                 : paymentData.mpMethod === 'mercado_pago'
                 ? <span className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">MP</span>
-                : <CreditCard size={13} className={paymentData.mpMethod === 'debito' ? 'text-sky-300' : 'text-primary'} />}
+                : <CreditCard size={13} className="text-primary" />}
               <span className="text-[11px] font-bold uppercase tracking-widest text-white/40">
                 {getPublicMpMethodBadge(paymentData.mpMethod)}
               </span>
@@ -920,7 +913,8 @@ const handleConfirm = async () => {
             <PaymentBrick
               amount={paymentData.amount}
               preferenceId={paymentData.preferenceId}
-              appointmentId={paymentData.appointmentId}
+              checkoutId={paymentData.appointmentId}
+              checkoutKind="appointment"
               publicKey={mpPublicKey}
               paymentMethod={paymentData.mpMethod}
               onSuccess={(apptId) => router.push(`/agendar/pagamento/sucesso?appt_id=${apptId}`)}
@@ -1229,7 +1223,7 @@ const handleConfirm = async () => {
           <div className="max-w-[340px] mx-auto w-full mb-1.5 flex justify-center">
             <div className="flex items-center gap-1.5 px-3 py-1 bg-[#09090b]/80 border border-white/[0.06] rounded-full">
               <CreditCard size={11} className="text-white/30" />
-              <span className="text-[10px] text-white/30 font-semibold uppercase tracking-wider">PIX • Cartão • Dinheiro</span>
+              <span className="text-[10px] text-white/30 font-semibold uppercase tracking-wider">PIX • Crédito • Saldo MP • Presencial</span>
             </div>
           </div>
         )}

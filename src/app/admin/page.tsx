@@ -112,6 +112,7 @@ export default async function AdminPage({
   // e payment_intents aprovados (pagamentos online via MP)
   let paymentMethodByApptId: Record<string, string | null> = {}
   const onlineMpApptIds = new Set<string>()
+  const refundedApptIds = new Set<string>()
 
   if (apptIds.length > 0) {
     const [{ data: prData }, { data: feData }, { data: piData }] = await Promise.all([
@@ -122,21 +123,34 @@ export default async function AdminPage({
         .in('status', ['reservado', 'retirado']),
       adminClient
         .from('financial_entries')
-        .select('reference_id, payment_method')
-        .eq('source', 'agendamento')
+        .select('reference_id, payment_method, source')
+        .in('source', ['agendamento', 'estorno'])
         .in('reference_id', apptIds),
       adminClient
         .from('payment_intents')
-        .select('appointment_id, status')
+        .select('appointment_id, status, refunded_at')
         .in('appointment_id', apptIds)
-        .in('status', ['approved', 'pending']),
+        .in('status', ['approved', 'cancelled']),
     ])
     productReservations = (prData ?? []) as ProductReservation[]
     paymentMethodByApptId = Object.fromEntries(
-      (feData ?? []).map((fe) => [fe.reference_id, fe.payment_method])
+      (feData ?? [])
+        .filter((fe) => fe.source === 'agendamento')
+        .map((fe) => [fe.reference_id, fe.payment_method])
     )
+    for (const fe of feData ?? []) {
+      if (fe.source === 'estorno') {
+        refundedApptIds.add(fe.reference_id)
+      }
+    }
     for (const pi of piData ?? []) {
-      onlineMpApptIds.add(pi.appointment_id)
+      if (pi.refunded_at) {
+        refundedApptIds.add(pi.appointment_id)
+        continue
+      }
+      if (pi.status === 'approved') {
+        onlineMpApptIds.add(pi.appointment_id)
+      }
     }
   }
 
@@ -186,6 +200,7 @@ export default async function AdminPage({
         mpReason={mpReason}
         paymentMethodByApptId={paymentMethodByApptId}
         onlineMpApptIds={onlineMpApptIds}
+        refundedApptIds={refundedApptIds}
       />
     </main>
   )

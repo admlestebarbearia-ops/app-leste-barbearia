@@ -60,7 +60,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
     if (!modalProduct) return
     setLoading(true)
     const existing = activeByProduct[modalProduct.id]
-    let result: { error?: string; redirectUrl?: string }
+    let result: { error?: string; reservationId?: string }
     if (existing?.status === 'reservado') {
       result = await atualizarQuantidadeReserva(existing.id, modalQty)
       if (!result.error) toast.success(`Reserva atualizada para ${modalQty}x ${modalProduct.name}.`)
@@ -74,8 +74,14 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
       setLoading(false)
       return
     }
-    if (result.redirectUrl) {
-      window.location.assign(result.redirectUrl)
+    if (result.reservationId && existing?.status === 'aguardando_pagamento') {
+      closeModal()
+      router.push(`/loja/pagamento/retomar?reservation_id=${result.reservationId}`)
+      return
+    }
+    if (result.reservationId && !existing) {
+      closeModal()
+      router.push(`/loja/pagamento/retomar?reservation_id=${result.reservationId}`)
       return
     }
     router.refresh()
@@ -157,8 +163,8 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                             setLoading(false)
                             return
                           }
-                          if (result.redirectUrl) {
-                            window.location.assign(result.redirectUrl)
+                          if (result.reservationId) {
+                            router.push(`/loja/pagamento/retomar?reservation_id=${result.reservationId}`)
                             return
                           }
                           setLoading(false)
@@ -343,7 +349,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                       <span className="text-[10px] font-black uppercase tracking-widest">Pagamento seguro via Mercado Pago</span>
                     </div>
                     <p className="mt-1 text-xs text-cyan-100/70 leading-relaxed">
-                      O pedido só vira reserva para retirada depois da aprovação do pagamento.
+                      Você conclui o pagamento aqui no app com PIX, crédito ou saldo Mercado Pago.
                     </p>
                   </div>
                 )}

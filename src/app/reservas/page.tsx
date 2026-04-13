@@ -5,23 +5,34 @@ import { redirect } from 'next/navigation'
 import { ReservasClient } from './ReservasClient'
 import { dedupeById, GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
 import type { AppointmentStatus, BusinessConfig, ProductReservation } from '@/lib/supabase/types'
-import { getAppointmentPaymentContextMap } from '@/lib/booking/appointment-payment-context'
+import { getAppointmentPaymentSummaryMap } from '@/lib/booking/appointment-payment-context'
 import type { AppointmentPaymentContext } from '@/lib/booking/appointment-payment-context'
+import { getAppointmentOperationalStatus, isAppointmentPast } from '@/lib/booking/appointment-visibility'
 
-interface HistoryAppt {
+interface HistoryApptBase {
   id: string
   date: string
   start_time: string
-  status: AppointmentStatus
+  status: AppointmentStatus | 'aguardando_acao_barbeiro'
   service_name_snapshot: string | null
   services: { name: string } | null
 }
 
-interface HistoryApptRow extends Omit<HistoryAppt, 'services'> {
+interface HistoryAppt extends HistoryApptBase {
+  payment_context: AppointmentPaymentContext | null
+}
+
+interface HistoryApptRow extends Omit<HistoryApptBase, 'services' | 'status'> {
+  status: AppointmentStatus
   services: { name: string } | { name: string }[] | null
 }
 
-function normalizeHistoryAppt(row: HistoryApptRow): HistoryAppt {
+interface NormalizedHistoryApptRow extends Omit<HistoryApptBase, 'services' | 'status'> {
+  status: AppointmentStatus
+  services: { name: string } | null
+}
+
+function normalizeHistoryAppt(row: HistoryApptRow): NormalizedHistoryApptRow {
   return {
     ...row,
     services: Array.isArray(row.services) ? row.services[0] ?? null : row.services,
@@ -115,22 +126,26 @@ export default async function ReservasPage({ searchParams }: Props) {
 
   const config = configRaw as Pick<BusinessConfig, 'cancellation_window_minutes' | 'whatsapp_number'> | null
   const activeAppointments = dedupeById(appointments ?? [])
-  const paymentContextById = await getAppointmentPaymentContextMap(
-    activeAppointments
-      .filter((appointment) => appointment.status === 'confirmado')
-      .map((appointment) => appointment.id)
-  )
-  const hydratedAppointments = activeAppointments.map((appointment) => ({
-    ...appointment,
-    payment_context: appointment.status === 'confirmado'
-      ? paymentContextById[appointment.id] ?? 'pay_locally'
-      : null,
-  }))
-  // Inclui TODOS os agendamentos no calendário — passados e futuros.
-  // isReservationHistoryEntry não é mais usado aqui para não excluir futuros confirmados.
-  const historyAppts = dedupeById(
+  const historyRows = dedupeById(
     ((historyApptsRaw ?? []) as HistoryApptRow[]).map(normalizeHistoryAppt)
   )
+  const paymentSummaryById = await getAppointmentPaymentSummaryMap([
+    ...activeAppointments.map((appointment) => appointment.id),
+    ...historyRows.map((appointment) => appointment.id),
+  ])
+  const hydratedAppointments = activeAppointments
+    .filter((appointment) => !isAppointmentPast(appointment.date, appointment.start_time))
+    .map((appointment) => ({
+    ...appointment,
+    payment_context: appointment.status === 'confirmado'
+      ? paymentSummaryById[appointment.id]?.paymentContext ?? 'pay_locally'
+      : null,
+  }))
+  const historyAppts = historyRows.map((appointment) => ({
+    ...appointment,
+    status: getAppointmentOperationalStatus(appointment.status, appointment.date, appointment.start_time),
+    payment_context: paymentSummaryById[appointment.id]?.paymentContext ?? null,
+  }))
 
   return (
     <ReservasClient

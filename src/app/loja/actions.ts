@@ -2,17 +2,10 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { validateAtualizarQuantidadeReserva, validateCancelarReservaProduto, validateReservarProduto } from '@/lib/booking/product-reservation-guards'
-import { buildProductReservationExternalReference } from '@/lib/mercadopago/integration-alignment'
-import { createMpCheckoutPreference } from '@/lib/mercadopago/create-preference'
-import { isPaymentIntentExpired } from '@/lib/mercadopago/payment-flow'
+import { isPaymentIntentExpired, shouldReuseMercadoPagoPayment } from '@/lib/mercadopago/payment-flow'
 import { buildPaymentExpirationIso, normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-
-function getBaseUrl() {
-  return process.env.NEXT_PUBLIC_SITE_URL
-    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-}
 
 async function restoreProductStock(
   admin: ReturnType<typeof createAdminClient>,
@@ -62,39 +55,10 @@ async function expirePendingProductPayment(
   }
 }
 
-async function createProductCheckoutPreference(input: {
-  accessToken: string
-  reservationId: string
-  productId: string
-  title: string
-  unitPrice: number
-  quantity: number
-  payerEmail: string | null
-  expiryMinutes: number
-}) {
-  const baseUrl = getBaseUrl()
-  return createMpCheckoutPreference({
-    accessToken: input.accessToken,
-    externalReference: buildProductReservationExternalReference(input.reservationId),
-    itemId: input.productId,
-    title: input.title,
-    unitPrice: input.unitPrice,
-    quantity: input.quantity,
-    payerEmail: input.payerEmail,
-    baseUrl,
-    expiryMinutes: input.expiryMinutes,
-    backUrls: {
-      success: `${baseUrl}/loja/pagamento/sucesso?reservation_id=${input.reservationId}`,
-      failure: `${baseUrl}/loja/pagamento/falha?reservation_id=${input.reservationId}`,
-      pending: `${baseUrl}/loja/pagamento/pendente?reservation_id=${input.reservationId}`,
-    },
-  })
-}
-
 export async function iniciarCheckoutProduto(
   productId: string,
   quantity: number = 1
-): Promise<{ success?: boolean; redirectUrl?: string; reservationId?: string; error?: string }> {
+): Promise<{ success?: boolean; reservationId?: string; amount?: number; error?: string }> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -207,44 +171,17 @@ export async function iniciarCheckoutProduto(
     return { error: 'Erro ao preparar pagamento do produto.' }
   }
 
-  try {
-    const preference = await createProductCheckoutPreference({
-      accessToken: config.mp_access_token,
-      reservationId: reservation.id,
-      productId: product.id,
-      title: product.name,
-      unitPrice: Number(product.price),
-      quantity,
-      payerEmail: user.email ?? profile?.email ?? null,
-      expiryMinutes: paymentExpiryMinutes,
-    })
-
-    await admin
-      .from('product_payment_intents')
-      .update({
-        mp_preference_id: preference.preferenceId,
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', paymentIntent.id)
-
-    revalidatePath('/loja')
-    return {
-      success: true,
-      redirectUrl: preference.initPoint,
-      reservationId: reservation.id,
-    }
-  } catch {
-    await admin.from('product_payment_intents').delete().eq('id', paymentIntent.id)
-    await admin.from('product_reservations').delete().eq('id', reservation.id)
-    await restoreProductStock(admin, productId, quantity)
-    return { error: 'Não foi possível iniciar o checkout do produto.' }
+  revalidatePath('/loja')
+  return {
+    success: true,
+    reservationId: reservation.id,
+    amount,
   }
 }
 
 export async function retomarPagamentoProduto(
   reservationId: string
-): Promise<{ success?: boolean; redirectUrl?: string; reservationId?: string; error?: string }> {
+): Promise<{ success?: boolean; reservationId?: string; amount?: number; error?: string }> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -293,38 +230,122 @@ export async function retomarPagamentoProduto(
     return { error: 'Prazo de pagamento expirado. Inicie uma nova compra.' }
   }
 
-  const paymentExpiryMinutes = normalizePaymentExpiryMinutes(config.payment_expiry_minutes)
-  const expiresAt = buildPaymentExpirationIso(new Date(), paymentExpiryMinutes)
+  return {
+    success: true,
+    reservationId,
+    amount: Number(reservation.product_price_snapshot) * reservation.quantity,
+  }
+}
 
-  try {
-    const preference = await createProductCheckoutPreference({
-      accessToken: config.mp_access_token,
-      reservationId,
-      productId: reservation.product_id,
-      title: reservation.product_name_snapshot,
-      unitPrice: Number(reservation.product_price_snapshot),
-      quantity: reservation.quantity,
-      payerEmail: user.email ?? null,
-      expiryMinutes: paymentExpiryMinutes,
-    })
+export async function getPendingProductPaymentDetails(reservationId: string): Promise<{
+  reservation?: {
+    id: string
+    amount: number
+    productName: string
+    quantity: number
+    existingPaymentId?: string
+  }
+  error?: string
+}> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: 'Faça login para continuar o pagamento.' }
 
-    await admin
-      .from('product_payment_intents')
-      .update({
-        mp_preference_id: preference.preferenceId,
-        expires_at: expiresAt,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', paymentIntent.id)
+  const admin = createAdminClient()
+  const { data: reservation } = await admin
+    .from('product_reservations')
+    .select('id, client_id, status, quantity, product_name_snapshot, product_price_snapshot')
+    .eq('id', reservationId)
+    .single()
 
+  if (!reservation || reservation.client_id !== user.id || reservation.status !== 'aguardando_pagamento') {
+    return { error: 'Pagamento pendente não encontrado.' }
+  }
+
+  const { data: paymentIntent } = await admin
+    .from('product_payment_intents')
+    .select('status, mp_payment_id, expires_at')
+    .eq('reservation_id', reservationId)
+    .single()
+
+  if (!paymentIntent) {
+    return { error: 'Controle de pagamento do produto não encontrado.' }
+  }
+
+  if (paymentIntent.status === 'expired' || isPaymentIntentExpired(paymentIntent.expires_at)) {
+    await expirePendingProductPayment(admin, reservationId)
     revalidatePath('/loja')
-    return {
-      success: true,
-      redirectUrl: preference.initPoint,
-      reservationId,
-    }
-  } catch {
-    return { error: 'Não foi possível retomar o pagamento agora.' }
+    return { error: 'Prazo de pagamento expirado. Inicie uma nova compra.' }
+  }
+
+  const existingPaymentId = paymentIntent.mp_payment_id && shouldReuseMercadoPagoPayment(paymentIntent.status)
+    ? paymentIntent.mp_payment_id
+    : undefined
+
+  return {
+    reservation: {
+      id: reservation.id,
+      amount: Number(reservation.product_price_snapshot) * reservation.quantity,
+      productName: reservation.product_name_snapshot,
+      quantity: reservation.quantity,
+      existingPaymentId,
+    },
+  }
+}
+
+export async function getPendingProductPaymentStatus(reservationId: string): Promise<{
+  reservationStatus?: string
+  paymentIntentStatus?: string | null
+  paymentId?: string | null
+  error?: string
+}> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: 'Faça login para continuar o pagamento.' }
+
+  const admin = createAdminClient()
+  const { data: reservation } = await admin
+    .from('product_reservations')
+    .select('id, client_id, status')
+    .eq('id', reservationId)
+    .single()
+
+  if (!reservation || reservation.client_id !== user.id) {
+    return { error: 'Reserva não encontrada.' }
+  }
+
+  const { data: paymentIntent } = await admin
+    .from('product_payment_intents')
+    .select('status, mp_payment_id, expires_at')
+    .eq('reservation_id', reservationId)
+    .single()
+
+  if (!paymentIntent) {
+    return { reservationStatus: reservation.status, paymentIntentStatus: null, paymentId: null }
+  }
+
+  let resolvedPaymentIntentStatus = paymentIntent.status
+  if (paymentIntent.status === 'expired') {
+    await expirePendingProductPayment(admin, reservationId)
+  } else if (isPaymentIntentExpired(paymentIntent.expires_at) && paymentIntent.status === 'pending') {
+    await expirePendingProductPayment(admin, reservationId)
+    resolvedPaymentIntentStatus = 'expired'
+  }
+
+  const { data: refreshedReservation } = await admin
+    .from('product_reservations')
+    .select('status')
+    .eq('id', reservationId)
+    .single()
+
+  return {
+    reservationStatus: refreshedReservation?.status ?? reservation.status,
+    paymentIntentStatus: resolvedPaymentIntentStatus,
+    paymentId: paymentIntent.mp_payment_id,
   }
 }
 

@@ -24,6 +24,8 @@ const APPOINTMENT_STATUS_COLOR: Record<string, string> = {
 const APPOINTMENT_PAYMENT_LABEL: Record<AppointmentPaymentContext, string> = {
   paid_online: 'Pago online',
   pay_locally: 'Pagar no local',
+  paid: 'Pago',
+  refunded: 'Estornado',
 }
 
 function AppointmentStatusBadge({ status }: { status: string }) {
@@ -47,15 +49,18 @@ function AppointmentStatusBadge({ status }: { status: string }) {
 function AppointmentPaymentBadge({ paymentContext }: { paymentContext: AppointmentPaymentContext | null }) {
   if (!paymentContext) return null
 
-  const isPaidOnline = paymentContext === 'paid_online'
+  const styleByContext: Record<AppointmentPaymentContext, string> = {
+    paid_online: 'border-sky-500/30 bg-sky-500/12 text-sky-200',
+    pay_locally: 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',
+    paid: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-200',
+    refunded: 'border-orange-500/30 bg-orange-500/12 text-orange-200',
+  }
 
   return (
     <span
       className={[
         'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest',
-        isPaidOnline
-          ? 'border-sky-500/30 bg-sky-500/12 text-sky-200'
-          : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',
+        styleByContext[paymentContext],
       ].join(' ')}
     >
       {APPOINTMENT_PAYMENT_LABEL[paymentContext]}

@@ -1,7 +1,9 @@
 import type { AppointmentStatus } from '@/lib/supabase/types'
+import { isAppointmentPast } from '@/lib/booking/appointment-visibility'
 
 export interface ReservationHistoryEntry {
   date: string
+  start_time?: string | null
   status: AppointmentStatus | string
 }
 
@@ -16,11 +18,18 @@ function getMonthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1, 12)
 }
 
-export function isReservationHistoryEntry(entry: ReservationHistoryEntry, today: string) {
+export function isReservationHistoryEntry(
+  entry: ReservationHistoryEntry,
+  today: string,
+  now = new Date()
+) {
   const status = entry.status as AppointmentStatus
 
   if (FINALIZED_STATUSES.has(status)) return true
   if (entry.date < today) return true
+  if (entry.date === today && entry.start_time && isAppointmentPast(entry.date, entry.start_time, now)) {
+    return true
+  }
 
   return !ACTIVE_UPCOMING_STATUSES.has(status)
 }

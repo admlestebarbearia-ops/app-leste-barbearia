@@ -6,6 +6,7 @@ import type { IPaymentBrickCustomization } from '@mercadopago/sdk-react/esm/bric
 import type { TPaymentType } from '@mercadopago/sdk-react/esm/bricks/payment/type'
 import type { IBrickError } from '@mercadopago/sdk-react/esm/bricks/util/types/common'
 import { getPendingPaymentStatus } from '@/app/agendar/actions'
+import { getPendingProductPaymentStatus } from '@/app/loja/actions'
 import { buildPaymentBrickCustomization, type PublicMpMethod } from '@/lib/mercadopago/checkout-config'
 
 type OnSubmitParam = Parameters<TPaymentType['onSubmit']>[0]
@@ -19,21 +20,25 @@ const noop = () => {}
 // vida da página — mesmo que PaymentBrick desmonte e remonte via React transitions.
 let _mpInitialized = false
 
+export type PaymentBrickCheckoutKind = 'appointment' | 'product_reservation'
+
 interface Props {
   amount: number
   preferenceId?: string
-  appointmentId: string
+  checkoutId: string
+  checkoutKind: PaymentBrickCheckoutKind
   publicKey: string
   paymentMethod?: PublicMpMethod
   existingPaymentId?: string
-  onSuccess: (appointmentId: string) => void
+  onSuccess: (checkoutId: string) => void
   onError?: (message: string) => void
 }
 
 export function PaymentBrick({
   amount,
   preferenceId,
-  appointmentId,
+  checkoutId,
+  checkoutKind,
   publicKey,
   paymentMethod,
   existingPaymentId,
@@ -61,10 +66,10 @@ export function PaymentBrick({
 
   const configError = useMemo(() => {
     if (!publicKey.trim()) return 'Chave pública do Mercado Pago não configurada.'
-    if (!/^[0-9a-f-]{36}$/i.test(appointmentId)) return 'Agendamento inválido para iniciar pagamento.'
+    if (!/^[0-9a-f-]{36}$/i.test(checkoutId)) return 'Pagamento inválido para iniciar checkout.'
     if (!Number.isFinite(amount) || amount <= 0) return 'Valor do pagamento inválido.'
     return null
-  }, [amount, appointmentId, publicKey])
+  }, [amount, checkoutId, publicKey])
 
   const paymentInitialization = useMemo(() => ({
     amount,
@@ -86,29 +91,56 @@ export function PaymentBrick({
       const attempts = options?.attempts ?? MP_STATUS_POLL_ATTEMPTS
 
       for (let attempt = 0; attempt < attempts; attempt += 1) {
-        const snapshot = await getPendingPaymentStatus(appointmentId)
+        if (checkoutKind === 'appointment') {
+          const snapshot = await getPendingPaymentStatus(checkoutId)
 
-        if (snapshot.error) {
-          if (!options?.silent) {
-            onErrorRef.current?.(snapshot.error)
+          if (snapshot.error) {
+            if (!options?.silent) {
+              onErrorRef.current?.(snapshot.error)
+            }
+            return false
           }
-          return false
-        }
 
-        if (snapshot.appointmentStatus === 'confirmado') {
-          onSuccessRef.current(appointmentId)
-          return true
-        }
-
-        if (snapshot.appointmentStatus === 'cancelado' || snapshot.paymentIntentStatus === 'cancelled' || snapshot.paymentIntentStatus === 'expired') {
-          if (!options?.silent) {
-            onErrorRef.current?.('Pagamento não está mais disponível. Faça um novo agendamento.')
+          if (snapshot.appointmentStatus === 'confirmado') {
+            onSuccessRef.current(checkoutId)
+            return true
           }
-          return false
-        }
 
-        if (snapshot.paymentId && !paymentId) {
-          setPaymentId(snapshot.paymentId)
+          if (snapshot.appointmentStatus === 'cancelado' || snapshot.paymentIntentStatus === 'cancelled' || snapshot.paymentIntentStatus === 'expired') {
+            if (!options?.silent) {
+              onErrorRef.current?.('Pagamento não está mais disponível. Faça um novo agendamento.')
+            }
+            return false
+          }
+
+          if (snapshot.paymentId && !paymentId) {
+            setPaymentId(snapshot.paymentId)
+          }
+        } else {
+          const snapshot = await getPendingProductPaymentStatus(checkoutId)
+
+          if (snapshot.error) {
+            if (!options?.silent) {
+              onErrorRef.current?.(snapshot.error)
+            }
+            return false
+          }
+
+          if (snapshot.reservationStatus === 'reservado' || snapshot.reservationStatus === 'retirado') {
+            onSuccessRef.current(checkoutId)
+            return true
+          }
+
+          if (snapshot.reservationStatus === 'cancelado' || snapshot.paymentIntentStatus === 'cancelled' || snapshot.paymentIntentStatus === 'expired') {
+            if (!options?.silent) {
+              onErrorRef.current?.('Pagamento não está mais disponível. Inicie uma nova compra.')
+            }
+            return false
+          }
+
+          if (snapshot.paymentId && !paymentId) {
+            setPaymentId(snapshot.paymentId)
+          }
         }
 
         if (attempt < attempts - 1) {
@@ -125,7 +157,7 @@ export function PaymentBrick({
       statusPollInFlightRef.current = false
       setCheckingStatus(false)
     }
-  }, [appointmentId, paymentId])
+  }, [checkoutId, checkoutKind, paymentId])
 
   useEffect(() => {
     if (configError) {
@@ -162,10 +194,14 @@ export function PaymentBrick({
     setSubmitting(true)
 
     try {
-      const response = await fetch('/api/mp/payment', {
+      const response = await fetch(checkoutKind === 'appointment' ? '/api/mp/payment' : '/api/mp/product-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ formData, appointmentId }),
+        body: JSON.stringify(
+          checkoutKind === 'appointment'
+            ? { formData, appointmentId: checkoutId }
+            : { formData, reservationId: checkoutId }
+        ),
       })
 
       const result = await response.json()
@@ -187,7 +223,7 @@ export function PaymentBrick({
     } finally {
       setSubmitting(false)
     }
-  }, [appointmentId])
+  }, [checkoutId, checkoutKind])
 
   const handleBrickError = useCallback((e: IBrickError) => {
     console.error('[MP Brick]', e)

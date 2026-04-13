@@ -3,8 +3,9 @@ import { redirect } from 'next/navigation'
 import { isAuthenticatedUser } from '@/lib/auth/session-state'
 import { PerfilClient } from './PerfilClient'
 import { getMyAppointments } from '@/app/agendar/actions'
-import { getAppointmentPaymentContextMap } from '@/lib/booking/appointment-payment-context'
+import { getAppointmentPaymentSummaryMap } from '@/lib/booking/appointment-payment-context'
 import type { AppointmentPaymentContext } from '@/lib/booking/appointment-payment-context'
+import { isAppointmentPast } from '@/lib/booking/appointment-visibility'
 
 export const metadata = {
   title: 'Meu Perfil — Leste Barbearia',
@@ -35,18 +36,18 @@ export default async function PerfilPage() {
       .single(),
   ])
 
-  const paymentContextById = await getAppointmentPaymentContextMap(
-    (appointments ?? [])
-      .filter((appointment) => appointment.status === 'confirmado')
-      .map((appointment) => appointment.id)
+  const paymentSummaryById = await getAppointmentPaymentSummaryMap(
+    (appointments ?? []).map((appointment) => appointment.id)
   )
 
-  const appointmentsWithPaymentContext = (appointments ?? []).map((appointment) => ({
-    ...appointment,
-    payment_context: appointment.status === 'confirmado'
-      ? paymentContextById[appointment.id] ?? 'pay_locally'
-      : null,
-  }))
+  const appointmentsWithPaymentContext = (appointments ?? [])
+    .filter((appointment) => !isAppointmentPast(appointment.date, appointment.start_time))
+    .map((appointment) => ({
+      ...appointment,
+      payment_context: appointment.status === 'confirmado'
+        ? paymentSummaryById[appointment.id]?.paymentContext ?? 'pay_locally'
+        : null,
+    }))
 
   return (
     <PerfilClient

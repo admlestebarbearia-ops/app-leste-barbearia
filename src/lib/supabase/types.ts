@@ -211,6 +211,8 @@ export interface PaymentIntent {
   appointment_id: string
   mp_preference_id: string
   mp_payment_id: string | null
+  payment_method: PaymentMethod | null
+  refunded_at: string | null
   status: PaymentIntentStatus
   amount: number
   expires_at: string
@@ -223,6 +225,8 @@ export interface ProductPaymentIntent {
   reservation_id: string
   mp_preference_id: string | null
   mp_payment_id: string | null
+  payment_method: PaymentMethod | null
+  refunded_at: string | null
   status: PaymentIntentStatus
   amount: number
   expires_at: string

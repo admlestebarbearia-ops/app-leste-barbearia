@@ -1,0 +1,24 @@
+
+> barbearia-leste@0.1.0 build
+> next build
+
+▲ Next.js 16.2.2 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 7.5s
+  Running TypeScript ...
+Failed to type check.
+
+./src/components/payment/PaymentBrick.tsx:106:24
+Type error: Property 'appointmentStatus' does not exist on type '{ appointmentStatus?: string | undefined; paymentIntentStatus?: string | null | undefined; paymentId?: string | null | undefined; error?: string | undefined; } | { reservationStatus?: string | undefined; paymentIntentStatus?: string | ... 1 more ... | undefined; paymentId?: string | ... 1 more ... | undefined; error...'.
+  Property 'appointmentStatus' does not exist on type '{ reservationStatus?: string | undefined; paymentIntentStatus?: string | null | undefined; paymentId?: string | null | undefined; error?: string | undefined; }'.
+
+  [90m104 |[0m
+  [90m105 |[0m         [36mif[0m (checkoutKind === [32m'appointment'[0m) {
+[31m[1m>[0m [90m106 |[0m           [36mif[0m (snapshot.appointmentStatus === [32m'confirmado'[0m) {
+  [90m    |[0m                        [31m[1m^[0m
+  [90m107 |[0m             onSuccessRef.current(checkoutId)
+  [90m108 |[0m             [36mreturn[0m [36mtrue[0m
+  [90m109 |[0m           }
+Next.js build worker exited with code: 1 and signal: null

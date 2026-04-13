@@ -1,6 +1,6 @@
 import type { IPaymentBrickCustomization } from '@mercadopago/sdk-react/esm/bricks/payment/type'
 
-export type PublicMpMethod = 'pix' | 'credito' | 'debito' | 'mercado_pago'
+export type PublicMpMethod = 'pix' | 'credito' | 'mercado_pago'
 
 export interface PublicMpMethodOption {
   id: PublicMpMethod
@@ -11,7 +11,6 @@ export interface PublicMpMethodOption {
 export const PUBLIC_MP_METHOD_OPTIONS: PublicMpMethodOption[] = [
   { id: 'pix', label: 'PIX', subtitle: 'Instantâneo' },
   { id: 'credito', label: 'Crédito', subtitle: '1x no app' },
-  { id: 'debito', label: 'Débito', subtitle: 'Pagamento online' },
   { id: 'mercado_pago', label: 'Saldo MP', subtitle: 'Conta Mercado Pago' },
 ]
 
@@ -20,11 +19,9 @@ export function buildPaymentBrickCustomization(paymentMethod?: PublicMpMethod): 
     ? { bankTransfer: 'all' }
     : paymentMethod === 'credito'
     ? { creditCard: 'all' }
-    : paymentMethod === 'debito'
-    ? { debitCard: 'all' }
     : paymentMethod === 'mercado_pago'
     ? { mercadoPago: 'all' }
-    : { mercadoPago: 'all', creditCard: 'all', debitCard: 'all', bankTransfer: 'all' }
+    : { mercadoPago: 'all', creditCard: 'all', bankTransfer: 'all' }
 
   const visual: NonNullable<IPaymentBrickCustomization['visual']> = {
     style: { theme: 'dark' },
@@ -33,8 +30,6 @@ export function buildPaymentBrickCustomization(paymentMethod?: PublicMpMethod): 
       ? { defaultPaymentOption: { bankTransferForm: true } }
       : paymentMethod === 'credito'
       ? { defaultPaymentOption: { creditCardForm: true } }
-      : paymentMethod === 'debito'
-      ? { defaultPaymentOption: { debitCardForm: true } }
       : paymentMethod === 'mercado_pago'
       ? { defaultPaymentOption: { walletForm: true } }
       : {}),
@@ -52,8 +47,6 @@ export function getPublicMpMethodBadge(method: PublicMpMethod) {
       return 'Pagamento via PIX'
     case 'credito':
       return 'Pagamento via Cartão de Crédito'
-    case 'debito':
-      return 'Pagamento via Cartão de Débito'
     case 'mercado_pago':
       return 'Pagamento com saldo Mercado Pago'
   }

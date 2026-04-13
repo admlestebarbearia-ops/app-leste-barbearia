@@ -14,6 +14,7 @@ import { getCancellationPolicyError } from '@/lib/booking/cancellation-policy'
 import {
   calculateAvailableSlots,
 } from '@/lib/scheduling/availability-engine'
+import { isAppointmentPast } from '@/lib/booking/appointment-visibility'
 import {
   dedupeById,
   GUEST_BOOKING_PHONE_COOKIE,
@@ -47,47 +48,6 @@ async function expirePendingAppointmentPayment(adminClient: ReturnType<typeof cr
     .update({ status: 'cancelado' })
     .eq('id', appointmentId)
     .eq('status', 'aguardando_pagamento')
-}
-
-async function ensureAutomaticAppointmentReversal(
-  adminClient: ReturnType<typeof createAdminClient>,
-  appointmentId: string,
-  createdBy: string | null
-) {
-  const { data: existingReversal } = await adminClient
-    .from('financial_entries')
-    .select('id')
-    .eq('source', 'estorno')
-    .eq('reference_id', appointmentId)
-    .limit(1)
-    .maybeSingle()
-
-  if (existingReversal) return
-
-  const { data: revenueEntry } = await adminClient
-    .from('financial_entries')
-    .select('amount, description, payment_method, net_amount')
-    .eq('source', 'agendamento')
-    .eq('reference_id', appointmentId)
-    .limit(1)
-    .maybeSingle()
-
-  if (!revenueEntry) return
-
-  const { error } = await adminClient.from('financial_entries').insert({
-    type: 'despesa',
-    source: 'estorno',
-    amount: revenueEntry.amount,
-    description: `Estorno automático: ${revenueEntry.description}`,
-    payment_method: revenueEntry.payment_method ?? null,
-    card_rate_pct: 0,
-    net_amount: -Math.abs(revenueEntry.net_amount ?? revenueEntry.amount),
-    reference_id: appointmentId,
-    date: new Date().toISOString().split('T')[0],
-    created_by: createdBy,
-  })
-
-  if (error) throw error
 }
 
 async function getAppointmentLookupContext() {
@@ -565,8 +525,6 @@ export async function cancelMyAppointment(
 
   if (error) return { success: false, error: 'Erro ao cancelar. Tente novamente.' }
 
-  await ensureAutomaticAppointmentReversal(adminClient, appointmentId, userId)
-
   revalidatePath('/agendar')
   revalidatePath('/reservas')
   revalidatePath('/perfil')
@@ -592,7 +550,11 @@ export async function getMyAppointments() {
     .order('date', { ascending: true })
     .order('start_time', { ascending: true })
 
-  return { appointments: dedupeById(data ?? []) }
+  return {
+    appointments: dedupeById(data ?? []).filter(
+      (appointment) => !isAppointmentPast(appointment.date, appointment.start_time)
+    ),
+  }
 }
 
 export async function getPendingPaymentDetails(appointmentId: string): Promise<{

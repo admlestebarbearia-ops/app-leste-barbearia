@@ -6,11 +6,14 @@ import {
   validateSpecialSchedulePayload,
   validateWorkingHoursRow,
 } from '@/lib/admin/admin-validation'
+import { normalizePhoneLookup } from '@/lib/auth/session-state'
+import { getAppointmentPaymentSummaryMap } from '@/lib/booking/appointment-payment-context'
+import { getAppointmentOperationalStatus, isAppointmentPast } from '@/lib/booking/appointment-visibility'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { MAX_PAYMENT_EXPIRY_MINUTES, normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
-import type { BusinessConfig, WorkingHours } from '@/lib/supabase/types'
+import type { BusinessConfig, PaymentMethod, WorkingHours } from '@/lib/supabase/types'
 
 // ─── Guard: verifica se o usuário atual é admin ──────────────────────────
 async function requireAdmin() {
@@ -29,6 +32,39 @@ async function requireAdmin() {
 }
 
 type AdminSupabaseClient = Awaited<ReturnType<typeof requireAdmin>>['supabase']
+
+function getCardRateByPaymentMethod(
+  configData: {
+    debit_rate_pct?: number | null
+    credit_rate_pct?: number | null
+    default_card_rate_pct?: number | null
+  } | null,
+  paymentMethod: PaymentMethod | null | undefined
+) {
+  if (paymentMethod === 'debito') {
+    return configData?.debit_rate_pct ?? configData?.default_card_rate_pct ?? 0
+  }
+
+  if (paymentMethod === 'credito') {
+    return configData?.credit_rate_pct ?? configData?.default_card_rate_pct ?? 0
+  }
+
+  return 0
+}
+
+function buildRegisteredClientKey(clientId: string) {
+  return `user:${clientId}`
+}
+
+function buildVisitorClientKey(phone: string) {
+  return `visitor:${phone}`
+}
+
+function getDaysSinceDate(date: string, now = new Date()) {
+  const base = new Date(`${date}T12:00:00`)
+  if (Number.isNaN(base.getTime())) return 0
+  return Math.floor((now.getTime() - base.getTime()) / (24 * 60 * 60 * 1000))
+}
 
 async function ensureAppointmentReversalEntry(
   supabase: AdminSupabaseClient,
@@ -112,16 +148,12 @@ export async function updateAppointmentStatus(
   status: 'cancelado' | 'faltou'
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { supabase, user } = await requireAdmin()
+    const { supabase } = await requireAdmin()
     const { error } = await supabase
       .from('appointments')
       .update({ status, ...(status === 'cancelado' ? { cancelled_by_admin: true } : {}) })
       .eq('id', appointmentId)
     if (error) throw error
-
-    if (status === 'cancelado') {
-      await ensureAppointmentReversalEntry(supabase, appointmentId, user.id)
-    }
 
     revalidatePath('/admin')
     revalidatePath('/reservas')
@@ -663,10 +695,11 @@ export async function listProductReservations() {
 export async function updateProductReservationStatus(
   id: string,
   status: 'reservado' | 'cancelado' | 'retirado',
-  payment_method?: import('@/lib/supabase/types').PaymentMethod
+  payment_method?: PaymentMethod
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
+    let resolvedPaymentMethod: PaymentMethod | undefined
 
     // RN: ao cancelar, devolve estoque se a reserva ainda estava aberta para pagamento/retirada.
     if (status === 'cancelado') {
@@ -692,6 +725,30 @@ export async function updateProductReservationStatus(
       }
     }
 
+    if (status === 'retirado') {
+      const { data: paymentIntent } = await supabase
+        .from('product_payment_intents')
+        .select('status, payment_method, refunded_at')
+        .eq('reservation_id', id)
+        .maybeSingle()
+
+      const { data: existingRevenue } = await supabase
+        .from('financial_entries')
+        .select('id')
+        .eq('source', 'produto')
+        .eq('reference_id', id)
+        .limit(1)
+        .maybeSingle()
+
+      resolvedPaymentMethod = paymentIntent?.status === 'approved' && !paymentIntent.refunded_at
+        ? paymentIntent.payment_method ?? payment_method ?? 'mercado_pago'
+        : payment_method
+
+      if (!existingRevenue && !resolvedPaymentMethod) {
+        return { success: false, error: 'Informe a forma de pagamento para registrar a receita do produto.' }
+      }
+    }
+
     const { error } = await supabase
       .from('product_reservations')
       .update({ status, updated_at: new Date().toISOString() })
@@ -714,10 +771,6 @@ export async function updateProductReservationStatus(
         return { success: true }
       }
 
-      if (!payment_method) {
-        return { success: false, error: 'Informe a forma de pagamento para registrar a receita do produto.' }
-      }
-
       const { data: res } = await supabase
         .from('product_reservations')
         .select('product_name_snapshot, product_price_snapshot, quantity')
@@ -728,10 +781,7 @@ export async function updateProductReservationStatus(
           .from('business_config')
           .select('debit_rate_pct, credit_rate_pct, default_card_rate_pct')
           .single()
-        const cardRate =
-          payment_method === 'debito'  ? (configData?.debit_rate_pct  ?? configData?.default_card_rate_pct ?? 0) :
-          payment_method === 'credito' ? (configData?.credit_rate_pct ?? configData?.default_card_rate_pct ?? 0) :
-          0
+        const cardRate = getCardRateByPaymentMethod(configData, resolvedPaymentMethod)
         const amount = res.product_price_snapshot * (res.quantity ?? 1)
         const netAmount = amount * (1 - cardRate / 100)
         const { data: { user } } = await supabase.auth.getUser()
@@ -740,7 +790,7 @@ export async function updateProductReservationStatus(
           source: 'produto',
           amount,
           description: res.product_name_snapshot ?? 'Produto',
-          payment_method: payment_method ?? null,
+          payment_method: resolvedPaymentMethod,
           card_rate_pct: cardRate,
           net_amount: netAmount,
           reference_id: id,
@@ -918,7 +968,7 @@ export async function getUserDetails(userId: string): Promise<{
 // CA: Ao concluir → cria financial_entry automaticamente.
 export async function concludeAppointment(
   appointmentId: string,
-  paymentMethod?: import('@/lib/supabase/types').PaymentMethod,
+  paymentMethod?: PaymentMethod,
   rating?: { score: number; note?: string }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -944,17 +994,29 @@ export async function concludeAppointment(
       .limit(1)
       .maybeSingle()
 
+    const { data: paymentIntent } = await supabase
+      .from('payment_intents')
+      .select('status, payment_method, refunded_at')
+      .eq('appointment_id', appointmentId)
+      .maybeSingle()
+
+    const resolvedPaymentMethod = paymentIntent?.status === 'approved' && !paymentIntent.refunded_at
+      ? paymentIntent.payment_method ?? paymentMethod ?? 'mercado_pago'
+      : paymentMethod
+
     // Busca taxas por tipo de pagamento
     const { data: configData } = await supabase
       .from('business_config')
-      .select('debit_rate_pct, credit_rate_pct')
+      .select('debit_rate_pct, credit_rate_pct, default_card_rate_pct')
       .single()
-    const cardRate =
-      paymentMethod === 'debito'  ? (configData?.debit_rate_pct  ?? 0) :
-      paymentMethod === 'credito' ? (configData?.credit_rate_pct ?? 0) : 0
+    const cardRate = getCardRateByPaymentMethod(configData, resolvedPaymentMethod)
 
     const amount = appt.service_price_snapshot ?? 0
     const netAmount = amount * (1 - cardRate / 100)
+
+    if (amount > 0 && !existingRevenue && !resolvedPaymentMethod) {
+      return { success: false, error: 'Informe a forma de pagamento para concluir este atendimento.' }
+    }
 
     // Atualiza status do agendamento
     const { error: updateError } = await supabase
@@ -965,17 +1027,13 @@ export async function concludeAppointment(
 
     // Cria entrada financeira apenas quando ainda não houver receita lançada pelo webhook/manual.
     if (amount > 0 && !existingRevenue) {
-      if (!paymentMethod) {
-        return { success: false, error: 'Informe a forma de pagamento para concluir este atendimento.' }
-      }
-
       const { data: { user } } = await supabase.auth.getUser()
       await supabase.from('financial_entries').insert({
         type: 'receita',
         source: 'agendamento',
         amount,
         description: appt.service_name_snapshot ?? 'Serviço',
-        payment_method: paymentMethod,
+        payment_method: resolvedPaymentMethod,
         card_rate_pct: cardRate,
         net_amount: netAmount,
         reference_id: appointmentId,
@@ -995,6 +1053,8 @@ export async function concludeAppointment(
     }
 
     revalidatePath('/admin')
+    revalidatePath('/reservas')
+    revalidatePath('/perfil')
     return { success: true }
   } catch (e) {
     return { success: false, error: (e as Error).message }
@@ -1007,6 +1067,16 @@ export async function estornarAgendamento(
   try {
     const { supabase, user } = await requireAdmin()
 
+    const { data: paymentIntent } = await supabase
+      .from('payment_intents')
+      .select('status, payment_method, refunded_at')
+      .eq('appointment_id', appointmentId)
+      .maybeSingle()
+
+    if (paymentIntent?.refunded_at) {
+      return { success: false, error: 'Estorno já registrado para este agendamento.' }
+    }
+
     const reversalResult = await ensureAppointmentReversalEntry(
       supabase,
       appointmentId,
@@ -1018,28 +1088,27 @@ export async function estornarAgendamento(
       return { success: false, error: 'Estorno já registrado para este agendamento.' }
     }
 
-    if (!reversalResult.hasRevenue) {
-      return { success: false, error: 'Entrada financeira não encontrada.' }
+    if (!reversalResult.hasRevenue && paymentIntent?.status !== 'approved') {
+      return { success: false, error: 'Nenhum pagamento elegível para estorno foi encontrado.' }
     }
 
-    // Busca a entrada financeira original do agendamento
-    const { data: entry, error: entryError } = await supabase
-      .from('financial_entries')
-      .select('id')
-      .eq('source', 'agendamento')
-      .eq('reference_id', appointmentId)
-      .single()
+    if (paymentIntent) {
+      const { error: paymentIntentError } = await supabase
+        .from('payment_intents')
+        .update({
+          status: 'cancelled',
+          payment_method: paymentIntent.payment_method ?? null,
+          refunded_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('appointment_id', appointmentId)
 
-    if (entryError || !entry) return { success: false, error: 'Entrada financeira não encontrada.' }
-
-    // Reverte status do agendamento para confirmado
-    const { error: revertError } = await supabase
-      .from('appointments')
-      .update({ status: 'confirmado' })
-      .eq('id', appointmentId)
-    if (revertError) throw revertError
+      if (paymentIntentError) throw paymentIntentError
+    }
 
     revalidatePath('/admin')
+    revalidatePath('/reservas')
+    revalidatePath('/perfil')
     return { success: true }
   } catch (e) {
     return { success: false, error: (e as Error).message }
@@ -1299,6 +1368,361 @@ export async function listClientStats(dormantDays = 30): Promise<{
     return { clients }
   } catch (e) {
     return { clients: [], error: (e as Error).message }
+  }
+}
+
+type ClientDirectoryItem = {
+  client_key: string
+  client_id: string | null
+  name: string
+  email: string | null
+  phone: string | null
+  is_registered: boolean
+  is_blocked: boolean
+  total_bookings: number
+  total_services: number
+  total_spent: number
+  avg_rating: number | null
+  last_service_date: string | null
+  next_service_date: string | null
+  next_service_time: string | null
+}
+
+function sortClientDirectory(a: ClientDirectoryItem, b: ClientDirectoryItem) {
+  return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
+}
+
+export async function listClientDirectory(dormantDays = 30): Promise<{
+  directory: ClientDirectoryItem[]
+  ranking: ClientDirectoryItem[]
+  dormant: ClientDirectoryItem[]
+  totals: { total_clients: number; registered_clients: number; visitor_clients: number }
+  error?: string
+}> {
+  try {
+    const { supabase } = await requireAdmin()
+    const now = new Date()
+
+    const { data: appointments, error: appointmentError } = await supabase
+      .from('appointments')
+      .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_price_snapshot')
+      .is('deleted_at', null)
+      .is('admin_hidden_at', null)
+      .order('date', { ascending: false })
+      .order('start_time', { ascending: false })
+
+    if (appointmentError) throw appointmentError
+
+    if (!appointments || appointments.length === 0) {
+      return {
+        directory: [],
+        ranking: [],
+        dormant: [],
+        totals: { total_clients: 0, registered_clients: 0, visitor_clients: 0 },
+      }
+    }
+
+    const directClientIds = [...new Set(appointments.map((appointment) => appointment.client_id).filter(Boolean))] as string[]
+    const visitorPhones = [...new Set(
+      appointments
+        .filter((appointment) => !appointment.client_id)
+        .map((appointment) => normalizePhoneLookup(appointment.client_phone))
+        .filter((phone): phone is string => Boolean(phone))
+    )]
+
+    const [{ data: directProfiles }, { data: phoneProfiles }, { data: ratings }] = await Promise.all([
+      directClientIds.length > 0
+        ? supabase.from('profiles').select('id, email, display_name, phone, is_blocked').in('id', directClientIds)
+        : Promise.resolve({ data: [] }),
+      visitorPhones.length > 0
+        ? supabase.from('profiles').select('id, email, display_name, phone, is_blocked').in('phone', visitorPhones)
+        : Promise.resolve({ data: [] }),
+      supabase.from('client_ratings').select('appointment_id, score').in('appointment_id', appointments.map((appointment) => appointment.id)),
+    ])
+
+    const profileById = new Map((directProfiles ?? []).map((profile) => [profile.id, profile]))
+    for (const profile of phoneProfiles ?? []) {
+      if (!profileById.has(profile.id)) {
+        profileById.set(profile.id, profile)
+      }
+    }
+
+    const profileByPhone = new Map(
+      (phoneProfiles ?? [])
+        .map((profile) => [normalizePhoneLookup(profile.phone), profile] as const)
+        .filter((entry): entry is [string, NonNullable<typeof phoneProfiles>[number]] => Boolean(entry[0]))
+    )
+
+    const appointmentClientKey = new Map<string, string>()
+    const ratingBuckets = new Map<string, number[]>()
+    const directoryMap = new Map<string, ClientDirectoryItem>()
+
+    for (const appointment of appointments) {
+      const normalizedPhone = normalizePhoneLookup(appointment.client_phone)
+      const matchedProfile = appointment.client_id
+        ? profileById.get(appointment.client_id)
+        : normalizedPhone
+        ? profileByPhone.get(normalizedPhone)
+        : null
+
+      const resolvedClientId = appointment.client_id ?? matchedProfile?.id ?? null
+      const clientKey = resolvedClientId
+        ? buildRegisteredClientKey(resolvedClientId)
+        : buildVisitorClientKey(normalizedPhone ?? appointment.id)
+      appointmentClientKey.set(appointment.id, clientKey)
+
+      const current = directoryMap.get(clientKey) ?? {
+        client_key: clientKey,
+        client_id: resolvedClientId,
+        name: matchedProfile?.display_name ?? appointment.client_name ?? matchedProfile?.email ?? 'Visitante',
+        email: matchedProfile?.email ?? appointment.client_email ?? null,
+        phone: matchedProfile?.phone ?? normalizedPhone ?? appointment.client_phone ?? null,
+        is_registered: Boolean(resolvedClientId),
+        is_blocked: matchedProfile?.is_blocked ?? false,
+        total_bookings: 0,
+        total_services: 0,
+        total_spent: 0,
+        avg_rating: null,
+        last_service_date: null,
+        next_service_date: null,
+        next_service_time: null,
+      }
+
+      current.total_bookings += 1
+
+      if (appointment.status === 'concluido') {
+        current.total_services += 1
+        current.total_spent += appointment.service_price_snapshot ?? 0
+        if (!current.last_service_date || appointment.date > current.last_service_date) {
+          current.last_service_date = appointment.date
+        }
+      }
+
+      if (
+        (appointment.status === 'confirmado' || appointment.status === 'aguardando_pagamento') &&
+        !isAppointmentPast(appointment.date, appointment.start_time, now)
+      ) {
+        const isEarlier = !current.next_service_date
+          || appointment.date < current.next_service_date
+          || (appointment.date === current.next_service_date && appointment.start_time < (current.next_service_time ?? '23:59:59'))
+
+        if (isEarlier) {
+          current.next_service_date = appointment.date
+          current.next_service_time = appointment.start_time
+        }
+      }
+
+      directoryMap.set(clientKey, current)
+    }
+
+    for (const rating of ratings ?? []) {
+      const clientKey = appointmentClientKey.get(rating.appointment_id)
+      if (!clientKey) continue
+      const bucket = ratingBuckets.get(clientKey) ?? []
+      bucket.push(rating.score)
+      ratingBuckets.set(clientKey, bucket)
+    }
+
+    const directory = Array.from(directoryMap.values()).map((client) => {
+      const scores = ratingBuckets.get(client.client_key)
+      return {
+        ...client,
+        avg_rating: scores && scores.length > 0
+          ? Math.round((scores.reduce((acc, score) => acc + score, 0) / scores.length) * 10) / 10
+          : null,
+      }
+    }).sort(sortClientDirectory)
+
+    const ranking = [...directory]
+      .filter((client) => client.total_services > 0)
+      .sort((a, b) => {
+        if (b.total_services !== a.total_services) return b.total_services - a.total_services
+        if (b.total_spent !== a.total_spent) return b.total_spent - a.total_spent
+        return sortClientDirectory(a, b)
+      })
+      .slice(0, 10)
+
+    const dormant = directory.filter(
+      (client) => client.last_service_date && !client.next_service_date && getDaysSinceDate(client.last_service_date, now) >= dormantDays
+    )
+
+    return {
+      directory,
+      ranking,
+      dormant,
+      totals: {
+        total_clients: directory.length,
+        registered_clients: directory.filter((client) => client.is_registered).length,
+        visitor_clients: directory.filter((client) => !client.is_registered).length,
+      },
+    }
+  } catch (e) {
+    return {
+      directory: [],
+      ranking: [],
+      dormant: [],
+      totals: { total_clients: 0, registered_clients: 0, visitor_clients: 0 },
+      error: (e as Error).message,
+    }
+  }
+}
+
+export async function getClientDirectoryDetails(clientKey: string): Promise<{
+  success: boolean
+  data?: {
+    client: ClientDirectoryItem
+    appointments: {
+      id: string
+      date: string
+      start_time: string
+      status: string
+      service_name_snapshot: string | null
+      service_price_snapshot: number | null
+      payment_context: 'paid_online' | 'pay_locally' | 'paid' | 'refunded' | null
+      rating_score: number | null
+      rating_note: string | null
+    }[]
+  }
+  error?: string
+}> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    const isRegistered = clientKey.startsWith('user:')
+    const targetId = clientKey.replace(/^user:|^visitor:/, '')
+
+    if (!targetId) {
+      return { success: false, error: 'Cliente inválido.' }
+    }
+
+    let profile: { id: string; email: string | null; display_name: string | null; phone: string | null; is_blocked: boolean } | null = null
+    let appointments: Array<{
+      id: string
+      client_id: string | null
+      client_name: string | null
+      client_email: string | null
+      client_phone: string | null
+      date: string
+      start_time: string
+      status: 'confirmado' | 'concluido' | 'cancelado' | 'faltou' | 'aguardando_pagamento'
+      service_name_snapshot: string | null
+      service_price_snapshot: number | null
+    }> = []
+
+    if (isRegistered) {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('id, email, display_name, phone, is_blocked')
+        .eq('id', targetId)
+        .single()
+
+      profile = profileData
+
+      const directAppointments = await supabase
+        .from('appointments')
+        .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
+        .eq('client_id', targetId)
+        .is('deleted_at', null)
+        .order('date', { ascending: false })
+        .order('start_time', { ascending: false })
+
+      const phoneAppointments = profile?.phone
+        ? await supabase
+            .from('appointments')
+            .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
+            .is('client_id', null)
+            .eq('client_phone', normalizePhoneLookup(profile.phone))
+            .is('deleted_at', null)
+            .order('date', { ascending: false })
+            .order('start_time', { ascending: false })
+        : { data: [] }
+
+      appointments = Array.from(
+        new Map(
+          [...(directAppointments.data ?? []), ...(phoneAppointments.data ?? [])].map((appointment) => [appointment.id, appointment])
+        ).values()
+      )
+    } else {
+      const normalizedPhone = normalizePhoneLookup(targetId)
+      const { data } = await supabase
+        .from('appointments')
+        .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
+        .is('client_id', null)
+        .eq('client_phone', normalizedPhone)
+        .is('deleted_at', null)
+        .order('date', { ascending: false })
+        .order('start_time', { ascending: false })
+
+      appointments = data ?? []
+    }
+
+    if (appointments.length === 0 && !profile) {
+      return { success: false, error: 'Cliente não encontrado.' }
+    }
+
+    const appointmentIds = appointments.map((appointment) => appointment.id)
+    const [{ data: ratings }, paymentSummaryById] = await Promise.all([
+      appointmentIds.length > 0
+        ? supabase.from('client_ratings').select('appointment_id, score, note').in('appointment_id', appointmentIds)
+        : Promise.resolve({ data: [] }),
+      getAppointmentPaymentSummaryMap(appointmentIds),
+    ])
+
+    const ratingByAppointmentId = new Map((ratings ?? []).map((rating) => [rating.appointment_id, rating]))
+    const now = new Date()
+
+    const timeline = appointments.map((appointment) => ({
+      id: appointment.id,
+      date: appointment.date,
+      start_time: appointment.start_time,
+      status: getAppointmentOperationalStatus(appointment.status, appointment.date, appointment.start_time, now),
+      service_name_snapshot: appointment.service_name_snapshot,
+      service_price_snapshot: appointment.service_price_snapshot,
+      payment_context: paymentSummaryById[appointment.id]?.paymentContext ?? null,
+      rating_score: ratingByAppointmentId.get(appointment.id)?.score ?? null,
+      rating_note: ratingByAppointmentId.get(appointment.id)?.note ?? null,
+    }))
+
+    const totalServices = timeline.filter((appointment) => appointment.status === 'concluido').length
+    const totalSpent = timeline.reduce((total, appointment) => total + (appointment.status === 'concluido' ? appointment.service_price_snapshot ?? 0 : 0), 0)
+    const completedAppointments = timeline.filter((appointment) => appointment.status === 'concluido')
+    const upcomingAppointments = timeline.filter(
+      (appointment) => (appointment.status === 'confirmado' || appointment.status === 'aguardando_pagamento') && !isAppointmentPast(appointment.date, appointment.start_time, now)
+    )
+    const scores = timeline.map((appointment) => appointment.rating_score).filter((score): score is number => typeof score === 'number')
+    const nextAppointment = [...upcomingAppointments].sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date)
+      return a.start_time.localeCompare(b.start_time)
+    })[0]
+
+    const client: ClientDirectoryItem = {
+      client_key: clientKey,
+      client_id: profile?.id ?? null,
+      name: profile?.display_name ?? appointments[0]?.client_name ?? profile?.email ?? 'Visitante',
+      email: profile?.email ?? appointments[0]?.client_email ?? null,
+      phone: profile?.phone ?? normalizePhoneLookup(appointments[0]?.client_phone) ?? appointments[0]?.client_phone ?? null,
+      is_registered: Boolean(profile?.id),
+      is_blocked: profile?.is_blocked ?? false,
+      total_bookings: timeline.length,
+      total_services: totalServices,
+      total_spent: totalSpent,
+      avg_rating: scores.length > 0
+        ? Math.round((scores.reduce((acc, score) => acc + score, 0) / scores.length) * 10) / 10
+        : null,
+      last_service_date: completedAppointments[0]?.date ?? null,
+      next_service_date: nextAppointment?.date ?? null,
+      next_service_time: nextAppointment?.start_time ?? null,
+    }
+
+    return {
+      success: true,
+      data: {
+        client,
+        appointments: timeline,
+      },
+    }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
   }
 }
 

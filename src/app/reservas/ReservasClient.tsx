@@ -37,6 +37,7 @@ interface HistoryAppt {
   status: string
   service_name_snapshot: string | null
   services: { name: string } | null
+  payment_context: AppointmentPaymentContext | null
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -45,18 +46,14 @@ const STATUS_LABEL: Record<string, string> = {
   cancelado: 'Cancelado',
   faltou: 'Faltou',
   aguardando_pagamento: 'Aguardando pagamento',
-}
-const STATUS_COLOR: Record<string, string> = {
-  confirmado: 'text-emerald-400',
-  concluido: 'text-blue-400',
-  cancelado: 'text-zinc-500',
-  faltou: 'text-amber-400',
-  aguardando_pagamento: 'text-yellow-400',
+  aguardando_acao_barbeiro: 'Aguardando ação do barbeiro',
 }
 
 const APPOINTMENT_PAYMENT_LABEL: Record<AppointmentPaymentContext, string> = {
   paid_online: 'Pago online',
   pay_locally: 'Pagar no local',
+  paid: 'Pago',
+  refunded: 'Estornado',
 }
 
 interface Props {
@@ -71,21 +68,30 @@ interface Props {
 }
 
 function AppointmentStatusBadge({ status }: { status: string }) {
-  const isConfirmed = status === 'confirmado'
-  const isPending = status === 'aguardando_pagamento'
+  const styleByStatus: Record<string, string> = {
+    confirmado: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300',
+    concluido: 'border-blue-500/30 bg-blue-500/12 text-blue-300',
+    cancelado: 'border-white/10 bg-white/5 text-zinc-400',
+    faltou: 'border-amber-500/30 bg-amber-500/12 text-amber-300',
+    aguardando_pagamento: 'border-yellow-500/30 bg-yellow-500/12 text-yellow-300',
+    aguardando_acao_barbeiro: 'border-orange-500/30 bg-orange-500/12 text-orange-300',
+  }
+  const Icon = status === 'confirmado'
+    ? Check
+    : status === 'aguardando_pagamento'
+    ? QrCode
+    : status === 'aguardando_acao_barbeiro'
+    ? AlertTriangle
+    : null
 
   return (
     <span
       className={[
         'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest',
-        isConfirmed
-          ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300'
-          : isPending
-          ? 'border-yellow-500/30 bg-yellow-500/12 text-yellow-300'
-          : 'border-white/10 bg-white/5 text-zinc-400',
+        styleByStatus[status] ?? 'border-white/10 bg-white/5 text-zinc-400',
       ].join(' ')}
     >
-      {isConfirmed ? <Check size={11} /> : isPending ? <QrCode size={11} /> : null}
+      {Icon ? <Icon size={11} /> : null}
       {STATUS_LABEL[status] ?? status}
     </span>
   )
@@ -94,15 +100,18 @@ function AppointmentStatusBadge({ status }: { status: string }) {
 function AppointmentPaymentBadge({ paymentContext }: { paymentContext: AppointmentPaymentContext | null }) {
   if (!paymentContext) return null
 
-  const isPaidOnline = paymentContext === 'paid_online'
+  const styleByContext: Record<AppointmentPaymentContext, string> = {
+    paid_online: 'border-sky-500/30 bg-sky-500/12 text-sky-200',
+    pay_locally: 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',
+    paid: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-200',
+    refunded: 'border-orange-500/30 bg-orange-500/12 text-orange-200',
+  }
 
   return (
     <span
       className={[
         'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest',
-        isPaidOnline
-          ? 'border-sky-500/30 bg-sky-500/12 text-sky-200'
-          : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',
+        styleByContext[paymentContext],
       ].join(' ')}
     >
       {APPOINTMENT_PAYMENT_LABEL[paymentContext]}
@@ -486,8 +495,9 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                             <p className="text-sm font-semibold text-white truncate">
                               {appt.service_name_snapshot ?? (appt.services as { name: string } | null)?.name ?? 'Serviço'}
                             </p>
-                            <div className="mt-1">
+                            <div className="mt-1 flex flex-wrap gap-2">
                               <AppointmentStatusBadge status={appt.status} />
+                              <AppointmentPaymentBadge paymentContext={appt.payment_context} />
                             </div>
                           </div>
                         </div>
