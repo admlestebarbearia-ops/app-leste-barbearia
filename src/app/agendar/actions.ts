@@ -187,6 +187,12 @@ export async function getAvailableSlots(
     )
   }
 
+  // BRT = UTC-3, fixo (Brasil não usa horário de verão desde 2019).
+  // Os horários armazenados no DB são horários de relógio BRT. O servidor Vercel
+  // roda em UTC, então new Date() retorna UTC. Subtraímos 3h para que a comparação
+  // "passou essa hora hoje?" ocorra no mesmo referencial dos horários armazenados.
+  const nowInBRT = new Date(Date.now() - 3 * 60 * 60 * 1_000)
+
   return calculateAvailableSlots({
     date,
     serviceDurationMinutes: duration,
@@ -195,6 +201,7 @@ export async function getAvailableSlots(
     workingHours: typedWH,
     specialSchedule: typedSpecial,
     existingAppointments: normalizedExistingAppointments,
+    now: nowInBRT,
   })
 }
 
