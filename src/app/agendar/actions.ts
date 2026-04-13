@@ -23,6 +23,7 @@ import {
 import { revalidatePath } from 'next/cache'
 import { format } from 'date-fns'
 import type { WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
+import { isPaymentIntentExpired, shouldReuseMercadoPagoPayment } from '@/lib/mercadopago/payment-flow'
 
 function buildOwnershipFilter(userId: string | null, lookupPhones: string[]) {
   return [
@@ -539,6 +540,7 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
     serviceName: string
     serviceDate: string
     serviceTime: string
+    existingPaymentId?: string
   }
   error?: string
 }> {
@@ -564,6 +566,31 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
     return { error: 'Valor do pagamento indisponivel.' }
   }
 
+  const adminClient = createAdminClient()
+  const { data: paymentIntent } = await adminClient
+    .from('payment_intents')
+    .select('status, mp_payment_id, expires_at')
+    .eq('appointment_id', appointmentId)
+    .single()
+
+  if (!paymentIntent) {
+    return { error: 'Controle de pagamento nao encontrado.' }
+  }
+
+  if (isPaymentIntentExpired(paymentIntent.expires_at)) {
+    await adminClient
+      .from('payment_intents')
+      .update({ status: 'expired', updated_at: new Date().toISOString() })
+      .eq('appointment_id', appointmentId)
+      .eq('status', 'pending')
+
+    return { error: 'Prazo de pagamento expirado. Faca um novo agendamento.' }
+  }
+
+  const existingPaymentId = paymentIntent.mp_payment_id && shouldReuseMercadoPagoPayment(paymentIntent.status)
+    ? paymentIntent.mp_payment_id
+    : undefined
+
   return {
     appointment: {
       id: appt.id,
@@ -571,7 +598,61 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
       serviceName: appt.service_name_snapshot ?? service?.name ?? 'Serviço',
       serviceDate: appt.date,
       serviceTime: appt.start_time.slice(0, 5),
+      existingPaymentId,
     },
+  }
+}
+
+export async function getPendingPaymentStatus(appointmentId: string): Promise<{
+  appointmentStatus?: string
+  paymentIntentStatus?: string | null
+  paymentId?: string | null
+  error?: string
+}> {
+  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+
+  if (!ownershipFilter) {
+    return { error: 'Identificacao da reserva nao encontrada neste aparelho.' }
+  }
+
+  const { data: appt } = await supabase
+    .from('appointments')
+    .select('id, status')
+    .eq('id', appointmentId)
+    .or(ownershipFilter)
+    .single()
+
+  if (!appt) {
+    return { error: 'Agendamento nao encontrado.' }
+  }
+
+  const adminClient = createAdminClient()
+  const { data: paymentIntent } = await adminClient
+    .from('payment_intents')
+    .select('status, mp_payment_id, expires_at')
+    .eq('appointment_id', appointmentId)
+    .single()
+
+  if (!paymentIntent) {
+    return { appointmentStatus: appt.status, paymentIntentStatus: null, paymentId: null }
+  }
+
+  let resolvedPaymentIntentStatus = paymentIntent.status
+  if (isPaymentIntentExpired(paymentIntent.expires_at) && paymentIntent.status === 'pending') {
+    await adminClient
+      .from('payment_intents')
+      .update({ status: 'expired', updated_at: new Date().toISOString() })
+      .eq('appointment_id', appointmentId)
+      .eq('status', 'pending')
+
+    resolvedPaymentIntentStatus = 'expired'
+  }
+
+  return {
+    appointmentStatus: appt.status,
+    paymentIntentStatus: resolvedPaymentIntentStatus,
+    paymentId: paymentIntent.mp_payment_id,
   }
 }
 

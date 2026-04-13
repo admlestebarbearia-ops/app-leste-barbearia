@@ -68,7 +68,7 @@ test.describe('Proteção de rotas — sem login', () => {
     await page.goto(`${BASE}/reservas`)
     // Pode redirecionar para / ou mostrar campo de telefone
     const url = page.url()
-    const mostraLogin = url === `${BASE}/` || url === `${BASE}`
+    const mostraLogin = new URL(url).pathname === '/'
     const mostraTelefone = await page.locator('input[type="tel"], input[placeholder*="telefone"]').isVisible().catch(() => false)
     expect(mostraLogin || mostraTelefone).toBeTruthy()
   })
@@ -79,14 +79,14 @@ test.describe('Páginas estáticas', () => {
     await page.goto(`${BASE}/termos`)
     await expect(page).toHaveURL(/termos/)
     // Deve ter algum texto de conteúdo legal
-    const body = await page.locator('main, body').textContent()
+    const body = await page.locator('main').textContent()
     expect(body!.length).toBeGreaterThan(100)
   })
 
   test('/privacidade carrega com conteúdo', async ({ page }) => {
     await page.goto(`${BASE}/privacidade`)
     await expect(page).toHaveURL(/privacidade/)
-    const body = await page.locator('main, body').textContent()
+    const body = await page.locator('main').textContent()
     expect(body!.length).toBeGreaterThan(100)
   })
 

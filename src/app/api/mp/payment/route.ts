@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { MercadoPagoConfig, Payment } from 'mercadopago'
 import { randomUUID } from 'crypto'
+import {
+  buildPaymentCreationIdempotencyKey,
+  isPaymentIntentExpired,
+  mapMercadoPagoStatusToIntentStatus,
+  shouldReuseMercadoPagoPayment,
+  validateMercadoPagoPaymentRequest,
+} from '@/lib/mercadopago/payment-flow'
 
 // Campos permitidos vindos do Payment Brick — whitelist de segurança
 const ALLOWED_FORM_FIELDS = [
@@ -21,6 +28,23 @@ function sanitizeFormData(raw: Record<string, unknown>): Record<string, unknown>
       (ALLOWED_FORM_FIELDS as readonly string[]).includes(key as AllowedField)
     )
   )
+}
+
+async function fetchMpPaymentStatus(paymentId: string, accessToken: string) {
+  const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
+  })
+
+  if (!res.ok) {
+    throw new Error(`MP API retornou ${res.status}`)
+  }
+
+  return res.json() as Promise<{
+    id: number
+    status: string
+    status_detail?: string
+  }>
 }
 
 export async function POST(req: NextRequest) {
@@ -61,6 +85,32 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const { data: paymentIntent } = await admin
+    .from('payment_intents')
+    .select('id, status, mp_payment_id, expires_at')
+    .eq('appointment_id', appointmentId)
+    .single()
+
+  if (!paymentIntent) {
+    return NextResponse.json(
+      { error: 'Controle de pagamento não encontrado.' },
+      { status: 409 }
+    )
+  }
+
+  if (isPaymentIntentExpired(paymentIntent.expires_at)) {
+    await admin
+      .from('payment_intents')
+      .update({ status: 'expired', updated_at: new Date().toISOString() })
+      .eq('id', paymentIntent.id)
+      .eq('status', 'pending')
+
+    return NextResponse.json(
+      { error: 'Prazo de pagamento expirado. Faça um novo agendamento.' },
+      { status: 409 }
+    )
+  }
+
   // Obtém access token do Mercado Pago do banco (fonte confiável)
   const { data: config } = await admin
     .from('business_config')
@@ -83,36 +133,73 @@ export async function POST(req: NextRequest) {
 
   // Sanitiza campos do formulário (remove qualquer campo injetado pelo cliente)
   const safeFormData = sanitizeFormData(formData)
+  const paymentDescription = appt.service_name_snapshot ?? 'Serviço Barbearia'
+
+  const validationError = validateMercadoPagoPaymentRequest({
+    appointmentId,
+    amount: Number(appt.service_price_snapshot),
+    description: paymentDescription,
+    formData: safeFormData,
+  })
+
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 })
+  }
 
   try {
+    if (paymentIntent.mp_payment_id && shouldReuseMercadoPagoPayment(paymentIntent.status)) {
+      const existingPayment = await fetchMpPaymentStatus(paymentIntent.mp_payment_id, config.mp_access_token)
+      const existingIntentStatus = mapMercadoPagoStatusToIntentStatus(existingPayment.status)
+
+      await admin
+        .from('payment_intents')
+        .update({
+          status: existingIntentStatus,
+          mp_payment_id: String(existingPayment.id),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', paymentIntent.id)
+
+      if (shouldReuseMercadoPagoPayment(existingPayment.status)) {
+        return NextResponse.json({
+          status: existingPayment.status,
+          statusDetail: existingPayment.status_detail,
+          paymentId: existingPayment.id,
+          reused: true,
+        })
+      }
+    }
+
     const payment = await mpPayment.create({
       body: {
         ...safeFormData,
         // Valores confiáveis do banco — nunca do cliente
         transaction_amount: Number(appt.service_price_snapshot),
-        description: appt.service_name_snapshot ?? 'Serviço Barbearia',
+        description: paymentDescription,
         statement_descriptor: 'BARBEARIA LESTE',
         external_reference: appointmentId,
         installments: 1,
         notification_url: `${baseUrl}/api/webhooks/mercadopago`,
       },
       requestOptions: {
-        idempotencyKey: randomUUID(),
+        idempotencyKey: paymentIntent.mp_payment_id
+          ? randomUUID()
+          : buildPaymentCreationIdempotencyKey(paymentIntent.id),
       },
     })
 
+    const mappedIntentStatus = mapMercadoPagoStatusToIntentStatus(payment.status)
+
     // O backend NUNCA confirma o agendamento aqui.
-    // A confirmação oficial vem apenas pelo webhook do Mercado Pago,
-    // que valida o pagamento e sincroniza o status do agendamento.
-    // Aqui persistimos apenas o estado técnico do intento para evitar expiração indevida.
+    // A confirmação oficial vem apenas pelo webhook do Mercado Pago.
     await admin
       .from('payment_intents')
       .update({
-        status: payment.status === 'approved' ? 'approved' : 'pending',
+        status: mappedIntentStatus,
         mp_payment_id: payment.id ? String(payment.id) : null,
         updated_at: new Date().toISOString(),
       })
-      .eq('appointment_id', appointmentId)
+      .eq('id', paymentIntent.id)
 
     return NextResponse.json({
       status: payment.status,

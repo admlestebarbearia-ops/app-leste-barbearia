@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createHmac, timingSafeEqual } from 'crypto'
+import { mapMercadoPagoStatusToIntentStatus } from '@/lib/mercadopago/payment-flow'
 
 // ─── Valida assinatura do webhook (x-signature header) ───────────────────────
 // Conforme documentação MP: https://www.mercadopago.com.br/developers/pt/docs/your-integrations/notifications/webhooks
@@ -126,37 +127,40 @@ export async function POST(request: NextRequest) {
       newIntentStatus = 'approved'
     } else if (payment.status === 'rejected' || payment.status === 'cancelled') {
       newAppointmentStatus = 'cancelado'
-      newIntentStatus = payment.status === 'rejected' ? 'rejected' : 'cancelled'
+      newIntentStatus = mapMercadoPagoStatusToIntentStatus(payment.status)
     } else if (payment.status === 'refunded' || payment.status === 'charged_back') {
       // Reembolso emitido pelo MP/banco — retorna agendamento para cancelado
       newAppointmentStatus = 'cancelado'
-      newIntentStatus = payment.status
+      newIntentStatus = mapMercadoPagoStatusToIntentStatus(payment.status)
     } else if (payment.status === 'pending' || payment.status === 'in_process') {
       // Pagamento pendente (ex: PIX aguardando) — mantém aguardando_pagamento
-      newIntentStatus = 'pending'
+      newIntentStatus = mapMercadoPagoStatusToIntentStatus(payment.status)
     }
 
     // Atualiza payment_intent (sem filtrar por status anterior — permite atualizações subsequentes)
     if (newIntentStatus) {
-      await adminClient
+      const { error: intentError } = await adminClient
         .from('payment_intents')
         .update({ status: newIntentStatus, mp_payment_id: paymentId, updated_at: new Date().toISOString() })
         .eq('appointment_id', appointmentId)
+
+      if (intentError) throw intentError
     }
 
     // Atualiza o agendamento
     if (newAppointmentStatus) {
-      await adminClient
+      const { error: appointmentError } = await adminClient
         .from('appointments')
         .update({ status: newAppointmentStatus })
         .eq('id', appointmentId)
         .in('status', ['aguardando_pagamento', 'confirmado'])
+
+      if (appointmentError) throw appointmentError
     }
 
     return NextResponse.json({ received: true })
   } catch (error) {
     console.error('[MP Webhook] Erro ao processar:', error)
-    // Retorna 200 para evitar reenvio infinito do MP
-    return NextResponse.json({ received: true })
+    return NextResponse.json({ received: false }, { status: 500 })
   }
 }

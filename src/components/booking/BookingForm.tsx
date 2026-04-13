@@ -468,7 +468,7 @@ export function BookingForm({
   )
 
 const handleConfirm = async () => {
-    if (isSubmitting || isPending) return
+  if (isSubmittingRef.current || isSubmitting || isPending) return
     if (!selectedService || !selectedDate || !selectedTime) return
     if (!barber) {
       toast.error('Nenhum barbeiro esta disponivel no momento. Tente novamente em instantes.')
@@ -527,6 +527,7 @@ const handleConfirm = async () => {
   }
 
   const submitBooking = (overridePhone?: string) => {
+    if (isSubmittingRef.current) return
     if (!selectedService || !selectedDate || !selectedTime) return
     if (!barber) {
       toast.error('Nenhum barbeiro esta disponivel no momento. Tente novamente em instantes.')
@@ -562,9 +563,6 @@ const handleConfirm = async () => {
               serviceTime: selectedTime,
               mpMethod: selectedMpMethod ?? undefined,
             })
-            // isSubmitting fica false após o setPaymentData — o brick assume o controle
-            isSubmittingRef.current = false
-            setIsSubmitting(false)
           } else {
             // cash=1 informa a página de sucesso para exibir aviso de pagamento presencial
             const cashFlag = paymentChoice === 'cash' ? '&cash=1' : ''
@@ -584,6 +582,12 @@ const handleConfirm = async () => {
       }
     })
   }
+
+  useEffect(() => {
+    if (!paymentData) return
+    isSubmittingRef.current = false
+    setIsSubmitting(false)
+  }, [paymentData])
 
   const handleOpenProfile = () => {
     if (isAuthenticatedUser) {

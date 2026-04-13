@@ -13,6 +13,7 @@ interface Props {
     serviceName: string
     serviceDate: string
     serviceTime: string
+    existingPaymentId?: string
   }
   publicKey: string
 }
@@ -60,6 +61,7 @@ export function ResumePaymentCheckout({ appointment, publicKey }: Props) {
             amount={appointment.amount}
             appointmentId={appointment.id}
             publicKey={publicKey}
+            existingPaymentId={appointment.existingPaymentId}
             onSuccess={(apptId) => router.push(`/agendar/pagamento/sucesso?appt_id=${apptId}`)}
             onError={(message) => toast.error(message)}
           />

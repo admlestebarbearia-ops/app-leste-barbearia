@@ -1,11 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { initMercadoPago, Payment, StatusScreen } from '@mercadopago/sdk-react'
+import type { IPaymentBrickCustomization } from '@mercadopago/sdk-react/esm/bricks/payment/type'
 import type { TPaymentType } from '@mercadopago/sdk-react/esm/bricks/payment/type'
 import type { IBrickError } from '@mercadopago/sdk-react/esm/bricks/util/types/common'
+import { getPendingPaymentStatus } from '@/app/agendar/actions'
 
 type OnSubmitParam = Parameters<TPaymentType['onSubmit']>[0]
+const MP_STATUS_POLL_ATTEMPTS = 6
+const MP_STATUS_POLL_INTERVAL_MS = 2000
+const noop = () => {}
 
 // ─── Guard em nível de módulo ─────────────────────────────────────────────────
 // O initMercadoPago NÃO pode ser chamado múltiplas vezes. Usando uma variável de
@@ -19,6 +24,7 @@ interface Props {
   appointmentId: string
   publicKey: string
   paymentMethod?: 'pix' | 'card'
+  existingPaymentId?: string
   onSuccess: (appointmentId: string) => void
   onError?: (message: string) => void
 }
@@ -29,33 +35,149 @@ export function PaymentBrick({
   appointmentId,
   publicKey,
   paymentMethod,
+  existingPaymentId,
   onSuccess,
   onError,
 }: Props) {
   const [ready, setReady] = useState(false)
-  const [paymentId, setPaymentId] = useState<string | null>(null)
+  const [paymentId, setPaymentId] = useState<string | null>(existingPaymentId ?? null)
   const [submitting, setSubmitting] = useState(false)
+  const [checkingStatus, setCheckingStatus] = useState(false)
   // Controle de erro crítico do Brick (ex: fields_setup_failed_after_3_tries).
   // Quando ocorre, exibimos UI de recuperação em vez de propagar ao pai —
   // o agendamento continua "aguardando_pagamento"; não é cancelado.
   const [brickFailed, setBrickFailed] = useState(false)
   // Incrementar força remontagem do componente <Payment> sem recriar o agendamento.
   const [retryKey, setRetryKey] = useState(0)
+  const onSuccessRef = useRef(onSuccess)
+  const onErrorRef = useRef(onError)
+  const statusPollInFlightRef = useRef(false)
+  const activePaymentId = paymentId ?? existingPaymentId ?? null
+
+  useEffect(() => { onSuccessRef.current = onSuccess }, [onSuccess])
+  useEffect(() => { onErrorRef.current = onError }, [onError])
+  useEffect(() => { if (existingPaymentId) setPaymentId(existingPaymentId) }, [existingPaymentId])
+
+  const configError = useMemo(() => {
+    if (!publicKey.trim()) return 'Chave pública do Mercado Pago não configurada.'
+    if (!/^[0-9a-f-]{36}$/i.test(appointmentId)) return 'Agendamento inválido para iniciar pagamento.'
+    if (!Number.isFinite(amount) || amount <= 0) return 'Valor do pagamento inválido.'
+    return null
+  }, [amount, appointmentId, publicKey])
+
+  const paymentInitialization = useMemo(() => ({
+    amount,
+    ...(preferenceId ? { preferenceId } : {}),
+  }), [amount, preferenceId])
+
+  const paymentCustomization = useMemo<IPaymentBrickCustomization>(() => {
+    const paymentMethods: IPaymentBrickCustomization['paymentMethods'] = paymentMethod === 'pix'
+      ? { bankTransfer: 'all' }
+      : paymentMethod === 'card'
+      ? { creditCard: 'all' }
+      : { mercadoPago: 'all', creditCard: 'all', bankTransfer: 'all' }
+
+    const visual: NonNullable<IPaymentBrickCustomization['visual']> = {
+      style: { theme: 'dark' },
+      hideFormTitle: true,
+      ...(paymentMethod === 'pix'
+        ? { defaultPaymentOption: { bankTransferForm: true } }
+        : paymentMethod === 'card'
+        ? { defaultPaymentOption: { creditCardForm: true } }
+        : {}),
+    }
+
+    return {
+      paymentMethods,
+      visual,
+    }
+  }, [paymentMethod])
+
+  const checkBackendConfirmation = useCallback(async (options?: { attempts?: number; silent?: boolean }) => {
+    if (statusPollInFlightRef.current) return false
+
+    statusPollInFlightRef.current = true
+    setCheckingStatus(true)
+
+    try {
+      const attempts = options?.attempts ?? MP_STATUS_POLL_ATTEMPTS
+
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const snapshot = await getPendingPaymentStatus(appointmentId)
+
+        if (snapshot.error) {
+          if (!options?.silent) {
+            onErrorRef.current?.(snapshot.error)
+          }
+          return false
+        }
+
+        if (snapshot.appointmentStatus === 'confirmado') {
+          onSuccessRef.current(appointmentId)
+          return true
+        }
+
+        if (snapshot.appointmentStatus === 'cancelado' || snapshot.paymentIntentStatus === 'cancelled' || snapshot.paymentIntentStatus === 'expired') {
+          if (!options?.silent) {
+            onErrorRef.current?.('Pagamento não está mais disponível. Faça um novo agendamento.')
+          }
+          return false
+        }
+
+        if (snapshot.paymentId && !paymentId) {
+          setPaymentId(snapshot.paymentId)
+        }
+
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, MP_STATUS_POLL_INTERVAL_MS))
+        }
+      }
+
+      if (!options?.silent) {
+        onErrorRef.current?.('Ainda aguardando confirmação do banco. Tente verificar novamente em instantes.')
+      }
+
+      return false
+    } finally {
+      statusPollInFlightRef.current = false
+      setCheckingStatus(false)
+    }
+  }, [appointmentId, paymentId])
 
   useEffect(() => {
+    if (configError) {
+      setReady(false)
+      return
+    }
+
     if (_mpInitialized) {
       setReady(true)
       return
     }
-    _mpInitialized = true
-    initMercadoPago(publicKey, { locale: 'pt-BR' })
-    setReady(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [publicKey, retryKey])
 
-  const handleSubmit = async (param: OnSubmitParam) => {
+    try {
+      _mpInitialized = true
+      initMercadoPago(publicKey, { locale: 'pt-BR' })
+      setReady(true)
+    } catch (error) {
+      console.error('[MP SDK init]', error)
+      _mpInitialized = false
+      setReady(false)
+      setBrickFailed(true)
+      onErrorRef.current?.('Falha ao iniciar o formulário de pagamento. Tente novamente.')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configError, publicKey, retryKey])
+
+  useEffect(() => {
+    if (!activePaymentId) return
+    void checkBackendConfirmation({ attempts: 2, silent: true })
+  }, [activePaymentId, checkBackendConfirmation])
+
+  const handleSubmit = useCallback(async (param: OnSubmitParam) => {
     const { formData } = param
     setSubmitting(true)
+
     try {
       const response = await fetch('/api/mp/payment', {
         method: 'POST',
@@ -69,12 +191,6 @@ export function PaymentBrick({
         throw new Error(result.error ?? 'Erro ao processar pagamento.')
       }
 
-      if (result.status === 'approved') {
-        onSuccess(appointmentId)
-        return
-      }
-
-      // PIX (pending) ou outros meios pendentes — mostra Status Screen
       if (result.paymentId) {
         setPaymentId(String(result.paymentId))
         return
@@ -83,14 +199,14 @@ export function PaymentBrick({
       throw new Error(result.statusDetail ?? 'Pagamento recusado.')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao processar pagamento.'
-      onError?.(message)
+      onErrorRef.current?.(message)
       throw err // brick detecta rejeição e exibe erro inline
     } finally {
       setSubmitting(false)
     }
-  }
+  }, [appointmentId])
 
-  const handleBrickError = (e: IBrickError) => {
+  const handleBrickError = useCallback((e: IBrickError) => {
     console.error('[MP Brick]', e)
     const isCritical = e?.type === 'critical'
     if (isCritical) {
@@ -100,9 +216,9 @@ export function PaymentBrick({
       setBrickFailed(true)
     }
     // Errors não-críticos são informativos — o brick continua funcionando.
-  }
+  }, [])
 
-  const handleRetry = () => {
+  const handleRetry = useCallback(() => {
     // Limpa script tags do SDK MercadoPago para forçar re-download limpo.
     // Necessário quando deploy skew (Vercel) causa 404 em chunks ou quando
     // o SDK falhou na inicialização e ficou com estado corrompido.
@@ -117,7 +233,18 @@ export function PaymentBrick({
     _mpInitialized = false
     setBrickFailed(false)
     setReady(false)
+    setPaymentId(null)
     setRetryKey(k => k + 1)
+  }, [])
+
+  if (configError) {
+    return (
+      <div className="bg-destructive/10 border border-destructive/30 rounded-2xl p-5 text-center">
+        <p className="text-xs font-bold text-destructive uppercase tracking-wider">
+          {configError}
+        </p>
+      </div>
+    )
   }
 
   if (!ready) {
@@ -129,11 +256,11 @@ export function PaymentBrick({
   }
 
   // Após criar pagamento PIX/pendente — Status Screen mostra QR code
-  if (paymentId) {
+  if (activePaymentId) {
     return (
       <div className="w-full">
         <StatusScreen
-          initialization={{ paymentId }}
+          initialization={{ paymentId: activePaymentId }}
           customization={{
             visual: {
               style: { theme: 'dark' },
@@ -141,14 +268,15 @@ export function PaymentBrick({
               hideTransactionDate: false,
             },
           }}
-          onReady={() => {}}
+          onReady={noop}
           onError={(e) => console.error('[MP StatusScreen]', e)}
         />
         <button
-          onClick={() => onSuccess(appointmentId)}
-          className="mt-4 w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest bg-primary text-primary-foreground"
+          onClick={() => void checkBackendConfirmation({ attempts: MP_STATUS_POLL_ATTEMPTS, silent: false })}
+          disabled={checkingStatus}
+          className="mt-4 w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest bg-primary text-primary-foreground disabled:opacity-60"
         >
-          Já paguei — Acompanhar status
+          {checkingStatus ? 'Verificando pagamento...' : 'Já paguei — Verificar agora'}
         </button>
       </div>
     )
@@ -199,25 +327,10 @@ export function PaymentBrick({
   return (
     <div key={retryKey} className={submitting ? 'opacity-70 pointer-events-none' : ''}>
       <Payment
-        initialization={{ amount }}
-        customization={{
-          paymentMethods: paymentMethod === 'pix'
-            ? { bankTransfer: 'all' }
-            : paymentMethod === 'card'
-            ? { creditCard: 'all', debitCard: 'all' }
-            : { creditCard: 'all', debitCard: 'all', bankTransfer: 'all', mercadoPago: 'all' },
-          visual: {
-            style: { theme: 'dark' },
-            hideFormTitle: true,
-            ...(paymentMethod === 'pix'
-              ? ({ defaultPaymentOption: { bankTransferForm: true } } as object)
-              : paymentMethod === 'card'
-              ? ({ defaultPaymentOption: { creditCardForm: true } } as object)
-              : {}),
-          },
-        }}
+        initialization={paymentInitialization}
+        customization={paymentCustomization}
         onSubmit={handleSubmit}
-        onReady={() => {}}
+        onReady={noop}
         onError={handleBrickError}
       />
     </div>
