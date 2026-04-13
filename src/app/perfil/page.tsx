@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import { isAuthenticatedUser } from '@/lib/auth/session-state'
 import { PerfilClient } from './PerfilClient'
 import { getMyAppointments } from '@/app/agendar/actions'
+import { getAppointmentPaymentContextMap } from '@/lib/booking/appointment-payment-context'
+import type { AppointmentPaymentContext } from '@/lib/booking/appointment-payment-context'
 
 export const metadata = {
   title: 'Meu Perfil — Leste Barbearia',
@@ -33,6 +35,19 @@ export default async function PerfilPage() {
       .single(),
   ])
 
+  const paymentContextById = await getAppointmentPaymentContextMap(
+    (appointments ?? [])
+      .filter((appointment) => appointment.status === 'confirmado')
+      .map((appointment) => appointment.id)
+  )
+
+  const appointmentsWithPaymentContext = (appointments ?? []).map((appointment) => ({
+    ...appointment,
+    payment_context: appointment.status === 'confirmado'
+      ? paymentContextById[appointment.id] ?? 'pay_locally'
+      : null,
+  }))
+
   return (
     <PerfilClient
       userId={user.id}
@@ -40,7 +55,14 @@ export default async function PerfilPage() {
       avatarUrl={(user.user_metadata?.avatar_url as string | null) ?? null}
       displayName={profile?.display_name ?? (user.user_metadata?.full_name as string | null) ?? null}
       phone={profile?.phone ?? null}
-      appointments={appointments as { id: string; date: string; start_time: string; status: string; services: { name: string; price: number } | null }[]}
+      appointments={appointmentsWithPaymentContext as {
+        id: string
+        date: string
+        start_time: string
+        status: string
+        services: { name: string; price: number } | null
+        payment_context: AppointmentPaymentContext | null
+      }[]}
       cancellationWindowMinutes={config?.cancellation_window_minutes ?? 120}
       logoUrl={config?.logo_url ?? null}
     />

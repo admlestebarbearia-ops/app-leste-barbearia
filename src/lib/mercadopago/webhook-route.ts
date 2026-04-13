@@ -1,5 +1,6 @@
 import {
   getMercadoPagoWebhookTransition,
+  parseMercadoPagoExternalReference,
   validateMercadoPagoWebhookSignature,
 } from '@/lib/mercadopago/integration-alignment'
 
@@ -14,6 +15,9 @@ export interface MercadoPagoWebhookPayment {
   status: string
   external_reference: string | null
   transaction_amount: number
+  payment_method_id?: string | null
+  payment_type_id?: string | null
+  date_approved?: string | null
 }
 
 export interface ProcessMercadoPagoWebhookDeps {
@@ -24,7 +28,17 @@ export interface ProcessMercadoPagoWebhookDeps {
     mp_payment_id: string
     updated_at: string
   }): Promise<void>
+  updateProductPaymentIntentByReservationId?(reservationId: string, patch: {
+    status: string
+    mp_payment_id: string
+    updated_at: string
+  }): Promise<void>
   updateAppointmentStatus(appointmentId: string, status: 'confirmado' | 'cancelado'): Promise<void>
+  updateProductReservationStatus?(reservationId: string, status: 'reservado' | 'cancelado'): Promise<void>
+  syncFinancialEntry?(input: {
+    target: { kind: 'appointment' | 'product_reservation'; id: string }
+    payment: MercadoPagoWebhookPayment
+  }): Promise<void>
   getNow(): Date
   webhookSecret?: string | null
   validateSignature?(input: {
@@ -92,24 +106,56 @@ export async function processMercadoPagoWebhook(
     }
 
     const payment = await deps.fetchPaymentStatus(paymentId, accessToken)
-    const appointmentId = payment.external_reference
+    const target = parseMercadoPagoExternalReference(payment.external_reference)
 
-    if (!appointmentId) {
+    if (!target) {
       return { status: 200, body: { received: true } }
     }
 
     const transition = getMercadoPagoWebhookTransition(payment.status)
+    const nowIso = deps.getNow().toISOString()
 
-    if (transition.intentStatus) {
-      await deps.updatePaymentIntentByAppointmentId(appointmentId, {
-        status: transition.intentStatus,
-        mp_payment_id: paymentId,
-        updated_at: deps.getNow().toISOString(),
-      })
+    if (target.kind === 'appointment') {
+      if (transition.intentStatus) {
+        await deps.updatePaymentIntentByAppointmentId(target.id, {
+          status: transition.intentStatus,
+          mp_payment_id: paymentId,
+          updated_at: nowIso,
+        })
+      }
+
+      if (transition.appointmentStatus) {
+        await deps.updateAppointmentStatus(target.id, transition.appointmentStatus)
+      }
+    } else {
+      if (transition.intentStatus && deps.updateProductPaymentIntentByReservationId) {
+        await deps.updateProductPaymentIntentByReservationId(target.id, {
+          status: transition.intentStatus,
+          mp_payment_id: paymentId,
+          updated_at: nowIso,
+        })
+      }
+
+      const productStatus = payment.status === 'approved'
+        ? 'reservado'
+        : transition.appointmentStatus === 'cancelado'
+        ? 'cancelado'
+        : null
+
+      if (productStatus && deps.updateProductReservationStatus) {
+        await deps.updateProductReservationStatus(target.id, productStatus)
+      }
     }
 
-    if (transition.appointmentStatus) {
-      await deps.updateAppointmentStatus(appointmentId, transition.appointmentStatus)
+    if (
+      deps.syncFinancialEntry && (
+        payment.status === 'approved' ||
+        payment.status === 'cancelled' ||
+        payment.status === 'refunded' ||
+        payment.status === 'charged_back'
+      )
+    ) {
+      await deps.syncFinancialEntry({ target, payment })
     }
 
     return { status: 200, body: { received: true } }

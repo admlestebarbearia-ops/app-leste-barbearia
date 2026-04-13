@@ -5,6 +5,8 @@ import { redirect } from 'next/navigation'
 import { ReservasClient } from './ReservasClient'
 import { dedupeById, GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
 import type { AppointmentStatus, BusinessConfig, ProductReservation } from '@/lib/supabase/types'
+import { getAppointmentPaymentContextMap } from '@/lib/booking/appointment-payment-context'
+import type { AppointmentPaymentContext } from '@/lib/booking/appointment-payment-context'
 
 interface HistoryAppt {
   id: string
@@ -112,6 +114,18 @@ export default async function ReservasPage({ searchParams }: Props) {
   ])
 
   const config = configRaw as Pick<BusinessConfig, 'cancellation_window_minutes' | 'whatsapp_number'> | null
+  const activeAppointments = dedupeById(appointments ?? [])
+  const paymentContextById = await getAppointmentPaymentContextMap(
+    activeAppointments
+      .filter((appointment) => appointment.status === 'confirmado')
+      .map((appointment) => appointment.id)
+  )
+  const hydratedAppointments = activeAppointments.map((appointment) => ({
+    ...appointment,
+    payment_context: appointment.status === 'confirmado'
+      ? paymentContextById[appointment.id] ?? 'pay_locally'
+      : null,
+  }))
   // Inclui TODOS os agendamentos no calendário — passados e futuros.
   // isReservationHistoryEntry não é mais usado aqui para não excluir futuros confirmados.
   const historyAppts = dedupeById(
@@ -120,7 +134,14 @@ export default async function ReservasPage({ searchParams }: Props) {
 
   return (
     <ReservasClient
-      appointments={dedupeById(appointments ?? [])}
+      appointments={hydratedAppointments as Array<{
+        id: string
+        date: string
+        start_time: string
+        status: AppointmentStatus
+        services: { name: string; price: number; duration_minutes: number | null } | null
+        payment_context: AppointmentPaymentContext | null
+      }>}
       cancelledByAdmin={cancelledByAdmin ?? []}
       cancellationWindowMinutes={config?.cancellation_window_minutes ?? 60}
       whatsappNumber={config?.whatsapp_number ?? null}

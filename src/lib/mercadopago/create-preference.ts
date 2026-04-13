@@ -1,64 +1,78 @@
 import { MercadoPagoConfig, Preference } from 'mercadopago'
+import { buildMercadoPagoNotificationUrl } from '@/lib/mercadopago/integration-alignment'
 
-export interface MpPreferenceInput {
+export interface MpCheckoutPreferenceInput {
   accessToken: string
-  appointmentId: string
-  serviceName: string
-  servicePrice: number     // valor em reais (ex: 45.00)
-  clientEmail: string | null
-  baseUrl: string          // ex: https://barbearialeste.com.br
-  expiryMinutes: number    // minutos para expirar o link de pagamento
+  externalReference: string
+  itemId: string
+  title: string
+  unitPrice: number
+  quantity?: number
+  payerEmail: string | null
+  baseUrl: string
+  expiryMinutes: number
+  backUrls: {
+    success: string
+    failure: string
+    pending: string
+  }
+  statementDescriptor?: string
 }
 
 export interface MpPreferenceResult {
   preferenceId: string
-  initPoint: string        // URL de checkout do MP (produção)
-  sandboxInitPoint: string // URL de checkout do MP (sandbox)
+  initPoint: string
+  sandboxInitPoint: string
 }
 
 /**
  * Cria uma preferência de pagamento no Mercado Pago usando Checkout Pro.
- * Retorna o init_point para redirecionar o usuário.
  */
-export async function createMpPreference(
-  input: MpPreferenceInput
+export async function createMpCheckoutPreference(
+  input: MpCheckoutPreferenceInput
 ): Promise<MpPreferenceResult> {
-  const { accessToken, appointmentId, serviceName, servicePrice, clientEmail, baseUrl, expiryMinutes } = input
+  const {
+    accessToken,
+    externalReference,
+    itemId,
+    title,
+    unitPrice,
+    quantity = 1,
+    payerEmail,
+    baseUrl,
+    expiryMinutes,
+    backUrls,
+    statementDescriptor = 'BARBEARIA LESTE',
+  } = input
 
   const client = new MercadoPagoConfig({ accessToken })
   const preference = new Preference(client)
 
-  // Data de expiração em ISO 8601 (UTC)
   const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString()
 
   const result = await preference.create({
     body: {
       items: [
         {
-          id: appointmentId,
-          title: serviceName,
-          quantity: 1,
-          unit_price: servicePrice,
+          id: itemId,
+          title,
+          quantity,
+          unit_price: unitPrice,
           currency_id: 'BRL',
         },
       ],
-      payer: clientEmail ? { email: clientEmail } : undefined,
-      back_urls: {
-        success: `${baseUrl}/agendar/pagamento/sucesso?appt_id=${appointmentId}`,
-        failure: `${baseUrl}/agendar/pagamento/falha?appt_id=${appointmentId}`,
-        pending: `${baseUrl}/agendar/pagamento/pendente?appt_id=${appointmentId}`,
-      },
+      payer: payerEmail ? { email: payerEmail } : undefined,
+      back_urls: backUrls,
       auto_return: 'approved',
-      external_reference: appointmentId,
+      external_reference: externalReference,
       expiration_date_to: expiresAt,
-      // Habilita PIX, crédito e débito (padrão do checkout pro)
       payment_methods: {
         excluded_payment_methods: [],
         excluded_payment_types: [],
-        installments: 1, // apenas à vista (sem parcelamento em barbearia)
+        installments: 1,
       },
-      statement_descriptor: 'BARBEARIA LESTE',
-      notification_url: `${baseUrl}/api/webhooks/mercadopago?source_news=webhooks`,
+      statement_descriptor: statementDescriptor,
+      notification_url: buildMercadoPagoNotificationUrl(baseUrl),
     },
   })
 

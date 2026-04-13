@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Package, X, Minus, Plus, CheckCircle2, ShoppingBag } from 'lucide-react'
+import { Package, X, Minus, Plus, CheckCircle2, ShoppingBag, QrCode, Clock3 } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
-import { reservarProduto, cancelarReservaProduto, atualizarQuantidadeReserva } from './actions'
+import { atualizarQuantidadeReserva, cancelarReservaProduto, iniciarCheckoutProduto, retomarPagamentoProduto } from './actions'
 import type { Product, ProductReservation } from '@/lib/supabase/types'
 
 interface Props {
@@ -29,7 +29,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
   // Mapa productId → reserva ativa standalone
   const activeByProduct = Object.fromEntries(
     reservations
-      .filter((r) => r.status === 'reservado' && r.appointment_id === null)
+      .filter((r) => (r.status === 'reservado' || r.status === 'aguardando_pagamento') && r.appointment_id === null)
       .map((r) => [r.product_id, r])
   )
 
@@ -60,17 +60,22 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
     if (!modalProduct) return
     setLoading(true)
     const existing = activeByProduct[modalProduct.id]
-    let result: { error?: string }
-    if (existing) {
+    let result: { error?: string; redirectUrl?: string }
+    if (existing?.status === 'reservado') {
       result = await atualizarQuantidadeReserva(existing.id, modalQty)
       if (!result.error) toast.success(`Reserva atualizada para ${modalQty}x ${modalProduct.name}.`)
+    } else if (existing?.status === 'aguardando_pagamento') {
+      result = await retomarPagamentoProduto(existing.id)
     } else {
-      result = await reservarProduto(modalProduct.id, modalQty)
-      if (!result.error) toast.success(`${modalQty}x ${modalProduct.name} reservado! Retire na barbearia.`)
+      result = await iniciarCheckoutProduto(modalProduct.id, modalQty)
     }
     if (result.error) {
       toast.error(result.error)
       setLoading(false)
+      return
+    }
+    if (result.redirectUrl) {
+      window.location.assign(result.redirectUrl)
       return
     }
     router.refresh()
@@ -91,7 +96,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
   }
 
   const myActive = reservations.filter(
-    (r) => r.status === 'reservado' && r.appointment_id === null
+    (r) => (r.status === 'reservado' || r.status === 'aguardando_pagamento') && r.appointment_id === null
   )
   const modalExisting = modalProduct ? activeByProduct[modalProduct.id] : undefined
 
@@ -125,14 +130,42 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                     <p className="text-[10px] text-zinc-500">
                       {r.quantity > 1 ? `${r.quantity}x · ` : ''}R$ {r.product_price_snapshot.toFixed(2).replace('.', ',')}
                     </p>
+                    <p className={[
+                      'text-[10px] font-black uppercase tracking-widest mt-1',
+                      r.status === 'aguardando_pagamento' ? 'text-yellow-400' : 'text-emerald-400',
+                    ].join(' ')}>
+                      {r.status === 'aguardando_pagamento' ? 'Pagamento pendente' : 'Aguardando retirada'}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {prod && (
+                    {prod && r.status === 'reservado' && (
                       <button
                         onClick={() => prod && openModal(prod)}
                         className="text-[9px] font-black uppercase tracking-widest text-zinc-400 border border-white/10 px-2 py-1 rounded-full"
                       >
                         Editar
+                      </button>
+                    )}
+                    {r.status === 'aguardando_pagamento' && (
+                      <button
+                        disabled={loading}
+                        onClick={async () => {
+                          setLoading(true)
+                          const result = await retomarPagamentoProduto(r.id)
+                          if (result.error) {
+                            toast.error(result.error)
+                            setLoading(false)
+                            return
+                          }
+                          if (result.redirectUrl) {
+                            window.location.assign(result.redirectUrl)
+                            return
+                          }
+                          setLoading(false)
+                        }}
+                        className="text-[9px] font-black uppercase tracking-widest text-yellow-300 border border-yellow-500/20 bg-yellow-500/10 px-2 py-1 rounded-full"
+                      >
+                        Pagar
                       </button>
                     )}
                     <button
@@ -166,6 +199,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                 const myReservation = activeByProduct[product.id]
                 const isReserved = !!myReservation
                 const inStock = product.stock_quantity === -1 || product.stock_quantity > 0 || isReserved
+                const isPendingPayment = myReservation?.status === 'aguardando_pagamento'
 
                 return (
                   <button
@@ -184,10 +218,17 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                       )}
                       {isReserved && (
                         <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-1">
-                          <CheckCircle2 size={32} className="text-emerald-400 drop-shadow-lg" />
-                          {myReservation.quantity > 1 && (
-                            <span className="text-[10px] font-black text-emerald-400">{myReservation.quantity}x</span>
+                          {isPendingPayment ? (
+                            <Clock3 size={32} className="text-yellow-300 drop-shadow-lg" />
+                          ) : (
+                            <CheckCircle2 size={32} className="text-emerald-400 drop-shadow-lg" />
                           )}
+                          {myReservation.quantity > 1 && (
+                            <span className={['text-[10px] font-black', isPendingPayment ? 'text-yellow-300' : 'text-emerald-400'].join(' ')}>{myReservation.quantity}x</span>
+                          )}
+                          <span className={['text-[9px] font-black uppercase tracking-widest', isPendingPayment ? 'text-yellow-300' : 'text-emerald-400'].join(' ')}>
+                            {isPendingPayment ? 'Pagamento pendente' : 'Reservado'}
+                          </span>
                         </div>
                       )}
                       {!inStock && !isReserved && (
@@ -202,6 +243,9 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                         <p className="text-[10px] text-zinc-500 leading-relaxed line-clamp-2">{product.short_description}</p>
                       )}
                       <p className="text-sm font-black text-white">R$ {product.price.toFixed(2).replace('.', ',')}</p>
+                      {isPendingPayment && (
+                        <p className="text-[10px] font-black uppercase tracking-widest text-yellow-300">Aguardando pagamento</p>
+                      )}
                     </div>
                   </button>
                 )
@@ -268,7 +312,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                   <div className="flex items-center gap-4">
                     <button
                       onClick={() => setModalQty((q) => Math.max(1, q - 1))}
-                      disabled={modalQty <= 1}
+                      disabled={modalQty <= 1 || modalExisting?.status === 'aguardando_pagamento'}
                       className="w-10 h-10 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-white disabled:opacity-30"
                     >
                       <Minus size={16} />
@@ -276,7 +320,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                     <span className="text-xl font-black text-white w-8 text-center">{modalQty}</span>
                     <button
                       onClick={() => setModalQty((q) => Math.min(getMaxQty(modalProduct), q + 1))}
-                      disabled={modalQty >= getMaxQty(modalProduct)}
+                      disabled={modalQty >= getMaxQty(modalProduct) || modalExisting?.status === 'aguardando_pagamento'}
                       className="w-10 h-10 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-white disabled:opacity-30"
                     >
                       <Plus size={16} />
@@ -292,6 +336,25 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
 
               {/* Ações */}
               <div className="flex flex-col gap-2 pt-1">
+                {!modalExisting && (
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3">
+                    <div className="flex items-center gap-2 text-cyan-200">
+                      <QrCode size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">Pagamento seguro via Mercado Pago</span>
+                    </div>
+                    <p className="mt-1 text-xs text-cyan-100/70 leading-relaxed">
+                      O pedido só vira reserva para retirada depois da aprovação do pagamento.
+                    </p>
+                  </div>
+                )}
+                {modalExisting?.status === 'aguardando_pagamento' && (
+                  <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-yellow-300">Pagamento pendente</p>
+                    <p className="mt-1 text-xs text-yellow-100/70 leading-relaxed">
+                      Este pedido já está aguardando pagamento. Conclua ou cancele antes de alterar a quantidade.
+                    </p>
+                  </div>
+                )}
                 {modalProduct.stock_quantity === 0 && !modalExisting ? (
                   <p className="text-center text-sm text-zinc-500 py-2">Produto esgotado</p>
                 ) : (
@@ -301,8 +364,10 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                     className="h-12 rounded-2xl bg-white text-black text-sm font-extrabold uppercase tracking-widest disabled:opacity-50"
                   >
                     {loading ? 'Aguarde...' : modalExisting
-                      ? `Atualizar para ${modalQty}x`
-                      : `Reservar ${modalQty}x`}
+                      ? modalExisting.status === 'aguardando_pagamento'
+                        ? 'Concluir pagamento'
+                        : `Atualizar para ${modalQty}x`
+                      : `Pagar ${modalQty}x`}
                   </button>
                 )}
                 {modalExisting && (

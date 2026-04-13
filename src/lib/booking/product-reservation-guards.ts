@@ -53,7 +53,7 @@ export function validateCancelarReservaProduto(
     return 'Não autorizado.'
   }
 
-  if (reservation.status !== 'reservado') {
+  if (reservation.status !== 'reservado' && reservation.status !== 'aguardando_pagamento') {
     return 'Esta reserva não pode ser cancelada.'
   }
 

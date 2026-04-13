@@ -9,6 +9,7 @@ import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { saveUserProfile } from '@/app/agendar/actions'
 import { cancelMyAppointment, cancelPendingPayment } from '@/app/agendar/actions'
+import type { AppointmentPaymentContext } from '@/lib/booking/appointment-payment-context'
 
 const APPOINTMENT_STATUS_LABEL: Record<string, string> = {
   confirmado: 'Confirmado',
@@ -20,13 +21,18 @@ const APPOINTMENT_STATUS_COLOR: Record<string, string> = {
   aguardando_pagamento: 'text-yellow-400',
 }
 
+const APPOINTMENT_PAYMENT_LABEL: Record<AppointmentPaymentContext, string> = {
+  paid_online: 'Pago online',
+  pay_locally: 'Pagar no local',
+}
+
 function AppointmentStatusBadge({ status }: { status: string }) {
   const isConfirmed = status === 'confirmado'
 
   return (
     <span
       className={[
-        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest mt-1',
+        'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest',
         isConfirmed
           ? 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300'
           : 'border-yellow-500/30 bg-yellow-500/12 text-yellow-300',
@@ -34,6 +40,25 @@ function AppointmentStatusBadge({ status }: { status: string }) {
     >
       {isConfirmed ? <Check size={11} /> : null}
       {APPOINTMENT_STATUS_LABEL[status] ?? status}
+    </span>
+  )
+}
+
+function AppointmentPaymentBadge({ paymentContext }: { paymentContext: AppointmentPaymentContext | null }) {
+  if (!paymentContext) return null
+
+  const isPaidOnline = paymentContext === 'paid_online'
+
+  return (
+    <span
+      className={[
+        'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest',
+        isPaidOnline
+          ? 'border-sky-500/30 bg-sky-500/12 text-sky-200'
+          : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',
+      ].join(' ')}
+    >
+      {APPOINTMENT_PAYMENT_LABEL[paymentContext]}
     </span>
   )
 }
@@ -51,6 +76,7 @@ type Appt = {
   start_time: string
   status: string
   services: { name: string; price: number } | null
+  payment_context: AppointmentPaymentContext | null
 }
 
 interface Props {
@@ -348,7 +374,10 @@ export function PerfilClient({
                         <p className="text-xs text-zinc-500">
                           {format(parseISO(appt.date), "dd 'de' MMM", { locale: ptBR })} às {appt.start_time?.slice(0, 5)}
                         </p>
-                        <AppointmentStatusBadge status={appt.status} />
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          <AppointmentStatusBadge status={appt.status} />
+                          <AppointmentPaymentBadge paymentContext={appt.payment_context} />
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

@@ -28,6 +28,56 @@ async function requireAdmin() {
   return { supabase, user }
 }
 
+type AdminSupabaseClient = Awaited<ReturnType<typeof requireAdmin>>['supabase']
+
+async function ensureAppointmentReversalEntry(
+  supabase: AdminSupabaseClient,
+  appointmentId: string,
+  createdBy: string | null,
+  descriptionPrefix = 'Estorno automático'
+) {
+  const { data: existingReversal } = await supabase
+    .from('financial_entries')
+    .select('id')
+    .eq('source', 'estorno')
+    .eq('reference_id', appointmentId)
+    .limit(1)
+    .maybeSingle()
+
+  if (existingReversal) {
+    return { created: false, alreadyExists: true, hasRevenue: true }
+  }
+
+  const { data: revenueEntry } = await supabase
+    .from('financial_entries')
+    .select('amount, description, payment_method, net_amount')
+    .eq('source', 'agendamento')
+    .eq('reference_id', appointmentId)
+    .limit(1)
+    .maybeSingle()
+
+  if (!revenueEntry) {
+    return { created: false, alreadyExists: false, hasRevenue: false }
+  }
+
+  const { error } = await supabase.from('financial_entries').insert({
+    type: 'despesa',
+    source: 'estorno',
+    amount: revenueEntry.amount,
+    description: `${descriptionPrefix}: ${revenueEntry.description}`,
+    payment_method: revenueEntry.payment_method ?? null,
+    card_rate_pct: 0,
+    net_amount: -Math.abs(revenueEntry.net_amount ?? revenueEntry.amount),
+    reference_id: appointmentId,
+    date: new Date().toISOString().split('T')[0],
+    created_by: createdBy,
+  })
+
+  if (error) throw error
+
+  return { created: true, alreadyExists: false, hasRevenue: true }
+}
+
 export async function togglePauseStatus(
   isPaused: boolean,
   message: string | null = null,
@@ -62,13 +112,20 @@ export async function updateAppointmentStatus(
   status: 'cancelado' | 'faltou'
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { supabase } = await requireAdmin()
+    const { supabase, user } = await requireAdmin()
     const { error } = await supabase
       .from('appointments')
       .update({ status, ...(status === 'cancelado' ? { cancelled_by_admin: true } : {}) })
       .eq('id', appointmentId)
     if (error) throw error
+
+    if (status === 'cancelado') {
+      await ensureAppointmentReversalEntry(supabase, appointmentId, user.id)
+    }
+
     revalidatePath('/admin')
+    revalidatePath('/reservas')
+    revalidatePath('/perfil')
     return { success: true }
   } catch (e) {
     return { success: false, error: (e as Error).message }
@@ -611,7 +668,7 @@ export async function updateProductReservationStatus(
   try {
     const { supabase } = await requireAdmin()
 
-    // RN: ao cancelar, devolve 1 unidade ao estoque (stock_quantity !== -1)
+    // RN: ao cancelar, devolve estoque se a reserva ainda estava aberta para pagamento/retirada.
     if (status === 'cancelado') {
       const { data: reservation } = await supabase
         .from('product_reservations')
@@ -619,7 +676,7 @@ export async function updateProductReservationStatus(
         .eq('id', id)
         .single()
 
-      if (reservation && reservation.status === 'reservado') {
+      if (reservation && (reservation.status === 'reservado' || reservation.status === 'aguardando_pagamento')) {
         const { data: product } = await supabase
           .from('products')
           .select('stock_quantity')
@@ -642,8 +699,25 @@ export async function updateProductReservationStatus(
 
     if (error) throw error
 
-    // Ao marcar como retirado → cria entrada financeira automática
+    // Ao marcar como retirado → cria entrada financeira automática somente se ainda não houve pré-pagamento.
     if (status === 'retirado') {
+      const { data: existingRevenue } = await supabase
+        .from('financial_entries')
+        .select('id')
+        .eq('source', 'produto')
+        .eq('reference_id', id)
+        .limit(1)
+        .maybeSingle()
+
+      if (existingRevenue) {
+        revalidatePath('/admin')
+        return { success: true }
+      }
+
+      if (!payment_method) {
+        return { success: false, error: 'Informe a forma de pagamento para registrar a receita do produto.' }
+      }
+
       const { data: res } = await supabase
         .from('product_reservations')
         .select('product_name_snapshot, product_price_snapshot, quantity')
@@ -697,7 +771,7 @@ export async function deleteProductReservation(
 
     if (!reservation) return { success: false, error: 'Reserva não encontrada.' }
 
-    if (reservation.status === 'reservado') {
+    if (reservation.status === 'reservado' || reservation.status === 'aguardando_pagamento') {
       const { data: product } = await supabase
         .from('products')
         .select('stock_quantity')
@@ -844,7 +918,7 @@ export async function getUserDetails(userId: string): Promise<{
 // CA: Ao concluir → cria financial_entry automaticamente.
 export async function concludeAppointment(
   appointmentId: string,
-  paymentMethod: import('@/lib/supabase/types').PaymentMethod,
+  paymentMethod?: import('@/lib/supabase/types').PaymentMethod,
   rating?: { score: number; note?: string }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -861,6 +935,14 @@ export async function concludeAppointment(
     if (!appt) return { success: false, error: 'Agendamento não encontrado.' }
     if (appt.status !== 'confirmado') return { success: false, error: 'Só é possível concluir agendamentos confirmados.' }
     if (appt.date !== today) return { success: false, error: 'Só é possível concluir agendamentos do dia atual.' }
+
+    const { data: existingRevenue } = await supabase
+      .from('financial_entries')
+      .select('id')
+      .eq('source', 'agendamento')
+      .eq('reference_id', appointmentId)
+      .limit(1)
+      .maybeSingle()
 
     // Busca taxas por tipo de pagamento
     const { data: configData } = await supabase
@@ -881,8 +963,12 @@ export async function concludeAppointment(
       .eq('id', appointmentId)
     if (updateError) throw updateError
 
-    // Cria entrada financeira automaticamente (apenas se tem valor registrado)
-    if (amount > 0) {
+    // Cria entrada financeira apenas quando ainda não houver receita lançada pelo webhook/manual.
+    if (amount > 0 && !existingRevenue) {
+      if (!paymentMethod) {
+        return { success: false, error: 'Informe a forma de pagamento para concluir este atendimento.' }
+      }
+
       const { data: { user } } = await supabase.auth.getUser()
       await supabase.from('financial_entries').insert({
         type: 'receita',
@@ -919,35 +1005,32 @@ export async function estornarAgendamento(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { supabase } = await requireAdmin()
+    const { supabase, user } = await requireAdmin()
+
+    const reversalResult = await ensureAppointmentReversalEntry(
+      supabase,
+      appointmentId,
+      user.id,
+      'Estorno'
+    )
+
+    if (reversalResult.alreadyExists) {
+      return { success: false, error: 'Estorno já registrado para este agendamento.' }
+    }
+
+    if (!reversalResult.hasRevenue) {
+      return { success: false, error: 'Entrada financeira não encontrada.' }
+    }
 
     // Busca a entrada financeira original do agendamento
     const { data: entry, error: entryError } = await supabase
       .from('financial_entries')
-      .select('*')
+      .select('id')
       .eq('source', 'agendamento')
       .eq('reference_id', appointmentId)
       .single()
 
     if (entryError || !entry) return { success: false, error: 'Entrada financeira não encontrada.' }
-
-    const { data: { user } } = await supabase.auth.getUser()
-    const today = new Date().toISOString().split('T')[0]
-
-    // Cria entrada de estorno (tipo despesa, valor negativo)
-    const { error: insertError } = await supabase.from('financial_entries').insert({
-      type: 'despesa',
-      source: 'estorno',
-      amount: entry.amount,
-      description: `Estorno: ${entry.description}`,
-      payment_method: entry.payment_method ?? null,
-      card_rate_pct: 0,
-      net_amount: -(entry.net_amount ?? entry.amount),
-      reference_id: appointmentId,
-      date: today,
-      created_by: user?.id ?? null,
-    })
-    if (insertError) throw insertError
 
     // Reverte status do agendamento para confirmado
     const { error: revertError } = await supabase

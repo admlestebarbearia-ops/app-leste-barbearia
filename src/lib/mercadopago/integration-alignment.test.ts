@@ -2,11 +2,14 @@ import assert from 'node:assert/strict'
 import { createHmac } from 'crypto'
 import { describe, it } from 'node:test'
 import {
+  buildProductReservationExternalReference,
   buildMercadoPagoNotificationUrl,
   buildMercadoPagoPhone,
   buildMercadoPagoWebhookManifest,
   buildTrustedMercadoPagoPayer,
   getMercadoPagoWebhookTransition,
+  mapMercadoPagoPaymentMethod,
+  parseMercadoPagoExternalReference,
   sanitizeMercadoPagoFormData,
   validateMercadoPagoWebhookSignature,
 } from './integration-alignment'
@@ -105,5 +108,28 @@ describe('mercadopago integration alignment', () => {
       appointmentStatus: 'cancelado',
       intentStatus: 'cancelled',
     })
+  })
+
+  it('distingue referencias de agendamento e reserva de produto no webhook', () => {
+    assert.deepEqual(parseMercadoPagoExternalReference('appt-123'), {
+      kind: 'appointment',
+      id: 'appt-123',
+    })
+
+    assert.deepEqual(
+      parseMercadoPagoExternalReference(buildProductReservationExternalReference('res-123')),
+      {
+        kind: 'product_reservation',
+        id: 'res-123',
+      }
+    )
+  })
+
+  it('mapeia o metodo de pagamento do Mercado Pago para o dominio local', () => {
+    assert.equal(mapMercadoPagoPaymentMethod('pix', 'bank_transfer'), 'pix')
+    assert.equal(mapMercadoPagoPaymentMethod('visa', 'credit_card'), 'credito')
+    assert.equal(mapMercadoPagoPaymentMethod('master', 'debit_card'), 'debito')
+    assert.equal(mapMercadoPagoPaymentMethod('account_money', 'account_money'), 'mercado_pago')
+    assert.equal(mapMercadoPagoPaymentMethod(null, null), null)
   })
 })

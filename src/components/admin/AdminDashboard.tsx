@@ -606,6 +606,7 @@ function TabHoje({
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
   const [pendingAppts, setPendingAppts] = useState<Appointment[]>([])
+  const concludeHasExistingRevenue = concludeAppt ? Boolean(paymentMethodByApptId[concludeAppt.id] || onlineMpApptIds.has(concludeAppt.id)) : false
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -900,10 +901,17 @@ function TabHoje({
   }
 
   const handleConclude = async () => {
-    if (!concludeAppt || !concludePayment) return
+    if (!concludeAppt || (!concludeHasExistingRevenue && !concludePayment)) return
     setConcludeLoading(true)
     const rating = ratingScore > 0 ? { score: ratingScore, note: ratingNote.trim() || undefined } : undefined
-    const result = await concludeAppointment(concludeAppt.id, concludePayment, rating)
+    const concludePaymentMethod = concludeHasExistingRevenue || !concludePayment
+      ? undefined
+      : concludePayment
+    const result = await concludeAppointment(
+      concludeAppt.id,
+      concludePaymentMethod,
+      rating
+    )
     setConcludeLoading(false)
     if (result.success) {
       toast.success('Agendamento concluído!')
@@ -1422,43 +1430,53 @@ function TabHoje({
           {/* Forma de pagamento */}
           <div className="flex flex-col gap-2">
             <span className="text-xs text-zinc-400">Como foi pago?</span>
-            <div className="grid grid-cols-2 gap-2">
-              {(['dinheiro', 'pix', 'debito', 'credito'] as PaymentMethod[]).map((pm) => {
-                const labels: Record<PaymentMethod, string> = { dinheiro: 'Dinheiro', pix: 'PIX', debito: 'Débito', credito: 'Crédito' }
-                const rate =
-                  pm === 'debito'  ? (config.debit_rate_pct  ?? 0) :
-                  pm === 'credito' ? (config.credit_rate_pct ?? 0) : 0
-                return (
-                  <button
-                    key={pm}
-                    onClick={() => setConcludePayment(pm)}
-                    className={`flex flex-col items-start px-3 py-2 rounded-lg border text-sm transition-all ${
-                      concludePayment === pm
-                        ? 'border-blue-500 bg-blue-500/15 text-white'
-                        : 'border-white/10 bg-white/5 text-zinc-300 hover:border-white/20'
-                    }`}
-                  >
-                    <span className="font-medium">{labels[pm]}</span>
-                    {rate > 0 && <span className="text-[10px] text-zinc-500">{rate}% de taxa</span>}
-                  </button>
-                )
-              })}
-            </div>
-            {/* Preview do valor líquido */}
-            {concludePayment && concludeAppt?.service_price_snapshot != null && concludeAppt.service_price_snapshot > 0 && (() => {
-              const amount = concludeAppt.service_price_snapshot
-              const rate =
-                concludePayment === 'debito'  ? (config.debit_rate_pct  ?? 0) :
-                concludePayment === 'credito' ? (config.credit_rate_pct ?? 0) : 0
-              const net = amount * (1 - rate / 100)
-              return (
-                <p className="text-xs text-zinc-500 mt-1">
-                  {rate > 0
-                    ? <>R$ {amount.toFixed(2).replace('.', ',')} − {rate}% = <span className="text-emerald-400">R$ {net.toFixed(2).replace('.', ',')}</span> líquido</>
-                    : <>Você recebe <span className="text-emerald-400">R$ {amount.toFixed(2).replace('.', ',')}</span> integrais</>}
+            {concludeHasExistingRevenue ? (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
+                <p className="text-sm font-semibold text-emerald-300">Pagamento já registrado</p>
+                <p className="mt-1 text-xs text-emerald-200/80">
+                  Este atendimento já entrou no financeiro via pagamento online. Você pode concluir sem lançar outra receita.
                 </p>
-              )
-            })()}
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['dinheiro', 'pix', 'debito', 'credito'] as PaymentMethod[]).map((pm) => {
+                    const labels: Record<PaymentMethod, string> = { dinheiro: 'Dinheiro', pix: 'PIX', debito: 'Débito', credito: 'Crédito', mercado_pago: 'Mercado Pago' }
+                    const rate =
+                      pm === 'debito'  ? (config.debit_rate_pct  ?? 0) :
+                      pm === 'credito' ? (config.credit_rate_pct ?? 0) : 0
+                    return (
+                      <button
+                        key={pm}
+                        onClick={() => setConcludePayment(pm)}
+                        className={`flex flex-col items-start px-3 py-2 rounded-lg border text-sm transition-all ${
+                          concludePayment === pm
+                            ? 'border-blue-500 bg-blue-500/15 text-white'
+                            : 'border-white/10 bg-white/5 text-zinc-300 hover:border-white/20'
+                        }`}
+                      >
+                        <span className="font-medium">{labels[pm]}</span>
+                        {rate > 0 && <span className="text-[10px] text-zinc-500">{rate}% de taxa</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+                {concludePayment && concludeAppt?.service_price_snapshot != null && concludeAppt.service_price_snapshot > 0 && (() => {
+                  const amount = concludeAppt.service_price_snapshot
+                  const rate =
+                    concludePayment === 'debito'  ? (config.debit_rate_pct  ?? 0) :
+                    concludePayment === 'credito' ? (config.credit_rate_pct ?? 0) : 0
+                  const net = amount * (1 - rate / 100)
+                  return (
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {rate > 0
+                        ? <>R$ {amount.toFixed(2).replace('.', ',')} − {rate}% = <span className="text-emerald-400">R$ {net.toFixed(2).replace('.', ',')}</span> líquido</>
+                        : <>Você recebe <span className="text-emerald-400">R$ {amount.toFixed(2).replace('.', ',')}</span> integrais</>}
+                    </p>
+                  )
+                })()}
+              </>
+            )}
           </div>
 
           {/* Avaliação opcional */}
@@ -1492,7 +1510,7 @@ function TabHoje({
           </Button>
           <Button
             onClick={handleConclude}
-            disabled={concludeLoading || !concludePayment}
+            disabled={concludeLoading || (!concludeHasExistingRevenue && !concludePayment)}
             className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40"
           >
             {concludeLoading ? 'Salvando...' : 'Confirmar Conclusão'}
@@ -1544,8 +1562,7 @@ function StandaloneReservasSection({
     setDeleteConfirmId(null)
   }
 
-  const active = reservations.filter((r) => r.status === 'reservado')
-  const others = reservations.filter((r) => r.status !== 'reservado')
+  const active = reservations.filter((r) => r.status === 'reservado' || r.status === 'aguardando_pagamento')
 
   return (
     <div className="flex flex-col gap-3 mt-2">
@@ -1565,7 +1582,7 @@ function StandaloneReservasSection({
           key={r.id}
           className={[
             'bg-neutral-900 rounded-xl p-4 flex flex-col gap-3',
-            r.status !== 'reservado' ? 'opacity-60' : '',
+            (r.status !== 'reservado' && r.status !== 'aguardando_pagamento') ? 'opacity-60' : '',
           ].join(' ')}
         >
           {/* Corpo */}
@@ -1618,6 +1635,8 @@ function StandaloneReservasSection({
               'text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border shrink-0',
               r.status === 'reservado'
                 ? 'text-violet-400 border-violet-500/20 bg-violet-500/10'
+                : r.status === 'aguardando_pagamento'
+                ? 'text-yellow-300 border-yellow-500/20 bg-yellow-500/10'
                 : r.status === 'retirado'
                 ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10'
                 : 'text-zinc-500 border-white/10 bg-white/5',
@@ -1670,6 +1689,15 @@ function StandaloneReservasSection({
                   </button>
                 </>
               )
+            )}
+            {r.status === 'aguardando_pagamento' && (
+              <button
+                disabled={!!loading}
+                onClick={() => handleStatus(r.id, 'cancelado')}
+                className="text-[10px] font-bold text-yellow-300 border border-yellow-500/20 bg-yellow-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+              >
+                Cancelar pendência
+              </button>
             )}
             {deleteConfirmId === r.id ? (
               <>
@@ -3463,7 +3491,7 @@ function TabProdutos({
 
   const [retirePendingResId, setRetirePendingResId] = useState<string | null>(null)
 
-  const handleReservationStatus = async (id: string, status: ProductReservationStatus, paymentMethod?: PaymentMethod) => {
+  const handleReservationStatus = async (id: string, status: 'reservado' | 'cancelado' | 'retirado', paymentMethod?: PaymentMethod) => {
     const result = await updateProductReservationStatus(id, status, paymentMethod)
     if (result.success) {
       setReservations((prev) => prev.map((r) => r.id === id ? { ...r, status } : r))
@@ -3475,11 +3503,13 @@ function TabProdutos({
   }
 
   const statusLabel: Record<ProductReservationStatus, string> = {
+    aguardando_pagamento: 'Aguardando pagamento',
     reservado: 'Reservado',
     cancelado: 'Cancelado',
     retirado: 'Retirado',
   }
   const statusColor: Record<ProductReservationStatus, string> = {
+    aguardando_pagamento: 'text-yellow-300 bg-yellow-500/10 border-yellow-500/20',
     reservado: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
     cancelado: 'text-red-400 bg-red-400/10 border-red-400/20',
     retirado: 'text-blue-400 bg-blue-400/10 border-blue-400/20',
@@ -3701,6 +3731,14 @@ function TabProdutos({
                         </button>
                       </div>
                     )
+                  )}
+                  {r.status === 'aguardando_pagamento' && (
+                    <button
+                      onClick={() => handleReservationStatus(r.id, 'cancelado')}
+                      className="w-full text-[10px] font-black uppercase tracking-widest text-red-400 border border-red-400/20 bg-red-400/5 py-1.5 rounded-lg"
+                    >
+                      Cancelar pedido pendente
+                    </button>
                   )}
                   {deleteResConfirm === r.id ? (
                     <div className="flex gap-1.5">

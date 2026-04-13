@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import { mapMercadoPagoStatusToIntentStatus } from '@/lib/mercadopago/payment-flow'
-import type { PaymentIntentStatus } from '@/lib/supabase/types'
+import type { PaymentIntentStatus, PaymentMethod } from '@/lib/supabase/types'
 
 const ALLOWED_FORM_FIELDS = [
   'token',
@@ -44,6 +44,41 @@ function hasText(value: unknown): value is string {
 function normalizeMercadoPagoDataId(dataId: string | null | undefined) {
   if (!dataId) return null
   return /^[a-z0-9]+$/i.test(dataId) ? dataId.toLowerCase() : dataId
+}
+
+export function buildProductReservationExternalReference(reservationId: string) {
+  return `product_reservation:${reservationId}`
+}
+
+export function parseMercadoPagoExternalReference(externalReference: string | null | undefined):
+  | { kind: 'appointment'; id: string }
+  | { kind: 'product_reservation'; id: string }
+  | null {
+  const normalized = externalReference?.trim()
+
+  if (!normalized) return null
+
+  if (normalized.startsWith('product_reservation:')) {
+    const id = normalized.slice('product_reservation:'.length)
+    return id ? { kind: 'product_reservation', id } : null
+  }
+
+  return { kind: 'appointment', id: normalized }
+}
+
+export function mapMercadoPagoPaymentMethod(
+  paymentMethodId: string | null | undefined,
+  paymentTypeId: string | null | undefined
+): PaymentMethod | null {
+  const method = paymentMethodId?.trim().toLowerCase() ?? ''
+  const type = paymentTypeId?.trim().toLowerCase() ?? ''
+
+  if (method === 'pix' || type === 'bank_transfer') return 'pix'
+  if (method === 'account_money' || type === 'account_money') return 'mercado_pago'
+  if (type === 'debit_card') return 'debito'
+  if (type === 'credit_card') return 'credito'
+
+  return null
 }
 
 export function sanitizeMercadoPagoFormData(raw: Record<string, unknown>) {

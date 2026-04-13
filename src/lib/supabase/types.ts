@@ -3,7 +3,7 @@ export type PaymentMode = 'presencial' | 'online_obrigatorio'
 export type PaymentIntentStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired'
 export type DisplayNamePreference = 'name' | 'nickname'
 export type GalleryPhotoStatus = 'pending' | 'approved'
-export type PaymentMethod = 'dinheiro' | 'pix' | 'debito' | 'credito'
+export type PaymentMethod = 'dinheiro' | 'pix' | 'debito' | 'credito' | 'mercado_pago'
 
 export interface Profile {
   id: string
@@ -166,7 +166,7 @@ export interface FinancialEntry {
 }
 
 // ─── Produtos ────────────────────────────────────────────────────────────────
-export type ProductReservationStatus = 'reservado' | 'cancelado' | 'retirado'
+export type ProductReservationStatus = 'aguardando_pagamento' | 'reservado' | 'cancelado' | 'retirado'
 
 export interface Product {
   id: string
@@ -210,6 +210,18 @@ export interface PaymentIntent {
   id: string
   appointment_id: string
   mp_preference_id: string
+  mp_payment_id: string | null
+  status: PaymentIntentStatus
+  amount: number
+  expires_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ProductPaymentIntent {
+  id: string
+  reservation_id: string
+  mp_preference_id: string | null
   mp_payment_id: string | null
   status: PaymentIntentStatus
   amount: number

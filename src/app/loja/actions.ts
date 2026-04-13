@@ -1,92 +1,339 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { validateAtualizarQuantidadeReserva, validateCancelarReservaProduto, validateReservarProduto } from '@/lib/booking/product-reservation-guards'
+import { buildProductReservationExternalReference } from '@/lib/mercadopago/integration-alignment'
+import { createMpCheckoutPreference } from '@/lib/mercadopago/create-preference'
+import { isPaymentIntentExpired } from '@/lib/mercadopago/payment-flow'
+import { buildPaymentExpirationIso, normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-export async function reservarProduto(
+function getBaseUrl() {
+  return process.env.NEXT_PUBLIC_SITE_URL
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+}
+
+async function restoreProductStock(
+  admin: ReturnType<typeof createAdminClient>,
+  productId: string,
+  quantity: number
+) {
+  const { data: product } = await admin
+    .from('products')
+    .select('stock_quantity')
+    .eq('id', productId)
+    .single()
+
+  if (product && product.stock_quantity >= 0) {
+    await admin
+      .from('products')
+      .update({ stock_quantity: product.stock_quantity + quantity })
+      .eq('id', productId)
+  }
+}
+
+async function expirePendingProductPayment(
+  admin: ReturnType<typeof createAdminClient>,
+  reservationId: string
+) {
+  const nowIso = new Date().toISOString()
+
+  const { data: reservation } = await admin
+    .from('product_reservations')
+    .select('product_id, quantity, status')
+    .eq('id', reservationId)
+    .single()
+
+  await admin
+    .from('product_payment_intents')
+    .update({ status: 'expired', updated_at: nowIso })
+    .eq('reservation_id', reservationId)
+    .eq('status', 'pending')
+
+  if (reservation?.status === 'aguardando_pagamento') {
+    await restoreProductStock(admin, reservation.product_id, reservation.quantity)
+
+    await admin
+      .from('product_reservations')
+      .update({ status: 'cancelado', updated_at: nowIso })
+      .eq('id', reservationId)
+      .eq('status', 'aguardando_pagamento')
+  }
+}
+
+async function createProductCheckoutPreference(input: {
+  accessToken: string
+  reservationId: string
+  productId: string
+  title: string
+  unitPrice: number
+  quantity: number
+  payerEmail: string | null
+  expiryMinutes: number
+}) {
+  const baseUrl = getBaseUrl()
+  return createMpCheckoutPreference({
+    accessToken: input.accessToken,
+    externalReference: buildProductReservationExternalReference(input.reservationId),
+    itemId: input.productId,
+    title: input.title,
+    unitPrice: input.unitPrice,
+    quantity: input.quantity,
+    payerEmail: input.payerEmail,
+    baseUrl,
+    expiryMinutes: input.expiryMinutes,
+    backUrls: {
+      success: `${baseUrl}/loja/pagamento/sucesso?reservation_id=${input.reservationId}`,
+      failure: `${baseUrl}/loja/pagamento/falha?reservation_id=${input.reservationId}`,
+      pending: `${baseUrl}/loja/pagamento/pendente?reservation_id=${input.reservationId}`,
+    },
+  })
+}
+
+export async function iniciarCheckoutProduto(
   productId: string,
   quantity: number = 1
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; redirectUrl?: string; reservationId?: string; error?: string }> {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return { error: 'Faça login para reservar.' }
+  if (!user) return { error: 'Faça login para comprar.' }
 
   const admin = createAdminClient()
 
-  // Busca produto
-  const { data: product } = await admin
-    .from('products')
-    .select('id, name, price, cover_image_url, stock_quantity, is_active, reserve_enabled')
-    .eq('id', productId)
-    .single()
+  const [{ data: product }, { data: config }, { data: profile }, { data: existingReservation }] = await Promise.all([
+    admin
+      .from('products')
+      .select('id, name, price, cover_image_url, stock_quantity, is_active, reserve_enabled')
+      .eq('id', productId)
+      .single(),
+    admin
+      .from('business_config')
+      .select('enable_products, mp_access_token, payment_expiry_minutes')
+      .eq('id', 1)
+      .single(),
+    admin
+      .from('profiles')
+      .select('phone, email')
+      .eq('id', user.id)
+      .single(),
+    admin
+      .from('product_reservations')
+      .select('id, status')
+      .eq('product_id', productId)
+      .eq('client_id', user.id)
+      .is('appointment_id', null)
+      .in('status', ['aguardando_pagamento', 'reservado'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
 
-  if (!product || !product.is_active || !product.reserve_enabled) {
-    return { error: 'Produto indisponível.' }
+  if (!(config?.enable_products ?? false)) {
+    return { error: 'Loja indisponível no momento.' }
   }
 
-  // Verifica estoque
-  if (product.stock_quantity !== -1 && product.stock_quantity < quantity) {
-    return { error: 'Estoque insuficiente.' }
+  const validationError = product
+    ? validateReservarProduto(product, quantity, existingReservation?.status === 'reservado')
+    : 'Produto indisponível.'
+  if (validationError) return { error: validationError }
+
+  if (!config?.mp_access_token) {
+    return { error: 'Pagamento online indisponível no momento. Tente novamente mais tarde.' }
   }
 
-  // Verifica se já tem reserva ativa standalone para este produto
-  const { data: existing } = await admin
-    .from('product_reservations')
-    .select('id')
-    .eq('product_id', productId)
-    .eq('client_id', user.id)
-    .eq('status', 'reservado')
-    .is('appointment_id', null)
-    .maybeSingle()
-
-  if (existing) {
-    return { error: 'Você já tem uma reserva ativa para este produto.' }
+  if (existingReservation?.status === 'aguardando_pagamento') {
+    return retomarPagamentoProduto(existingReservation.id)
   }
 
-  // Busca telefone do perfil para snapshot
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('phone')
-    .eq('id', user.id)
-    .single()
+  if (!product) return { error: 'Produto indisponível.' }
 
-  // Decrementa estoque (se não for ilimitado)
+  const paymentExpiryMinutes = normalizePaymentExpiryMinutes(config.payment_expiry_minutes)
+
   if (product.stock_quantity !== -1) {
     const { error: stockErr } = await admin
       .from('products')
       .update({ stock_quantity: product.stock_quantity - quantity })
       .eq('id', productId)
-    if (stockErr) return { error: 'Erro ao reservar. Tente novamente.' }
+    if (stockErr) return { error: 'Erro ao iniciar checkout. Tente novamente.' }
   }
 
-  const { error } = await admin.from('product_reservations').insert({
-    product_id: productId,
-    appointment_id: null,
-    client_id: user.id,
-    client_phone: profile?.phone ?? null,
-    quantity,
-    status: 'reservado',
-    product_name_snapshot: product.name,
-    product_price_snapshot: product.price,
-    product_image_snapshot: product.cover_image_url,
-  })
+  const { data: reservation, error: reservationError } = await admin
+    .from('product_reservations')
+    .insert({
+      product_id: productId,
+      appointment_id: null,
+      client_id: user.id,
+      client_phone: profile?.phone ?? null,
+      quantity,
+      status: 'aguardando_pagamento',
+      product_name_snapshot: product.name,
+      product_price_snapshot: product.price,
+      product_image_snapshot: product.cover_image_url,
+    })
+    .select('id')
+    .single()
 
-  if (error) {
-    // Rollback estoque
+  if (reservationError || !reservation) {
     if (product.stock_quantity !== -1) {
       await admin
         .from('products')
         .update({ stock_quantity: product.stock_quantity })
         .eq('id', productId)
     }
-    return { error: 'Erro ao criar reserva.' }
+    return { error: 'Erro ao criar reserva de compra.' }
   }
 
-  revalidatePath('/loja')
-  return { success: true }
+  const expiresAt = buildPaymentExpirationIso(new Date(), paymentExpiryMinutes)
+  const amount = Number(product.price) * quantity
+
+  const { data: paymentIntent, error: paymentIntentError } = await admin
+    .from('product_payment_intents')
+    .insert({
+      reservation_id: reservation.id,
+      mp_preference_id: null,
+      status: 'pending',
+      amount,
+      expires_at: expiresAt,
+    })
+    .select('id')
+    .single()
+
+  if (paymentIntentError || !paymentIntent) {
+    await restoreProductStock(admin, productId, quantity)
+    await admin.from('product_reservations').delete().eq('id', reservation.id)
+    return { error: 'Erro ao preparar pagamento do produto.' }
+  }
+
+  try {
+    const preference = await createProductCheckoutPreference({
+      accessToken: config.mp_access_token,
+      reservationId: reservation.id,
+      productId: product.id,
+      title: product.name,
+      unitPrice: Number(product.price),
+      quantity,
+      payerEmail: user.email ?? profile?.email ?? null,
+      expiryMinutes: paymentExpiryMinutes,
+    })
+
+    await admin
+      .from('product_payment_intents')
+      .update({
+        mp_preference_id: preference.preferenceId,
+        expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', paymentIntent.id)
+
+    revalidatePath('/loja')
+    return {
+      success: true,
+      redirectUrl: preference.initPoint,
+      reservationId: reservation.id,
+    }
+  } catch {
+    await admin.from('product_payment_intents').delete().eq('id', paymentIntent.id)
+    await admin.from('product_reservations').delete().eq('id', reservation.id)
+    await restoreProductStock(admin, productId, quantity)
+    return { error: 'Não foi possível iniciar o checkout do produto.' }
+  }
+}
+
+export async function retomarPagamentoProduto(
+  reservationId: string
+): Promise<{ success?: boolean; redirectUrl?: string; reservationId?: string; error?: string }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { error: 'Faça login para continuar o pagamento.' }
+
+  const admin = createAdminClient()
+  const [{ data: reservation }, { data: config }] = await Promise.all([
+    admin
+      .from('product_reservations')
+      .select('id, client_id, status, product_id, quantity, product_name_snapshot, product_price_snapshot')
+      .eq('id', reservationId)
+      .single(),
+    admin
+      .from('business_config')
+      .select('mp_access_token, payment_expiry_minutes')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  if (!reservation || reservation.client_id !== user.id) {
+    return { error: 'Reserva não encontrada.' }
+  }
+
+  if (reservation.status !== 'aguardando_pagamento') {
+    return { error: 'Este pedido não está aguardando pagamento.' }
+  }
+
+  if (!config?.mp_access_token) {
+    return { error: 'Pagamento online indisponível no momento.' }
+  }
+
+  const { data: paymentIntent } = await admin
+    .from('product_payment_intents')
+    .select('id, status, expires_at')
+    .eq('reservation_id', reservationId)
+    .single()
+
+  if (!paymentIntent) {
+    return { error: 'Controle de pagamento do produto não encontrado.' }
+  }
+
+  if (paymentIntent.status === 'expired' || isPaymentIntentExpired(paymentIntent.expires_at)) {
+    await expirePendingProductPayment(admin, reservationId)
+    revalidatePath('/loja')
+    return { error: 'Prazo de pagamento expirado. Inicie uma nova compra.' }
+  }
+
+  const paymentExpiryMinutes = normalizePaymentExpiryMinutes(config.payment_expiry_minutes)
+  const expiresAt = buildPaymentExpirationIso(new Date(), paymentExpiryMinutes)
+
+  try {
+    const preference = await createProductCheckoutPreference({
+      accessToken: config.mp_access_token,
+      reservationId,
+      productId: reservation.product_id,
+      title: reservation.product_name_snapshot,
+      unitPrice: Number(reservation.product_price_snapshot),
+      quantity: reservation.quantity,
+      payerEmail: user.email ?? null,
+      expiryMinutes: paymentExpiryMinutes,
+    })
+
+    await admin
+      .from('product_payment_intents')
+      .update({
+        mp_preference_id: preference.preferenceId,
+        expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', paymentIntent.id)
+
+    revalidatePath('/loja')
+    return {
+      success: true,
+      redirectUrl: preference.initPoint,
+      reservationId,
+    }
+  } catch {
+    return { error: 'Não foi possível retomar o pagamento agora.' }
+  }
+}
+
+export async function reservarProduto(
+  productId: string,
+  quantity: number = 1
+): Promise<{ success?: boolean; error?: string }> {
+  const result = await iniciarCheckoutProduto(productId, quantity)
+  return result.success ? { success: true } : { error: result.error }
 }
 
 export async function cancelarReservaProduto(
@@ -107,26 +354,20 @@ export async function cancelarReservaProduto(
     .single()
 
   if (!reservation) return { error: 'Reserva não encontrada.' }
-  if (reservation.client_id !== user.id) return { error: 'Não autorizado.' }
-  if (reservation.status !== 'reservado') return { error: 'Esta reserva não pode ser cancelada.' }
+  const cancelError = validateCancelarReservaProduto(reservation, user.id)
+  if (cancelError) return { error: cancelError }
 
-  // Restaura estoque
-  const { data: product } = await admin
-    .from('products')
-    .select('stock_quantity')
-    .eq('id', reservation.product_id)
-    .single()
+  await restoreProductStock(admin, reservation.product_id, reservation.quantity)
 
-  if (product && product.stock_quantity >= 0) {
-    await admin
-      .from('products')
-      .update({ stock_quantity: product.stock_quantity + reservation.quantity })
-      .eq('id', reservation.product_id)
-  }
+  await admin
+    .from('product_payment_intents')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('reservation_id', reservationId)
+    .eq('status', 'pending')
 
   const { error } = await admin
     .from('product_reservations')
-    .update({ status: 'cancelado' })
+    .update({ status: 'cancelado', updated_at: new Date().toISOString() })
     .eq('id', reservationId)
 
   if (error) return { error: 'Erro ao cancelar reserva.' }
@@ -158,35 +399,33 @@ export async function atualizarQuantidadeReserva(
     .single()
 
   if (!reservation) return { error: 'Reserva não encontrada.' }
-  if (reservation.client_id !== user.id) return { error: 'Não autorizado.' }
-  if (reservation.status !== 'reservado') return { error: 'Esta reserva não pode ser alterada.' }
+
+  const { data: product } = await admin
+    .from('products')
+    .select('stock_quantity')
+    .eq('id', reservation.product_id)
+    .single()
+
+  const updateError = validateAtualizarQuantidadeReserva(
+    reservation,
+    user.id,
+    product?.stock_quantity ?? 0,
+    newQuantity
+  )
+  if (updateError) return { error: updateError }
 
   const diff = newQuantity - reservation.quantity
 
-  if (diff !== 0) {
-    const { data: product } = await admin
+  if (diff !== 0 && product && product.stock_quantity !== -1) {
+    await admin
       .from('products')
-      .select('stock_quantity')
+      .update({ stock_quantity: product.stock_quantity - diff })
       .eq('id', reservation.product_id)
-      .single()
-
-    if (product) {
-      // diff > 0 → precisa de mais estoque
-      if (diff > 0 && product.stock_quantity !== -1 && product.stock_quantity < diff) {
-        return { error: 'Estoque insuficiente para aumentar a quantidade.' }
-      }
-      if (product.stock_quantity !== -1) {
-        await admin
-          .from('products')
-          .update({ stock_quantity: product.stock_quantity - diff })
-          .eq('id', reservation.product_id)
-      }
-    }
   }
 
   const { error } = await admin
     .from('product_reservations')
-    .update({ quantity: newQuantity })
+    .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
     .eq('id', reservationId)
 
   if (error) return { error: 'Erro ao atualizar reserva.' }

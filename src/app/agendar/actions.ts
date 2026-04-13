@@ -49,6 +49,47 @@ async function expirePendingAppointmentPayment(adminClient: ReturnType<typeof cr
     .eq('status', 'aguardando_pagamento')
 }
 
+async function ensureAutomaticAppointmentReversal(
+  adminClient: ReturnType<typeof createAdminClient>,
+  appointmentId: string,
+  createdBy: string | null
+) {
+  const { data: existingReversal } = await adminClient
+    .from('financial_entries')
+    .select('id')
+    .eq('source', 'estorno')
+    .eq('reference_id', appointmentId)
+    .limit(1)
+    .maybeSingle()
+
+  if (existingReversal) return
+
+  const { data: revenueEntry } = await adminClient
+    .from('financial_entries')
+    .select('amount, description, payment_method, net_amount')
+    .eq('source', 'agendamento')
+    .eq('reference_id', appointmentId)
+    .limit(1)
+    .maybeSingle()
+
+  if (!revenueEntry) return
+
+  const { error } = await adminClient.from('financial_entries').insert({
+    type: 'despesa',
+    source: 'estorno',
+    amount: revenueEntry.amount,
+    description: `Estorno automático: ${revenueEntry.description}`,
+    payment_method: revenueEntry.payment_method ?? null,
+    card_rate_pct: 0,
+    net_amount: -Math.abs(revenueEntry.net_amount ?? revenueEntry.amount),
+    reference_id: appointmentId,
+    date: new Date().toISOString().split('T')[0],
+    created_by: createdBy,
+  })
+
+  if (error) throw error
+}
+
 async function getAppointmentLookupContext() {
   const supabase = await createClient()
   const cookieStore = await cookies()
@@ -524,7 +565,12 @@ export async function cancelMyAppointment(
 
   if (error) return { success: false, error: 'Erro ao cancelar. Tente novamente.' }
 
+  await ensureAutomaticAppointmentReversal(adminClient, appointmentId, userId)
+
   revalidatePath('/agendar')
+  revalidatePath('/reservas')
+  revalidatePath('/perfil')
+  revalidatePath('/admin')
   return { success: true }
 }
 

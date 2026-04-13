@@ -37,8 +37,9 @@ export default async function LojaPage() {
       .from('product_reservations')
       .select('*')
       .eq('client_id', user.id)
-      .eq('status', 'reservado')
+      .in('status', ['aguardando_pagamento', 'reservado'])
       .is('appointment_id', null)
+      .order('created_at', { ascending: false })
     myReservations = (prData ?? []) as ProductReservation[]
   }
 

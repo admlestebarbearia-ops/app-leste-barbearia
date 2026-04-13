@@ -121,6 +121,33 @@ describe('calculateAvailableSlots', () => {
     assert.deepEqual(result.slots, ['09:00', '09:15', '10:00', '10:15', '10:30', '10:45'])
   })
 
+  it('mantem slots adjacentes livres quando os conflitos estao apenas nos horarios intermediarios', () => {
+    const result = calculateAvailableSlots({
+      date: '2026-04-14',
+      serviceDurationMinutes: 30,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ open_time: '13:00:00', close_time: '15:00:00' }),
+      specialSchedule: null,
+      existingAppointments: [
+        {
+          start_time: '13:30:00',
+          duration_minutes: 30,
+          status: 'confirmado',
+          deleted_at: null,
+        },
+        {
+          start_time: '14:30:00',
+          duration_minutes: 30,
+          status: 'confirmado',
+          deleted_at: null,
+        },
+      ],
+      now: new Date('2026-04-01T10:00:00'),
+    })
+
+    assert.deepEqual(result.slots, ['13:00', '14:00'])
+  })
+
   it('remove slots no passado para o dia atual', () => {
     const result = calculateAvailableSlots({
       date: '2026-04-04',

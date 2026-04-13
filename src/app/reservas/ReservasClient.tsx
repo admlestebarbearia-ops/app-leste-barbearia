@@ -12,6 +12,7 @@ import { DayPicker } from 'react-day-picker'
 import { getReservationHistoryCalendarMeta } from '@/lib/booking/reservation-history'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
+import type { AppointmentPaymentContext } from '@/lib/booking/appointment-payment-context'
 
 interface Appt {
   id: string
@@ -19,6 +20,7 @@ interface Appt {
   start_time: string
   status: string
   services: { name: string; price: number; duration_minutes: number | null } | null
+  payment_context: AppointmentPaymentContext | null
 }
 
 interface CancelledAppt {
@@ -52,6 +54,11 @@ const STATUS_COLOR: Record<string, string> = {
   aguardando_pagamento: 'text-yellow-400',
 }
 
+const APPOINTMENT_PAYMENT_LABEL: Record<AppointmentPaymentContext, string> = {
+  paid_online: 'Pago online',
+  pay_locally: 'Pagar no local',
+}
+
 interface Props {
   appointments: Appt[]
   cancelledByAdmin: CancelledAppt[]
@@ -80,6 +87,25 @@ function AppointmentStatusBadge({ status }: { status: string }) {
     >
       {isConfirmed ? <Check size={11} /> : isPending ? <QrCode size={11} /> : null}
       {STATUS_LABEL[status] ?? status}
+    </span>
+  )
+}
+
+function AppointmentPaymentBadge({ paymentContext }: { paymentContext: AppointmentPaymentContext | null }) {
+  if (!paymentContext) return null
+
+  const isPaidOnline = paymentContext === 'paid_online'
+
+  return (
+    <span
+      className={[
+        'inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest',
+        isPaidOnline
+          ? 'border-sky-500/30 bg-sky-500/12 text-sky-200'
+          : 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',
+      ].join(' ')}
+    >
+      {APPOINTMENT_PAYMENT_LABEL[paymentContext]}
     </span>
   )
 }
@@ -335,8 +361,9 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                           R$ {appt.services.price.toFixed(2).replace('.', ',')}
                         </span>
                       )}
-                      <div className="mt-1">
+                      <div className="mt-1 flex flex-wrap gap-2">
                         <AppointmentStatusBadge status={appt.status} />
+                        <AppointmentPaymentBadge paymentContext={appt.payment_context} />
                       </div>
                     </div>
                   </div>
@@ -485,11 +512,13 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
           <div className="flex flex-col gap-2">
             {productReservations.map((pr) => {
               const statusLabel: Record<ProductReservationStatus, string> = {
+                aguardando_pagamento: 'Pagamento pendente',
                 reservado: 'Aguardando retirada',
                 cancelado: 'Cancelado',
                 retirado: 'Retirado',
               }
               const statusColor: Record<ProductReservationStatus, string> = {
+                aguardando_pagamento: 'text-yellow-400',
                 reservado: 'text-emerald-400',
                 cancelado: 'text-zinc-500',
                 retirado: 'text-blue-400',
