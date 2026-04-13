@@ -209,7 +209,7 @@ export interface ProductReservation {
 export interface PaymentIntent {
   id: string
   appointment_id: string
-  mp_preference_id: string
+  mp_preference_id: string | null
   mp_payment_id: string | null
   payment_method: PaymentMethod | null
   refunded_at: string | null
