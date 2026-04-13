@@ -177,6 +177,27 @@ export async function processMercadoPagoPaymentRequest(
         external_reference: appointmentId,
         installments: 1,
         notification_url: buildMercadoPagoNotificationUrl(deps.getBaseUrl()),
+        // ─── additional_info: melhora qualidade da integração (aprovação + experiência) ──
+        // Sem estes campos o painel de qualidade do MP fica abaixo de 100.
+        additional_info: {
+          items: [
+            {
+              id: `svc-${appointmentId.slice(0, 8)}`,
+              title: appt.service_name_snapshot ?? 'Serviço',
+              description: appt.service_name_snapshot ?? 'Serviço Barbearia',
+              category_id: 'health_beauty',
+              quantity: 1,
+              unit_price: Number(appt.service_price_snapshot),
+              currency_id: 'BRL',
+            },
+          ],
+          payer: {
+            first_name: (normalizedFormData.payer as Record<string, unknown> | undefined)?.first_name,
+            last_name: (normalizedFormData.payer as Record<string, unknown> | undefined)?.last_name,
+            phone: (normalizedFormData.payer as Record<string, unknown> | undefined)?.phone,
+            registration_date: new Date().toISOString(),
+          },
+        },
       },
       idempotencyKey: paymentIntent.mp_payment_id
         ? deps.generateRandomId()

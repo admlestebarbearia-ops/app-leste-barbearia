@@ -180,6 +180,26 @@ export async function processMercadoPagoProductPaymentRequest(
         external_reference: buildProductReservationExternalReference(reservationId),
         installments: 1,
         notification_url: buildMercadoPagoNotificationUrl(deps.getBaseUrl()),
+        // ─── additional_info: melhora qualidade da integração (aprovação + experiência) ──
+        additional_info: {
+          items: [
+            {
+              id: `prd-${reservationId.slice(0, 8)}`,
+              title: reservation.product_name_snapshot ?? 'Produto',
+              description: reservation.product_name_snapshot ?? 'Produto Barbearia',
+              category_id: 'health_beauty',
+              quantity: reservation.quantity,
+              unit_price: Number(reservation.product_price_snapshot),
+              currency_id: 'BRL',
+            },
+          ],
+          payer: {
+            first_name: (normalizedFormData.payer as Record<string, unknown> | undefined)?.first_name,
+            last_name: (normalizedFormData.payer as Record<string, unknown> | undefined)?.last_name,
+            phone: (normalizedFormData.payer as Record<string, unknown> | undefined)?.phone,
+            registration_date: new Date().toISOString(),
+          },
+        },
       },
       idempotencyKey: paymentIntent.mp_payment_id
         ? deps.generateRandomId()
