@@ -1798,6 +1798,20 @@ export async function saveMercadoPagoConfig(data: {
   }
 }
 
+export async function getPendingPaymentsCount(): Promise<{ count: number }> {
+  try {
+    await requireAdmin()
+    const adminClient = createAdminClient()
+    const { count } = await adminClient
+      .from('appointments')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'aguardando_pagamento')
+    return { count: count ?? 0 }
+  } catch {
+    return { count: 0 }
+  }
+}
+
 export async function disconnectMercadoPago(): Promise<{ success: boolean; error?: string }> {
   try {
     await requireAdmin()

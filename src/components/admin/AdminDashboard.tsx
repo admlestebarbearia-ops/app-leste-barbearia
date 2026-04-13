@@ -61,6 +61,7 @@ import {
   getClientDirectoryDetails,
   saveMercadoPagoConfig,
   disconnectMercadoPago,
+  getPendingPaymentsCount,
 } from '@/app/admin/actions'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
 import type { PaymentMethod } from '@/lib/supabase/types'
@@ -1818,6 +1819,8 @@ function TabConfiguracoes({
   const [aceitaDinheiro, setAceitaDinheiro] = useState<boolean>(config.aceita_dinheiro ?? true)
   const [mpExpiryMinutes, setMpExpiryMinutes] = useState(String(normalizePaymentExpiryMinutes(config.payment_expiry_minutes)))
   const [savingMp, setSavingMp] = useState(false)
+  const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false)
+  const [disconnectPendingCount, setDisconnectPendingCount] = useState(0)
 
   // Contatos e localização
   const [whatsapp, setWhatsapp] = useState(config.whatsapp_number ?? '')
@@ -1993,14 +1996,23 @@ function TabConfiguracoes({
 
   const handleDisconnectMP = async () => {
     setSavingMp(true)
+    const { count } = await getPendingPaymentsCount()
+    setSavingMp(false)
+    setDisconnectPendingCount(count)
+    setDisconnectDialogOpen(true)
+  }
+
+  const confirmDisconnectMP = async () => {
+    setDisconnectDialogOpen(false)
+    setSavingMp(true)
     const result = await disconnectMercadoPago()
     setSavingMp(false)
     if (result.success) {
       setMpConnected(false)
-      toast.success('Mercado Pago desconectado.')
+      toast.success('Mercado Pago desvinculado. Cole o token da nova conta para reconectar.')
       onRefresh()
     } else {
-      toast.error(result.error ?? 'Erro ao desconectar.')
+      toast.error(result.error ?? 'Erro ao desvincular.')
     }
   }
 
@@ -2578,6 +2590,28 @@ function TabConfiguracoes({
           Sistema desenvolvido por Agencia JN
         </p>
       )}
+
+      {/* Dialog de confirmação — Desvincular Mercado Pago */}
+      <Dialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
+        <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Desvincular Mercado Pago?</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              {disconnectPendingCount > 0
+                ? `Atenção: há ${disconnectPendingCount} agendamento${disconnectPendingCount > 1 ? 's' : ''} aguardando pagamento. Eles ficarão presos nesse status até serem resolvidos manualmente. Recomendamos concluí-los antes.`
+                : 'O token será removido. Você poderá vincular uma nova conta colando o token imediatamente após.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setDisconnectDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmDisconnectMP} disabled={savingMp}>
+              {disconnectPendingCount > 0 ? 'Desvincular mesmo assim' : 'Confirmar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
