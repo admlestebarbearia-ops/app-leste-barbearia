@@ -532,6 +532,49 @@ export async function getMyAppointments() {
   return { appointments: dedupeById(data ?? []) }
 }
 
+export async function getPendingPaymentDetails(appointmentId: string): Promise<{
+  appointment?: {
+    id: string
+    amount: number
+    serviceName: string
+    serviceDate: string
+    serviceTime: string
+  }
+  error?: string
+}> {
+  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+
+  if (!ownershipFilter) return { error: 'Identificacao da reserva nao encontrada neste aparelho.' }
+
+  const { data: appt } = await supabase
+    .from('appointments')
+    .select('id, date, start_time, status, service_name_snapshot, service_price_snapshot, services(name, price)')
+    .eq('id', appointmentId)
+    .eq('status', 'aguardando_pagamento')
+    .or(ownershipFilter)
+    .single()
+
+  if (!appt) return { error: 'Pagamento pendente nao encontrado.' }
+
+  const service = (Array.isArray(appt.services) ? appt.services[0] : appt.services) as { name?: string; price?: number } | null
+  const amount = Number(appt.service_price_snapshot ?? service?.price ?? 0)
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { error: 'Valor do pagamento indisponivel.' }
+  }
+
+  return {
+    appointment: {
+      id: appt.id,
+      amount,
+      serviceName: appt.service_name_snapshot ?? service?.name ?? 'Serviço',
+      serviceDate: appt.date,
+      serviceTime: appt.start_time.slice(0, 5),
+    },
+  }
+}
+
 // ─── Salvar WhatsApp do usuário no perfil ──────────────────────────────────
 export async function saveUserPhone(phone: string): Promise<{ success: boolean; error?: string }> {
   const supabase = await createClient()
@@ -748,6 +791,8 @@ export async function cancelPendingPayment(
     .eq('id', appointmentId)
 
   revalidatePath('/agendar')
+  revalidatePath('/reservas')
+  revalidatePath('/perfil')
   return { success: true }
 }
 

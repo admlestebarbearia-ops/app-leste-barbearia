@@ -101,13 +101,18 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Confirma o agendamento se pagamento aprovado
-    if (payment.status === 'approved') {
-      await admin
-        .from('appointments')
-        .update({ status: 'confirmado' })
-        .eq('id', appointmentId)
-    }
+    // O backend NUNCA confirma o agendamento aqui.
+    // A confirmação oficial vem apenas pelo webhook do Mercado Pago,
+    // que valida o pagamento e sincroniza o status do agendamento.
+    // Aqui persistimos apenas o estado técnico do intento para evitar expiração indevida.
+    await admin
+      .from('payment_intents')
+      .update({
+        status: payment.status === 'approved' ? 'approved' : 'pending',
+        mp_payment_id: payment.id ? String(payment.id) : null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('appointment_id', appointmentId)
 
     return NextResponse.json({
       status: payment.status,

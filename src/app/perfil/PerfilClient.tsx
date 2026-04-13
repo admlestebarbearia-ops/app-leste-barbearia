@@ -8,7 +8,17 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { toast } from 'sonner'
 import { saveUserProfile } from '@/app/agendar/actions'
-import { cancelMyAppointment } from '@/app/agendar/actions'
+import { cancelMyAppointment, cancelPendingPayment } from '@/app/agendar/actions'
+
+const APPOINTMENT_STATUS_LABEL: Record<string, string> = {
+  confirmado: 'Confirmado',
+  aguardando_pagamento: 'Aguardando pagamento',
+}
+
+const APPOINTMENT_STATUS_COLOR: Record<string, string> = {
+  confirmado: 'text-emerald-400',
+  aguardando_pagamento: 'text-yellow-400',
+}
 
 function formatPhone(raw: string): string {
   const d = raw.replace(/\D/g, '').slice(0, 11)
@@ -21,6 +31,7 @@ type Appt = {
   id: string
   date: string
   start_time: string
+  status: string
   services: { name: string; price: number } | null
 }
 
@@ -82,6 +93,18 @@ export function PerfilClient({
         toast.error(res.error ?? 'Erro ao salvar telefone.')
       }
     })
+  }
+
+  const handleCancelPending = async (id: string) => {
+    setCancelling(id)
+    const res = await cancelPendingPayment(id)
+    if (res.success) {
+      setAppointments((prev) => prev.filter((appt) => appt.id !== id))
+      toast.success('Reserva pendente cancelada!')
+    } else {
+      toast.error(res.error ?? 'Erro ao cancelar pagamento pendente.')
+    }
+    setCancelling(null)
   }
 
   const canCancel = (appt: Appt) => {
@@ -294,6 +317,7 @@ export function PerfilClient({
             <div className="flex flex-col gap-2">
               {appointments.map((appt) => {
                 const canCancelAppt = canCancel(appt)
+                const isPendingPayment = appt.status === 'aguardando_pagamento'
                 return (
                   <div
                     key={appt.id}
@@ -306,17 +330,38 @@ export function PerfilClient({
                         <p className="text-xs text-zinc-500">
                           {format(parseISO(appt.date), "dd 'de' MMM", { locale: ptBR })} às {appt.start_time?.slice(0, 5)}
                         </p>
+                        <p className={['text-[10px] font-bold uppercase tracking-widest mt-1', APPOINTMENT_STATUS_COLOR[appt.status] ?? 'text-zinc-500'].join(' ')}>
+                          {APPOINTMENT_STATUS_LABEL[appt.status] ?? appt.status}
+                        </p>
                       </div>
                     </div>
-                    {canCancelAppt && (
-                      <button
-                        onClick={() => handleCancel(appt.id)}
-                        disabled={cancelling === appt.id}
-                        className="text-[10px] font-bold uppercase tracking-widest text-red-500/70 hover:text-red-400 transition-colors disabled:opacity-50 shrink-0"
-                      >
-                        {cancelling === appt.id ? '...' : 'Cancelar'}
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isPendingPayment ? (
+                        <>
+                          <Link
+                            href={`/agendar/pagamento/retomar?appt_id=${appt.id}`}
+                            className="text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary/80 transition-colors"
+                          >
+                            Pagar
+                          </Link>
+                          <button
+                            onClick={() => handleCancelPending(appt.id)}
+                            disabled={cancelling === appt.id}
+                            className="text-[10px] font-bold uppercase tracking-widest text-red-500/70 hover:text-red-400 transition-colors disabled:opacity-50"
+                          >
+                            {cancelling === appt.id ? '...' : 'Cancelar'}
+                          </button>
+                        </>
+                      ) : canCancelAppt ? (
+                        <button
+                          onClick={() => handleCancel(appt.id)}
+                          disabled={cancelling === appt.id}
+                          className="text-[10px] font-bold uppercase tracking-widest text-red-500/70 hover:text-red-400 transition-colors disabled:opacity-50"
+                        >
+                          {cancelling === appt.id ? '...' : 'Cancelar'}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 )
               })}

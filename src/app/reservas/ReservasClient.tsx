@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { parseISO, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle, X } from 'lucide-react'
-import { cancelMyAppointment, dismissCancelledAppointment } from '@/app/agendar/actions'
+import { cancelMyAppointment, cancelPendingPayment, dismissCancelledAppointment } from '@/app/agendar/actions'
 import { DayPicker } from 'react-day-picker'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
@@ -16,6 +16,7 @@ interface Appt {
   id: string
   date: string
   start_time: string
+  status: string
   services: { name: string; price: number; duration_minutes: number | null } | null
 }
 
@@ -104,6 +105,18 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
       toast.error(result.error ?? 'Erro ao dispensar aviso.')
     }
     setDismissing(null)
+  }
+
+  const handleCancelPending = async (id: string) => {
+    setCancelling(id)
+    const result = await cancelPendingPayment(id)
+    if (result.success) {
+      setAppointments((prev) => prev.filter((a) => a.id !== id))
+      toast.success('Reserva pendente cancelada.')
+    } else {
+      toast.error(result.error ?? 'Erro ao cancelar pagamento pendente.')
+    }
+    setCancelling(null)
   }
 
   const canCancel = (appt: Appt) => {
@@ -222,7 +235,7 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
             </div>
             <div className="flex flex-col items-center gap-1 text-center">
               <p className="text-base font-semibold text-zinc-300">Nenhuma reserva ativa</p>
-              <p className="text-sm text-zinc-500">Você ainda não tem agendamentos confirmados.</p>
+              <p className="text-sm text-zinc-500">Você ainda não tem reservas ativas.</p>
             </div>
             <Link
               href="/agendar"
@@ -237,6 +250,7 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
               const date = parseISO(appt.date)
               const timeLabel = appt.start_time?.slice(0, 5) ?? ''
               const canCancelAppt = canCancel(appt)
+              const isPendingPayment = appt.status === 'aguardando_pagamento'
 
               return (
                 <div
@@ -279,14 +293,32 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                           R$ {appt.services.price.toFixed(2).replace('.', ',')}
                         </span>
                       )}
-                      <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mt-0.5">
-                        Confirmado
+                      <span className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 ${STATUS_COLOR[appt.status] ?? 'text-zinc-500'}`}>
+                        {STATUS_LABEL[appt.status] ?? appt.status}
                       </span>
                     </div>
                   </div>
 
+                  {isPendingPayment && (
+                    <div className="px-4 pb-4 flex items-center gap-2">
+                      <Link
+                        href={`/agendar/pagamento/retomar?appt_id=${appt.id}`}
+                        className="flex-1 text-center text-[11px] font-black text-primary bg-primary/10 border border-primary/20 py-2 rounded-lg hover:bg-primary/15 transition-colors"
+                      >
+                        Concluir pagamento
+                      </Link>
+                      <button
+                        onClick={() => handleCancelPending(appt.id)}
+                        disabled={cancelling === appt.id}
+                        className="shrink-0 text-[11px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-3 py-2 rounded-lg hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
+                      >
+                        {cancelling === appt.id ? '...' : 'Cancelar'}
+                      </button>
+                    </div>
+                  )}
+
                   {/* Rodapé com botão cancelar */}
-                  {canCancelAppt && (
+                  {!isPendingPayment && canCancelAppt && (
                     <div className="px-4 pb-4">
                       {confirmId === appt.id ? (
                         <div className="flex items-center gap-2">

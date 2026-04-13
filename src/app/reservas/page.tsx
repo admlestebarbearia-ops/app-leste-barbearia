@@ -63,7 +63,7 @@ export default async function ReservasPage() {
     supabase
       .from('appointments')
       .select('*, services(name, price, duration_minutes)')
-      .eq('status', 'confirmado')
+      .in('status', ['confirmado', 'aguardando_pagamento'])
       .gte('date', today)
       .or(ownershipFilter)
       .order('date', { ascending: true })

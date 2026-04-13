@@ -40,7 +40,7 @@ export default async function PerfilPage() {
       avatarUrl={(user.user_metadata?.avatar_url as string | null) ?? null}
       displayName={profile?.display_name ?? (user.user_metadata?.full_name as string | null) ?? null}
       phone={profile?.phone ?? null}
-      appointments={appointments as { id: string; date: string; start_time: string; services: { name: string; price: number } | null }[]}
+      appointments={appointments as { id: string; date: string; start_time: string; status: string; services: { name: string; price: number } | null }[]}
       cancellationWindowMinutes={config?.cancellation_window_minutes ?? 120}
       logoUrl={config?.logo_url ?? null}
     />

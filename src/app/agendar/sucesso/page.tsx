@@ -29,6 +29,9 @@ export default async function SucessoPage({ searchParams }: Props) {
     .single()
 
   if (!appt) redirect('/agendar')
+  if (appt.status === 'aguardando_pagamento') {
+    redirect(`/agendar/pagamento/sucesso?appt_id=${id}`)
+  }
 
   const [{ data: config }, { products }] = await Promise.all([
     supabase

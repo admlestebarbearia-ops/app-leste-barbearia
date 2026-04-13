@@ -148,7 +148,7 @@ export function PaymentBrick({
           onClick={() => onSuccess(appointmentId)}
           className="mt-4 w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest bg-primary text-primary-foreground"
         >
-          Já paguei — Ver agendamento
+          Já paguei — Acompanhar status
         </button>
       </div>
     )
@@ -168,7 +168,7 @@ export function PaymentBrick({
         <div className="flex flex-col gap-1.5">
           <p className="text-sm font-bold text-foreground">Formulário de pagamento indisponível</p>
           <p className="text-xs text-white/50 leading-relaxed max-w-xs mx-auto">
-            Seu agendamento está <strong className="text-white/70">confirmado e reservado</strong>.
+            Seu horário está <strong className="text-white/70">reservado aguardando pagamento</strong>.
             {isSecondFailure
               ? ' Recarregue a página para tentar novamente.'
               : ' Tente recarregar o formulário para concluir o pagamento.'}

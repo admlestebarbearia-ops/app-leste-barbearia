@@ -866,7 +866,7 @@ const handleConfirm = async () => {
               appointmentId={paymentData.appointmentId}
               publicKey={mpPublicKey}
               paymentMethod={paymentData.mpMethod}
-              onSuccess={(apptId) => router.push(`/agendar/sucesso?id=${apptId}`)}
+              onSuccess={(apptId) => router.push(`/agendar/pagamento/sucesso?appt_id=${apptId}`)}
               onError={(msg) => toast.error(msg)}
             />
           ) : (
@@ -1479,7 +1479,13 @@ const handleConfirm = async () => {
 
 // ─── Sub-componente: Meus Agendamentos ────────────────────────────────────
 function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinutes: number }) {
-  type Appt = { id: string; date: string; start_time: string; services: { name: string; price: number } | null }
+  type Appt = {
+    id: string
+    date: string
+    start_time: string
+    status: string
+    services: { name: string; price: number } | null
+  }
   const [appointments, setAppointments] = useState<Appt[]>([])
   const [loaded, setLoaded] = useState(false)
   const [cancelling, setCancelling] = useState<string | null>(null)
@@ -1528,6 +1534,18 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
     setConfirmId(null)
   }
 
+  const handleCancelPending = async (id: string) => {
+    setCancelling(id)
+    const result = await cancelPendingPayment(id)
+    if (result.success) {
+      setAppointments((prev) => prev.filter((a) => a.id !== id))
+      toast.success('Reserva pendente cancelada.')
+    } else {
+      toast.error(result.error ?? 'Erro ao cancelar pagamento pendente.')
+    }
+    setCancelling(null)
+  }
+
   if (!loaded) return null
 
   const nextAppt = appointments.find((a) => parseISO(`${a.date}T${a.start_time}`) > now)
@@ -1547,7 +1565,8 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
   const diffM = Math.floor((diffMs % 3600000) / 60000)
   const countdownText = diffH > 0 ? `${diffH}h ${diffM}min` : `${diffM} minutos`
   const deadline = new Date(apptTime.getTime() - cancellationWindowMinutes * 60000)
-  const canCancel = now < deadline
+  const isPendingPayment = nextAppt.status === 'aguardando_pagamento'
+  const canCancel = !isPendingPayment && now < deadline
 
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#1a1a1a] px-5 py-5 flex flex-col gap-3">
@@ -1557,6 +1576,9 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
           <p className="text-sm font-semibold text-white/90">{nextAppt.services?.name}</p>
           <p className="text-xs text-white/50">
             {format(parseISO(nextAppt.date), "dd 'de' MMMM", { locale: ptBR })} às {nextAppt.start_time?.slice(0, 5)}
+          </p>
+          <p className={['text-[10px] uppercase tracking-widest font-bold mt-1', isPendingPayment ? 'text-yellow-400' : 'text-emerald-400'].join(' ')}>
+            {isPendingPayment ? 'Aguardando pagamento' : 'Confirmado'}
           </p>
         </div>
         {canCancel && (
@@ -1588,6 +1610,23 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
           )
         )}
       </div>
+      {isPendingPayment && (
+        <div className="flex items-center gap-2">
+          <a
+            href={`/agendar/pagamento/retomar?appt_id=${nextAppt.id}`}
+            className="flex-1 h-10 rounded-xl bg-primary text-primary-foreground text-[10px] font-black uppercase tracking-widest flex items-center justify-center"
+          >
+            Concluir pagamento
+          </a>
+          <button
+            onClick={() => handleCancelPending(nextAppt.id)}
+            disabled={cancelling === nextAppt.id}
+            className="shrink-0 h-10 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest text-white/60 border border-white/10 hover:text-white hover:border-white/20 transition-colors disabled:opacity-50"
+          >
+            {cancelling === nextAppt.id ? '...' : 'Cancelar'}
+          </button>
+        </div>
+      )}
       <div className="border-t border-white/[0.06] pt-3 flex flex-col gap-0.5">
         <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Faltam</p>
         <p className="text-xl font-black text-white/90 tabular-nums">{countdownText}</p>
