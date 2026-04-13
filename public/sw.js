@@ -1,7 +1,10 @@
 // Service Worker — Barbearia Leste
+// Compatibilidade: Android Chrome/Firefox (vibrate+sound), iOS 16.4+ PWA (silent, sem vibrate)
 const STATIC_CACHE = 'leste-static-v2'
 const NOTIF_ICON = '/android-chrome-192x192.png'
+const NOTIF_BADGE = '/android-chrome-96x96.png'
 
+// ─── Lifecycle ──────────────────────────────────────────────────────────────
 self.addEventListener('install', () => {
   self.skipWaiting()
 })
@@ -15,6 +18,7 @@ self.addEventListener('activate', (e) => {
   )
 })
 
+// ─── Cache estratégico ──────────────────────────────────────────────────────
 self.addEventListener('fetch', (e) => {
   const { request } = e
   const url = new URL(request.url)
@@ -63,73 +67,130 @@ self.addEventListener('fetch', (e) => {
   }
 })
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function buildNotifOptions(data) {
+  // iOS 16.4+ PWA: não suporta vibrate, actions nem silent=false (ignora).
+  // Android Chrome: suporta tudo. Detectamos iOS pelo user agent no SW.
+  const ua = (self.navigator?.userAgent ?? '').toLowerCase()
+  const isIos = /iphone|ipad|ipod/.test(ua)
+
+  const base = {
+    body: data.body ?? '',
+    icon: data.icon ?? NOTIF_ICON,
+    badge: NOTIF_BADGE,
+    tag: data.tag ?? 'leste-notif',
+    renotify: true,
+    requireInteraction: !isIos, // iOS ignora requireInteraction; evitar flag para compatibilidade
+    data: { url: data.url ?? '/reservas', ...( data.data ?? {} ) },
+  }
+
+  if (!isIos) {
+    // Android/Desktop: adiciona vibrate e actions
+    return {
+      ...base,
+      vibrate: [200, 100, 200, 100, 200],
+      silent: false,
+      actions: data.actions ?? [],
+    }
+  }
+
+  // iOS: notificações minimalistas — qualquer campo não suportado gera erro silencioso
+  return base
+}
+
 // ─── Push recebido do servidor (web-push / VAPID) ────────────────────────────
 // Este listener é o que faz a notificação aparecer com o app fechado/minimizado.
-// Sem ele o push chega no SW mas não exibe nada ao usuário.
+// Vence a tela de bloqueio (iOS 16.4+/Android) quando PWA instalado como app.
 self.addEventListener('push', (e) => {
-  let title = 'Leste Barbearia'
-  let body = 'Você tem um lembrete.'
-  let url = '/reservas'
-  let tag = 'barbearia-leste-notif'
+  let data = {}
 
   try {
-    const data = e.data?.json()
-    if (data?.title) title = data.title
-    if (data?.body) body = data.body
-    if (data?.url) url = data.url
-    if (data?.tag) tag = data.tag
-  } catch {}
+    data = e.data?.json() ?? {}
+  } catch {
+    try {
+      data = { body: e.data?.text() ?? '' }
+    } catch {}
+  }
+
+  const title = data.title ?? 'Leste Barbearia'
 
   e.waitUntil(
-    self.registration.showNotification(title, {
-      body,
-      icon: NOTIF_ICON,
-      badge: NOTIF_ICON,
-      // vibrate é ignorado no iOS — funciona apenas no Android
-      vibrate: [200, 100, 200, 100, 200],
-      requireInteraction: true,
-      tag,
-      renotify: true,
-      data: { url },
-    })
+    self.registration.showNotification(title, buildNotifOptions(data))
+  )
+})
+
+// ─── Renovação automática de subscription (raro mas importante) ─────────────
+// Ocorre quando o browser rotaciona as chaves silenciosamente.
+self.addEventListener('pushsubscriptionchange', (e) => {
+  e.waitUntil(
+    (async () => {
+      const vapidPublicKey = self.__VAPID_PUBLIC_KEY__
+      if (!vapidPublicKey) return
+
+      const convertKey = (b64) => {
+        const padding = '='.repeat((4 - b64.length % 4) % 4)
+        const base64 = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/')
+        const raw = atob(base64)
+        return Uint8Array.from([...raw].map(c => c.charCodeAt(0)))
+      }
+
+      try {
+        const newSub = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: convertKey(vapidPublicKey),
+        })
+        // Notifica o app para salvar nova subscription
+        const allClients = await clients.matchAll({ includeUncontrolled: true })
+        for (const client of allClients) {
+          client.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED', subscription: newSub.toJSON() })
+        }
+        // Persiste via fetch direto
+        await fetch('/api/push/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newSub.toJSON()),
+        })
+      } catch {}
+    })()
   )
 })
 
 // ─── Clique na notificação — abre/foca o app ────────────────────────────────
 self.addEventListener('notificationclick', (e) => {
   e.notification.close()
-  const url = e.notification.data?.url ?? '/reservas'
 
+  const targetUrl = e.notification.data?.url ?? '/reservas'
+
+  // Ação "ver" ou click direto
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Se já há uma aba/janela do app aberta, foca ela
       for (const client of clientList) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.navigate(url)
+          client.navigate(targetUrl)
           return client.focus()
         }
       }
-      // Senão abre uma nova janela
-      return clients.openWindow(url)
+      return clients.openWindow(targetUrl)
     })
   )
 })
 
-// ─── postMessage da página (fallback quando app está aberto) ─────────────────
+// ─── Fechar notificação — analytics opcional ─────────────────────────────────
+self.addEventListener('notificationclose', () => {
+  // Pode-se enviar evento de analytics aqui futuramente
+})
+
+// ─── postMessage da página (exibe notificação com app aberto) ───────────────
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SHOW_NOTIFICATION') {
-    const { title, body, icon, url: notifUrl } = event.data
+    const { title, ...rest } = event.data
     event.waitUntil(
-      self.registration.showNotification(title, {
-        body,
-        icon: icon || NOTIF_ICON,
-        badge: NOTIF_ICON,
-        vibrate: [200, 100, 200, 100, 200],
-        requireInteraction: true,
-        tag: 'barbearia-leste-notif',
-        renotify: true,
-        data: { url: notifUrl || '/reservas' },
-      })
+      self.registration.showNotification(title ?? 'Leste Barbearia', buildNotifOptions(rest))
     )
+  }
+
+  // Injeta VAPID public key para resubscription automática
+  if (event.data?.type === 'SET_VAPID_KEY') {
+    self.__VAPID_PUBLIC_KEY__ = event.data.vapidKey
   }
 })

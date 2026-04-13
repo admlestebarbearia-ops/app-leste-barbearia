@@ -16,10 +16,14 @@ import {
 } from '@/lib/scheduling/availability-engine'
 import { isAppointmentPast } from '@/lib/booking/appointment-visibility'
 import {
+  firePushToAdmins,
+  firePushToUser,
+} from '@/app/api/push/actions'
+import {
   dedupeById,
-  GUEST_BOOKING_PHONE_COOKIE,
   isAuthenticatedUser,
   normalizePhoneLookup,
+  GUEST_BOOKING_PHONE_COOKIE,
 } from '@/lib/auth/session-state'
 import { revalidatePath } from 'next/cache'
 import { format } from 'date-fns'
@@ -468,9 +472,41 @@ export async function createAppointment(data: {
       expires_at: buildPaymentExpirationIso(new Date(), agendaConfig?.payment_expiry_minutes),
     })
 
+    // Notifica admins: novo agendamento aguardando pagamento
+    const clientDisplayName = signedInWithGoogle
+      ? ((user.user_metadata?.full_name as string | undefined) ?? data.clientName ?? user.email ?? 'Cliente')
+      : (data.clientName ?? 'Visitante')
+    void firePushToAdmins({
+      title: '📅 Novo agendamento (aguardando pagamento)',
+      body: `${clientDisplayName} — ${serviceSnapshot.name} em ${data.date.split('-').reverse().join('/')} às ${data.startTime.slice(0, 5)}`,
+      url: '/admin',
+      tag: `admin-novo-agend-${appointment.id}`,
+    })
+
     revalidatePath('/agendar')
     return { success: true, appointmentId: appointment.id, amount: Number(serviceSnapshot.price) }
   }
+
+  // Notifica cliente: agendamento confirmado (apenas usuários logados têm push subscription)
+  if (signedInWithGoogle) {
+    void firePushToUser(user.id, {
+      title: '✅ Agendamento confirmado!',
+      body: `${serviceSnapshot.name} em ${data.date.split('-').reverse().join('/')} às ${data.startTime.slice(0, 5)}.`,
+      url: '/reservas',
+      tag: `cliente-confirma-${appointment.id}`,
+    })
+  }
+
+  // Notifica admins: novo agendamento (presencial/dinheiro)
+  const clientName = signedInWithGoogle
+    ? ((user.user_metadata?.full_name as string | undefined) ?? data.clientName ?? user.email ?? 'Cliente')
+    : (data.clientName ?? 'Visitante')
+  void firePushToAdmins({
+    title: '📅 Novo agendamento!',
+    body: `${clientName} — ${serviceSnapshot.name} em ${data.date.split('-').reverse().join('/')} às ${data.startTime.slice(0, 5)}`,
+    url: '/admin',
+    tag: `admin-novo-agend-${appointment.id}`,
+  })
 
   revalidatePath('/agendar')
   return { success: true, appointmentId: appointment.id }
@@ -488,7 +524,7 @@ export async function cancelMyAppointment(
   // Busca o agendamento e valida a janela de cancelamento
   const { data: appt } = await supabase
     .from('appointments')
-    .select('date, start_time, status')
+    .select('date, start_time, status, client_name, service_name_snapshot')
     .eq('id', appointmentId)
     .or(ownershipFilter)
     .single()
@@ -531,6 +567,14 @@ export async function cancelMyAppointment(
     .eq('id', appointmentId)
 
   if (error) return { success: false, error: 'Erro ao cancelar. Tente novamente.' }
+
+  // Notifica admins: cliente cancelou
+  void firePushToAdmins({
+    title: '❌ Agendamento cancelado pelo cliente',
+    body: `${appt.client_name ?? 'Cliente'} — ${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)}`,
+    url: '/admin',
+    tag: `admin-cancel-cliente-${appointmentId}`,
+  })
 
   revalidatePath('/agendar')
   revalidatePath('/reservas')

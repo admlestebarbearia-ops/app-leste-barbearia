@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processMercadoPagoWebhook } from '@/lib/mercadopago/webhook-route'
+import { firePushToUser, firePushToAdmins } from '@/app/api/push/actions'
 
 // ─── Fetch estado do pagamento na API do MP ───────────────────────────────────
 async function fetchMpPaymentStatus(paymentId: string, accessToken: string) {
@@ -119,6 +120,13 @@ export async function POST(request: NextRequest) {
           if (error) throw error
         },
         updateAppointmentStatus: async (appointmentId, status) => {
+          // Busca detalhes ANTES de atualizar (para push notification)
+          const { data: appt } = await adminClient
+            .from('appointments')
+            .select('client_id, client_name, service_name_snapshot, date, start_time')
+            .eq('id', appointmentId)
+            .single()
+
           const { error } = await adminClient
             .from('appointments')
             .update({ status })
@@ -126,6 +134,24 @@ export async function POST(request: NextRequest) {
             .in('status', ['aguardando_pagamento', 'confirmado'])
 
           if (error) throw error
+
+          // Pagamento aprovado → notifica cliente e admins
+          if (status === 'confirmado') {
+            if (appt?.client_id) {
+              void firePushToUser(appt.client_id, {
+                title: '💳 Pagamento confirmado!',
+                body: `${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)} está confirmado.`,
+                url: '/reservas',
+                tag: `pagamento-confirmado-${appointmentId}`,
+              })
+            }
+            void firePushToAdmins({
+              title: '💳 Pagamento recebido',
+              body: `${appt?.client_name ?? 'Cliente'} — ${appt?.service_name_snapshot ?? 'Serviço'} em ${appt?.date?.split('-').reverse().join('/') ?? '?'} às ${appt?.start_time?.slice(0, 5) ?? '?'}`,
+              url: '/admin',
+              tag: `admin-pagamento-${appointmentId}`,
+            })
+          }
         },
         updateProductReservationStatus: async (reservationId, status) => {
           await updateProductReservationStatus(adminClient, reservationId, status)

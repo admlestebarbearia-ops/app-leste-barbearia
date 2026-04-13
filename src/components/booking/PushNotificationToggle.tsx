@@ -15,18 +15,48 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)))
 }
 
+function isIos() {
+  if (typeof navigator === 'undefined') return false
+  return /iphone|ipad|ipod/i.test(navigator.userAgent)
+}
+
+function isStandalone() {
+  if (typeof window === 'undefined') return false
+  // iOS Safari expõe navigator.standalone; outros browsers usam media query
+  return !!(
+    (navigator as unknown as Record<string, unknown>)['standalone'] ||
+    window.matchMedia('(display-mode: standalone)').matches
+  )
+}
+
+/** Injeta a VAPID key no service worker para auto-renovação de subscription */
+async function injectVapidKeyToSw(reg: ServiceWorkerRegistration) {
+  const sw = reg.active ?? reg.waiting ?? reg.installing
+  if (!sw || !VAPID_PUBLIC_KEY) return
+  sw.postMessage({ type: 'SET_VAPID_KEY', vapidKey: VAPID_PUBLIC_KEY })
+}
+
 export function PushNotificationToggle() {
   const [supported, setSupported] = useState(false)
+  const [iosPwaRequired, setIosPwaRequired] = useState(false)
   const [subscribed, setSubscribed] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!VAPID_PUBLIC_KEY) return
+
+    // iOS fora do PWA: push não é suportado — exibe dica
+    if (isIos() && !isStandalone()) {
+      setIosPwaRequired(true)
+      return
+    }
+
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
     setSupported(true)
 
-    // Verifica se já está subscrito
+    // Verifica se já está subscrito e injeta VAPID key no SW
     navigator.serviceWorker.ready.then((reg) => {
+      void injectVapidKeyToSw(reg)
       reg.pushManager.getSubscription().then((sub) => {
         setSubscribed(!!sub)
       })
@@ -75,14 +105,26 @@ export function PushNotificationToggle() {
           toast.error('Erro ao salvar preferência: ' + result.error)
           await sub.unsubscribe()
         } else {
+          // Injeta VAPID key para o SW poder renovar automaticamente
+          await injectVapidKeyToSw(reg)
           setSubscribed(true)
-          toast.success('Lembretes ativados! Você receberá avisos 1 dia antes do agendamento.')
+          toast.success('Lembretes ativados! Você receberá avisos antes do seu agendamento.')
         }
       }
     } catch (e) {
       toast.error('Erro: ' + (e instanceof Error ? e.message : 'tente novamente'))
     }
     setLoading(false)
+  }
+
+  // iOS fora do PWA: mostra dica de instalação
+  if (iosPwaRequired) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Para receber lembretes, instale o app: toque em{' '}
+        <strong>Compartilhar → Adicionar à Tela de Início</strong>.
+      </p>
+    )
   }
 
   if (!supported || !VAPID_PUBLIC_KEY) return null

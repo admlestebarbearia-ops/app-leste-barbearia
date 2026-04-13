@@ -62,6 +62,7 @@ import {
   saveMercadoPagoConfig,
   disconnectMercadoPago,
 } from '@/app/admin/actions'
+import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
 import type { PaymentMethod } from '@/lib/supabase/types'
 import type {
   BusinessConfig,
@@ -402,6 +403,9 @@ export function AdminDashboard({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Notificações push para o admin */}
+            <PushNotificationToggle />
+
             {/* Botão Pausar Agendamentos */}
             <button
               onClick={() => setIsPauseDialogOpen(true)}

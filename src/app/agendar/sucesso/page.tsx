@@ -7,6 +7,7 @@ import { ptBR } from 'date-fns/locale'
 import { ProductVitrine } from './ProductVitrine'
 import { getActiveProducts } from '@/app/agendar/actions'
 import { GUEST_BOOKING_PHONE_COOKIE, normalizePhoneLookup } from '@/lib/auth/session-state'
+import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
 import type { BusinessConfig } from '@/lib/supabase/types'
 
 interface Props {
@@ -137,6 +138,12 @@ export default async function SucessoPage({ searchParams }: Props) {
         >
           Ver minhas reservas
         </a>
+
+        {/* Prompt para ativar lembretes push */}
+        <div className="w-full flex flex-col items-center gap-1.5">
+          <p className="text-xs text-muted-foreground text-center">Receba lembretes antes do seu horário:</p>
+          <PushNotificationToggle />
+        </div>
 
         {products.length > 0 && (
           <ProductVitrine

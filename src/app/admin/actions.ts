@@ -11,6 +11,7 @@ import { getAppointmentPaymentSummaryMap } from '@/lib/booking/appointment-payme
 import { getAppointmentOperationalStatus, isAppointmentPast } from '@/lib/booking/appointment-visibility'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { firePushToUser, firePushToAdmins } from '@/app/api/push/actions'
 import { revalidatePath } from 'next/cache'
 import { MAX_PAYMENT_EXPIRY_MINUTES, normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
 import type { BusinessConfig, PaymentMethod, WorkingHours } from '@/lib/supabase/types'
@@ -149,11 +150,29 @@ export async function updateAppointmentStatus(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
+
+    // Busca detalhes antes de atualizar (para push notification)
+    const { data: appt } = await supabase
+      .from('appointments')
+      .select('client_id, client_name, service_name_snapshot, date, start_time')
+      .eq('id', appointmentId)
+      .single()
+
     const { error } = await supabase
       .from('appointments')
       .update({ status, ...(status === 'cancelado' ? { cancelled_by_admin: true } : {}) })
       .eq('id', appointmentId)
     if (error) throw error
+
+    // Notifica cliente: admin cancelou o agendamento
+    if (status === 'cancelado' && appt?.client_id) {
+      void firePushToUser(appt.client_id, {
+        title: '❌ Seu agendamento foi cancelado',
+        body: `${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)} foi cancelado pela barbearia.`,
+        url: '/reservas',
+        tag: `cancelado-admin-${appointmentId}`,
+      })
+    }
 
     revalidatePath('/admin')
     revalidatePath('/reservas')
@@ -170,6 +189,14 @@ export async function deleteAppointment(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
+
+    // Busca detalhes antes de atualizar (para push notification)
+    const { data: appt } = await supabase
+      .from('appointments')
+      .select('client_id, client_name, service_name_snapshot, date, start_time')
+      .eq('id', appointmentId)
+      .single()
+
     // admin_hidden_at oculta apenas do painel do admin.
     // O status fica 'cancelado' para o cliente saber que foi cancelado,
     // mas o agendamento NÃO desaparece do painel do cliente (deleted_at não é tocado).
@@ -178,6 +205,17 @@ export async function deleteAppointment(
       .update({ status: 'cancelado', admin_hidden_at: new Date().toISOString() })
       .eq('id', appointmentId)
     if (error) throw error
+
+    // Notifica cliente: agendamento cancelado (mesmo fluxo do updateAppointmentStatus)
+    if (appt?.client_id) {
+      void firePushToUser(appt.client_id, {
+        title: '❌ Seu agendamento foi cancelado',
+        body: `${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)} foi cancelado pela barbearia.`,
+        url: '/reservas',
+        tag: `cancelado-admin-${appointmentId}`,
+      })
+    }
+
     revalidatePath('/admin')
     return { success: true }
   } catch (e) {
