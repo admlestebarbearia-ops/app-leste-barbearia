@@ -183,6 +183,16 @@ export function BookingForm({
     serviceTime: string
     mpMethod?: PublicMpMethod
   } | null>(null)
+  // Quando um pagamento é recusado, guarda os dados do agendamento já criado para reutilizar
+  // ao trocar o método de pagamento — evita criar um segundo agendamento desnecessariamente.
+  const [retryPayment, setRetryPayment] = useState<{
+    preferenceId?: string
+    amount: number
+    appointmentId: string
+    serviceName: string
+    serviceDate: string
+    serviceTime: string
+  } | null>(null)
   const [cancellingPaymentStep, setCancellingPaymentStep] = useState(false)
   // Cronômetro de pagamento: conta regressiva desde a criação do agendamento
   const [paymentSecondsLeft, setPaymentSecondsLeft] = useState<number | null>(null)
@@ -496,6 +506,17 @@ const handleConfirm = async () => {
       }
     }
 
+    // Modo retry: agendamento já foi criado; apenas troca o método de pagamento
+    if (retryPayment && paymentChoice === 'mp') {
+      setRetryPayment(null)
+      setShowPaymentStep(false)
+      setPaymentData({
+        ...retryPayment,
+        mpMethod: selectedMpMethod ?? undefined,
+      })
+      return
+    }
+
     // Se logado mas sem WhatsApp salvo e não veio pelo payment step, exige captura
     // (no fluxo com payment step o WhatsApp é capturado antes de entrar no step)
     if (isAuthenticatedUser && !savedPhone) {
@@ -723,7 +744,7 @@ const handleConfirm = async () => {
 
   // ─── Tela de seleção de forma de pagamento ────────────────────────────────
   if (showPaymentStep && selectedService && selectedDate && selectedTime) {
-    const servicePrice = selectedService.price ?? 0
+    const servicePrice = retryPayment?.amount ?? selectedService.price ?? 0
     const displayDateStr = format(selectedDate, "dd 'de' MMMM", { locale: ptBR })
 
     return (
@@ -731,7 +752,18 @@ const handleConfirm = async () => {
         {/* Header */}
         <div className="sticky top-0 z-50 flex items-center gap-3 px-4 py-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
           <button
-            onClick={() => { setShowPaymentStep(false); setPaymentChoice(null); setSelectedMpMethod(null); isSubmittingRef.current = false; setIsSubmitting(false) }}
+            onClick={() => {
+              if (retryPayment) {
+                // Em modo retry, "Voltar" vai para reservas (agendamento já existe)
+                setRetryPayment(null)
+                setShowPaymentStep(false)
+                setPaymentChoice(null)
+                setSelectedMpMethod(null)
+                router.push('/reservas?notice=pending-payment&appt_id=' + retryPayment.appointmentId)
+                return
+              }
+              setShowPaymentStep(false); setPaymentChoice(null); setSelectedMpMethod(null); isSubmittingRef.current = false; setIsSubmitting(false)
+            }}
             className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/50 hover:text-white/80 transition-colors"
           >
             <span className="text-base">←</span> Voltar
@@ -743,6 +775,19 @@ const handleConfirm = async () => {
         </div>
 
         <div className="flex flex-col gap-6 px-4 pt-6 pb-24 max-w-lg mx-auto w-full">
+
+          {/* Aviso de pagamento recusado (modo retry) */}
+          {retryPayment && (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3.5">
+              <span className="text-base mt-0.5">⚠️</span>
+              <div className="flex flex-col gap-0.5">
+                <p className="text-xs font-bold text-red-300 uppercase tracking-wider">Pagamento recusado</p>
+                <p className="text-[11px] text-white/50 leading-relaxed">
+                  Seu horário continua reservado. Escolha outro método de pagamento para concluir.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Resumo do agendamento */}
           <div className="bg-card border border-white/[0.08] rounded-2xl p-5">
@@ -980,6 +1025,20 @@ const handleConfirm = async () => {
               onError={(msg) => {
                 toast.error(msg)
                 router.push(`/agendar/pagamento/falha?appt_id=${paymentData.appointmentId}`)
+              }}
+              onPaymentRejected={() => {
+                setRetryPayment({
+                  preferenceId: paymentData.preferenceId,
+                  amount: paymentData.amount,
+                  appointmentId: paymentData.appointmentId,
+                  serviceName: paymentData.serviceName,
+                  serviceDate: paymentData.serviceDate,
+                  serviceTime: paymentData.serviceTime,
+                })
+                setPaymentData(null)
+                setPaymentChoice(null)
+                setSelectedMpMethod(null)
+                setShowPaymentStep(true)
               }}
             />
           ) : (

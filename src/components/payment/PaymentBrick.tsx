@@ -32,6 +32,7 @@ interface Props {
   existingPaymentId?: string
   onSuccess: (checkoutId: string) => void
   onError?: (message: string) => void
+  onPaymentRejected?: () => void
 }
 
 export function PaymentBrick({
@@ -44,24 +45,25 @@ export function PaymentBrick({
   existingPaymentId,
   onSuccess,
   onError,
+  onPaymentRejected,
 }: Props) {
   const [ready, setReady] = useState(false)
   const [paymentId, setPaymentId] = useState<string | null>(existingPaymentId ?? null)
   const [submitting, setSubmitting] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(false)
-  // Controle de erro crítico do Brick (ex: fields_setup_failed_after_3_tries).
-  // Quando ocorre, exibimos UI de recuperação em vez de propagar ao pai —
-  // o agendamento continua "aguardando_pagamento"; não é cancelado.
   const [brickFailed, setBrickFailed] = useState(false)
-  // Incrementar força remontagem do componente <Payment> sem recriar o agendamento.
   const [retryKey, setRetryKey] = useState(0)
+  // Sinaliza que o último pagamento foi recusado — exibe botão de trocar método
+  const [wasRejected, setWasRejected] = useState(false)
   const onSuccessRef = useRef(onSuccess)
   const onErrorRef = useRef(onError)
+  const onPaymentRejectedRef = useRef(onPaymentRejected)
   const statusPollInFlightRef = useRef(false)
   const activePaymentId = paymentId ?? existingPaymentId ?? null
 
   useEffect(() => { onSuccessRef.current = onSuccess }, [onSuccess])
   useEffect(() => { onErrorRef.current = onError }, [onError])
+  useEffect(() => { onPaymentRejectedRef.current = onPaymentRejected }, [onPaymentRejected])
   useEffect(() => { if (existingPaymentId) setPaymentId(existingPaymentId) }, [existingPaymentId])
 
   const configError = useMemo(() => {
@@ -221,6 +223,8 @@ export function PaymentBrick({
         return
       }
 
+      // Pagamento recusado: sinaliza para exibir botão de trocar método
+      setWasRejected(true)
       throw new Error(
         result.status === 'rejected'
           ? 'Pagamento recusado. Tente novamente ou escolha outro meio de pagamento.'
@@ -362,6 +366,14 @@ export function PaymentBrick({
         onReady={noop}
         onError={handleBrickError}
       />
+      {wasRejected && onPaymentRejectedRef.current && (
+        <button
+          onClick={() => onPaymentRejectedRef.current?.()}
+          className="mt-3 w-full py-3.5 rounded-xl text-xs font-bold uppercase tracking-widest border border-white/10 text-white/60 hover:text-white/90 hover:border-white/30 transition-colors bg-white/5"
+        >
+          Tentar com outro método de pagamento
+        </button>
+      )}
     </div>
   )
 }
