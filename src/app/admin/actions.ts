@@ -1719,7 +1719,6 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
     // Usa service role para bypassar RLS e ver agendamentos de todos os clientes
     const supabase = createAdminClient()
 
-    const isRegistered = clientKey.startsWith('user:')
     const isRegistered  = clientKey.startsWith('user:')
     const isVisitor     = clientKey.startsWith('visitor:')
     const isEmailOrphan = clientKey.startsWith('email:')
