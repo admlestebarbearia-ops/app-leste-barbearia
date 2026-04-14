@@ -221,7 +221,13 @@ export async function processMercadoPagoProductPaymentRequest(
         paymentId: payment.id,
       },
     }
-  } catch {
+  } catch (err) {
+    const mpErr = err instanceof Error ? err : null
+    console.error('[mp/product-payment] createPayment failed:', {
+      message: mpErr?.message ?? String(err),
+      status: (err as Record<string, unknown>)?.status,
+      cause: (err as Record<string, unknown>)?.cause,
+    })
     return {
       status: 500,
       body: { error: 'Erro ao processar pagamento. Tente novamente.' },

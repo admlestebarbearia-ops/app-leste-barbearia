@@ -97,6 +97,11 @@ export function validateMercadoPagoPaymentRequest(input: {
     if (typeof input.formData.installments !== 'number' || input.formData.installments <= 0) {
       return 'Parcelamento inválido.'
     }
+  } else {
+    // PIX, saldo Mercado Pago e transferência bancária exigem email do pagador.
+    if (!isNonEmptyString(email)) {
+      return 'Informe seu e-mail para prosseguir com o pagamento.'
+    }
   }
 
   return null

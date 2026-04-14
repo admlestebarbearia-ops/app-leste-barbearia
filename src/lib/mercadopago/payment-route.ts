@@ -219,7 +219,15 @@ export async function processMercadoPagoPaymentRequest(
         paymentId: payment.id,
       },
     }
-  } catch {
+  } catch (err) {
+    // Loga o erro real nos Vercel Logs — fundamental para diagnóstico.
+    // A ApiError do SDK MP tem .cause (array) e .status (HTTP code da API MP).
+    const mpErr = err instanceof Error ? err : null
+    console.error('[mp/payment] createPayment failed:', {
+      message: mpErr?.message ?? String(err),
+      status: (err as Record<string, unknown>)?.status,
+      cause: (err as Record<string, unknown>)?.cause,
+    })
     return {
       status: 500,
       body: { error: 'Erro ao processar pagamento. Tente novamente.' },
