@@ -182,6 +182,8 @@ export function BookingForm({
     serviceDate: string
     serviceTime: string
     mpMethod?: PublicMpMethod
+    /** ISO timestamp de expiração vindo do servidor — base do cronômetro */
+    expiresAt?: string
   } | null>(null)
   // Quando um pagamento é recusado, guarda os dados do agendamento já criado para reutilizar
   // ao trocar o método de pagamento — evita criar um segundo agendamento desnecessariamente.
@@ -192,6 +194,7 @@ export function BookingForm({
     serviceName: string
     serviceDate: string
     serviceTime: string
+    expiresAt?: string
   } | null>(null)
   const [cancellingPaymentStep, setCancellingPaymentStep] = useState(false)
   // Cronômetro de pagamento: conta regressiva desde a criação do agendamento
@@ -589,6 +592,7 @@ const handleConfirm = async () => {
               serviceDate: format(selectedDate, 'dd/MM/yyyy'),
               serviceTime: selectedTime,
               mpMethod: selectedMpMethod ?? undefined,
+              expiresAt: result.expiresAt,
             })
           } else {
             // cash=1 informa a página de sucesso para exibir aviso de pagamento presencial
@@ -628,7 +632,11 @@ const handleConfirm = async () => {
       return
     }
 
-    const totalSeconds = paymentHoldMinutes * 60
+    // Usa expiresAt do servidor como base — evita que o timer reinicie do zero
+    // em casos de retry após rejeição, onde o servidor pode ter menos tempo restante.
+    const totalSeconds = paymentData.expiresAt
+      ? Math.max(0, Math.floor((new Date(paymentData.expiresAt).getTime() - Date.now()) / 1000))
+      : paymentHoldMinutes * 60
     setPaymentSecondsLeft(totalSeconds)
     paymentTimerRef.current = setInterval(() => {
       setPaymentSecondsLeft(prev => {
@@ -1034,6 +1042,7 @@ const handleConfirm = async () => {
                   serviceName: paymentData.serviceName,
                   serviceDate: paymentData.serviceDate,
                   serviceTime: paymentData.serviceTime,
+                  expiresAt: paymentData.expiresAt,
                 })
                 setPaymentData(null)
                 setPaymentChoice(null)

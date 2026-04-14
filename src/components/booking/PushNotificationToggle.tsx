@@ -39,6 +39,7 @@ async function injectVapidKeyToSw(reg: ServiceWorkerRegistration) {
 export function PushNotificationToggle() {
   const [supported, setSupported] = useState(false)
   const [iosPwaRequired, setIosPwaRequired] = useState(false)
+  const [permissionDenied, setPermissionDenied] = useState(false)
   const [subscribed, setSubscribed] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -52,6 +53,13 @@ export function PushNotificationToggle() {
     }
 
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+
+    // Permissão já negada anteriormente — exibir ajuda em vez de sumir
+    if (typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+      setPermissionDenied(true)
+      return
+    }
+
     setSupported(true)
 
     // Verifica se já está subscrito e injeta VAPID key no SW
@@ -62,6 +70,33 @@ export function PushNotificationToggle() {
       })
     })
   }, [])
+
+  function showDeniedHelp() {
+    const ios = isIos()
+    const standalone = isStandalone()
+    if (ios && standalone) {
+      toast.error(
+        'Permissão bloqueada. Vá em Configurações do iPhone → Barbearia Leste → Notificações e ative.',
+        { duration: 9000 },
+      )
+    } else if (!ios && standalone) {
+      // Android Chrome PWA
+      toast.error(
+        'Permissão bloqueada. Abra o Chrome → toque no 🔒 ao lado do endereço → Permissões do site → Notificações → Permitir.',
+        { duration: 9000 },
+      )
+    } else if (ios) {
+      toast.error(
+        'Para notificações no iPhone, instale o app: Compartilhar → Adicionar à Tela de Início.',
+        { duration: 9000 },
+      )
+    } else {
+      toast.error(
+        'Permissão bloqueada. Clique no 🔒 na barra de endereço → Permissões do site → Notificações → Permitir.',
+        { duration: 9000 },
+      )
+    }
+  }
 
   async function handleToggle() {
     if (!supported || !VAPID_PUBLIC_KEY) return
@@ -82,7 +117,13 @@ export function PushNotificationToggle() {
         // Ativar — pede permissão
         const permission = await Notification.requestPermission()
         if (permission !== 'granted') {
-          toast.error('Permissão para notificações negada.')
+          if (permission === 'denied') {
+            setPermissionDenied(true)
+            setSupported(false)
+            showDeniedHelp()
+          } else {
+            toast.error('Permissão para notificações não concedida.')
+          }
           setLoading(false)
           return
         }
@@ -127,7 +168,42 @@ export function PushNotificationToggle() {
     )
   }
 
+  // Permissão negada: botão visível que explica como reativar
+  if (permissionDenied) {
+    return (
+      <button
+        onClick={showDeniedHelp}
+        className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+      >
+        <BellOff size={14} />
+        <span>Notificações bloqueadas</span>
+      </button>
+    )
+  }
+
   if (!supported || !VAPID_PUBLIC_KEY) return null
+
+  // N\u00e3o subscrito: exibe banner proeminente pedindo ativa\u00e7\u00e3o
+  if (!subscribed) {
+    return (
+      <button
+        onClick={handleToggle}
+        disabled={loading}
+        className="w-full flex items-center gap-3 bg-amber-500/12 border border-amber-500/25 rounded-2xl px-4 py-3.5 text-left hover:bg-amber-500/18 transition-colors disabled:opacity-50"
+      >
+        <Bell size={18} className="text-amber-400 shrink-0" />
+        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+          <span className="text-xs font-bold text-amber-300">
+            {loading ? 'Aguarde...' : 'Ative as notifica\u00e7\u00f5es para receber alertas'}
+          </span>
+          <span className="text-[11px] text-amber-400/70 leading-tight">
+            Lembretes de hor\u00e1rio e confirma\u00e7\u00f5es direto no seu celular
+          </span>
+        </div>
+        <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/60 shrink-0">Ativar</span>
+      </button>
+    )
+  }
 
   return (
     <button

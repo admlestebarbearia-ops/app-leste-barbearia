@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -21,6 +21,7 @@ interface Appt {
   status: string
   services: { name: string; price: number; duration_minutes: number | null } | null
   payment_context: AppointmentPaymentContext | null
+  expiresAt: string | null
 }
 
 interface CancelledAppt {
@@ -67,8 +68,66 @@ interface Props {
   highlightedAppointmentId: string | null
 }
 
-function AppointmentStatusBadge({ status }: { status: string }) {
-  const styleByStatus: Record<string, string> = {
+/** Cron\u00f4metro regressivo para pagamento pendente — chama onExpired quando chega a zero */
+function PendingPaymentTimer({
+  expiresAt,
+  onExpired,
+}: {
+  expiresAt: string
+  onExpired: () => void
+}) {
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000))
+  )
+  const expiredRef = useRef(false)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    // J\u00e1 expirou no momento do mount
+    if (secondsLeft === 0 && !expiredRef.current) {
+      expiredRef.current = true
+      onExpired()
+      return
+    }
+
+    timerRef.current = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current)
+          if (!expiredRef.current) {
+            expiredRef.current = true
+            // Chama no pr\u00f3ximo tick para evitar atualizar estado dentro do reducer
+            setTimeout(onExpired, 0)
+          }
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const mins = String(Math.floor(secondsLeft / 60)).padStart(2, '0')
+  const secs = String(secondsLeft % 60).padStart(2, '0')
+  const isUrgent = secondsLeft <= 60
+
+  return (
+    <span
+      className={[
+        'text-xs font-mono font-bold tabular-nums',
+        isUrgent ? 'text-red-400 animate-pulse' : 'text-yellow-400/80',
+      ].join(' ')}
+    >
+      {mins}:{secs}
+    </span>
+  )
+}
+
+function AppointmentStatusBadge({ status }: { status: string }) {  const styleByStatus: Record<string, string> = {
     confirmado: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-300',
     concluido: 'border-blue-500/30 bg-blue-500/12 text-blue-300',
     cancelado: 'border-white/10 bg-white/5 text-zinc-400',
@@ -126,6 +185,8 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
   const [cancelling, setCancelling] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [dismissing, setDismissing] = useState<string | null>(null)
+  // IDs de reservas pendentes que expiraram no client — removidas enquanto o server cancela
+  const [expiredIds, setExpiredIds] = useState<Set<string>>(new Set())
   const historyCalendar = useMemo(
     () => getReservationHistoryCalendarMeta(historyAppts),
     [historyAppts]
@@ -180,6 +241,19 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
       toast.error(result.error ?? 'Erro ao cancelar pagamento pendente.')
     }
     setCancelling(null)
+  }
+
+  // Chamado pelo PendingPaymentTimer quando o prazo expira no client
+  const handleExpired = async (id: string) => {
+    setExpiredIds((prev) => new Set([...prev, id]))
+    const result = await cancelPendingPayment(id)
+    if (result.success) {
+      setAppointments((prev) => prev.filter((a) => a.id !== id))
+      toast.error('Prazo de pagamento expirado. Faça um novo agendamento.', { duration: 8000 })
+    } else {
+      // Erro esperado se já foi cancelado por outro caminho
+      setExpiredIds((prev) => { const s = new Set(prev); s.delete(id); return s })
+    }
   }
 
   const canCancel = (appt: Appt) => {
@@ -323,6 +397,7 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
               const timeLabel = appt.start_time?.slice(0, 5) ?? ''
               const canCancelAppt = canCancel(appt)
               const isPendingPayment = appt.status === 'aguardando_pagamento'
+              const isExpiring = expiredIds.has(appt.id)
 
               return (
                 <div
@@ -378,20 +453,41 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                   </div>
 
                   {isPendingPayment && (
-                    <div className="px-4 pb-4 flex items-center gap-2">
-                      <Link
-                        href={`/agendar/pagamento/retomar?appt_id=${appt.id}`}
-                        className="flex-1 text-center text-[11px] font-black text-primary bg-primary/10 border border-primary/20 py-2 rounded-lg hover:bg-primary/15 transition-colors"
-                      >
-                        Concluir pagamento
-                      </Link>
-                      <button
-                        onClick={() => handleCancelPending(appt.id)}
-                        disabled={cancelling === appt.id}
-                        className="shrink-0 text-[11px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-3 py-2 rounded-lg hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
-                      >
-                        {cancelling === appt.id ? '...' : 'Cancelar'}
-                      </button>
+                    <div className="px-4 pb-4 flex flex-col gap-2">
+                      {/* Timer de expira\u00e7\u00e3o */}
+                      {appt.expiresAt && !isExpiring && (
+                        <div className="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-3 py-2">
+                          <span className="text-[11px] text-yellow-300/80 font-medium">Tempo restante para pagar</span>
+                          <PendingPaymentTimer
+                            expiresAt={appt.expiresAt}
+                            onExpired={() => { void handleExpired(appt.id) }}
+                          />
+                        </div>
+                      )}
+                      {isExpiring && (
+                        <div className="flex items-center justify-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+                          <div className="w-3 h-3 rounded-full border border-red-400 border-t-transparent animate-spin shrink-0" />
+                          <span className="text-[11px] text-red-400 font-medium">Prazo expirado — cancelando reserva...</span>
+                        </div>
+                      )}
+                      {/* A\u00e7\u00f5es */}
+                      {!isExpiring && (
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/agendar/pagamento/retomar?appt_id=${appt.id}`}
+                            className="flex-1 text-center text-[11px] font-black text-primary bg-primary/10 border border-primary/20 py-2 rounded-lg hover:bg-primary/15 transition-colors"
+                          >
+                            Concluir pagamento
+                          </Link>
+                          <button
+                            onClick={() => handleCancelPending(appt.id)}
+                            disabled={cancelling === appt.id}
+                            className="shrink-0 text-[11px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-3 py-2 rounded-lg hover:text-white hover:border-white/20 transition-colors disabled:opacity-40"
+                          >
+                            {cancelling === appt.id ? '...' : 'Cancelar'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
 

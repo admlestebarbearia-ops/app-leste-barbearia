@@ -523,12 +523,13 @@ export async function createAppointment(data: {
       // Preference é opcional — o checkout transparente (Bricks) funciona sem ela.
     }
 
+    const paymentExpiresAt = buildPaymentExpirationIso(new Date(), agendaConfig?.payment_expiry_minutes)
     await adminForMp.from('payment_intents').insert({
       appointment_id: appointment.id,
       mp_preference_id: mpPreferenceId,
       status: 'pending',
       amount: Number(serviceSnapshot.price),
-      expires_at: buildPaymentExpirationIso(new Date(), agendaConfig?.payment_expiry_minutes),
+      expires_at: paymentExpiresAt,
     })
 
     // Notifica admins: novo agendamento aguardando pagamento
@@ -547,6 +548,7 @@ export async function createAppointment(data: {
       success: true,
       appointmentId: appointment.id,
       amount: Number(serviceSnapshot.price),
+      expiresAt: paymentExpiresAt,
       ...(mpPreferenceId ? { preferenceId: mpPreferenceId } : {}),
     }
   }

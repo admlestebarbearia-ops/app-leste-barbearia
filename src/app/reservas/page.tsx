@@ -141,6 +141,29 @@ export default async function ReservasPage({ searchParams }: Props) {
       ? paymentSummaryById[appointment.id]?.paymentContext ?? 'pay_locally'
       : null,
   }))
+
+  // Busca expires_at de payment_intents para agendamentos aguardando pagamento
+  const pendingIds = hydratedAppointments
+    .filter((a) => a.status === 'aguardando_pagamento')
+    .map((a) => a.id)
+  const pendingExpiresAtMap: Record<string, string> = {}
+  if (pendingIds.length > 0) {
+    const { data: pis } = await adminClient
+      .from('payment_intents')
+      .select('appointment_id, expires_at')
+      .in('appointment_id', pendingIds)
+      .eq('status', 'pending')
+    for (const pi of pis ?? []) {
+      if (pi.appointment_id && pi.expires_at) {
+        pendingExpiresAtMap[pi.appointment_id] = pi.expires_at
+      }
+    }
+  }
+
+  const hydratedWithExpiry = hydratedAppointments.map((a) => ({
+    ...a,
+    expiresAt: pendingExpiresAtMap[a.id] ?? null,
+  }))
   const historyAppts = historyRows.map((appointment) => ({
     ...appointment,
     status: getAppointmentOperationalStatus(appointment.status, appointment.date, appointment.start_time),
@@ -149,13 +172,14 @@ export default async function ReservasPage({ searchParams }: Props) {
 
   return (
     <ReservasClient
-      appointments={hydratedAppointments as Array<{
+      appointments={hydratedWithExpiry as Array<{
         id: string
         date: string
         start_time: string
         status: AppointmentStatus
         services: { name: string; price: number; duration_minutes: number | null } | null
         payment_context: AppointmentPaymentContext | null
+        expiresAt: string | null
       }>}
       cancelledByAdmin={cancelledByAdmin ?? []}
       cancellationWindowMinutes={config?.cancellation_window_minutes ?? 60}

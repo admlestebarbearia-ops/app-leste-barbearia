@@ -650,10 +650,23 @@ function TabHoje({
 
     // Se já negado, o browser não abre mais diálogo — orienta o usuário
     if (Notification.permission === 'denied') {
-      if (isStandalone) {
-        toast.error('Para ativar notificações, vá em Configurações do celular → Aplicativos → Barbearia Leste → Notificações e permita.')
+      const isIosDevice = /iphone|ipad|ipod/i.test(navigator.userAgent)
+      if (isStandalone && isIosDevice) {
+        toast.error(
+          'Notificações bloqueadas. Vá em Configurações do iPhone → Barbearia Leste → Notificações e ative.',
+          { duration: 9000 },
+        )
+      } else if (isStandalone) {
+        // Android Chrome PWA — permissão fica no Chrome, não em "Aplicativos"
+        toast.error(
+          'Notificações bloqueadas. Toque no 🔒 ao lado do endereço no Chrome → Permissões do site → Notificações → Permitir.',
+          { duration: 9000 },
+        )
       } else {
-        toast.error('Notificações bloqueadas. Clique no cadeado 🔒 na barra de endereço e permita notificações para este site.')
+        toast.error(
+          'Notificações bloqueadas. Clique no 🔒 na barra de endereço → Permissões do site → Notificações → Permitir.',
+          { duration: 9000 },
+        )
       }
       return
     }
