@@ -1438,7 +1438,9 @@ export async function listClientDirectory(dormantDays = 30): Promise<{
   error?: string
 }> {
   try {
-    const { supabase } = await requireAdmin()
+    await requireAdmin()
+    // Usa service role para bypassar RLS e ver agendamentos de todos os clientes
+    const supabase = createAdminClient()
     const now = new Date()
 
     const { data: appointments, error: appointmentError } = await supabase
@@ -1624,7 +1626,9 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
   error?: string
 }> {
   try {
-    const { supabase } = await requireAdmin()
+    await requireAdmin()
+    // Usa service role para bypassar RLS e ver agendamentos de todos os clientes
+    const supabase = createAdminClient()
 
     const isRegistered = clientKey.startsWith('user:')
     const targetId = clientKey.replace(/^user:|^visitor:/, '')

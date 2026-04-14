@@ -1472,18 +1472,27 @@ const handleConfirm = async () => {
       {/* ── MODAL CAPTURA WHATSAPP ── */}
       {showWhatsCapture && (
         <div className="fixed inset-0 z-[70] flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowWhatsCapture(false)} />
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={setupPhone && !savedPhone ? undefined : () => setShowWhatsCapture(false)}
+          />
           <div className="relative bg-[#111] border-t border-white/[0.08] rounded-t-3xl px-6 pt-6 pb-10 flex flex-col gap-5 animate-in slide-in-from-bottom duration-300">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-bold text-white/90">Seu WhatsApp</p>
+                <p className="text-sm font-bold text-white/90">
+                  {setupPhone && !savedPhone ? 'Informe seu WhatsApp para continuar' : 'Seu WhatsApp'}
+                </p>
                 <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
-                  Precisamos do seu número para enviar confirmações e lembretes.
+                  {setupPhone && !savedPhone
+                    ? 'Precisamos do seu número para enviar confirmações e lembretes. Isso é obrigatório para usar o agendamento.'
+                    : 'Precisamos do seu número para enviar confirmações e lembretes.'}
                 </p>
               </div>
-              <button onClick={() => setShowWhatsCapture(false)} className="text-white/40 hover:text-white/70 transition-colors mt-0.5">
-                <X size={20} />
-              </button>
+              {!(setupPhone && !savedPhone) && (
+                <button onClick={() => setShowWhatsCapture(false)} className="text-white/40 hover:text-white/70 transition-colors mt-0.5">
+                  <X size={20} />
+                </button>
+              )}
             </div>
             <div className="flex flex-col gap-2">
               <Input
