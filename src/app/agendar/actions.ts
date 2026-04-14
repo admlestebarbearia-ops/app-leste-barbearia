@@ -221,7 +221,7 @@ export async function createAppointment(data: {
   clientPhone?: string
   loggedUserPhone?: string
   payCash?: boolean
-}): Promise<{ success: boolean; appointmentId?: string; error?: string; preferenceId?: string; amount?: number }> {
+}): Promise<{ success: boolean; appointmentId?: string; error?: string; preferenceId?: string; amount?: number; expiresAt?: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const signedInWithGoogle = isAuthenticatedUser(user)
