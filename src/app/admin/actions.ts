@@ -166,7 +166,7 @@ export async function updateAppointmentStatus(
 
     // Notifica cliente: admin cancelou o agendamento
     if (status === 'cancelado' && appt?.client_id) {
-      void firePushToUser(appt.client_id, {
+      await firePushToUser(appt.client_id, {
         title: '❌ Seu agendamento foi cancelado',
         body: `${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)} foi cancelado pela barbearia.`,
         url: '/reservas',
@@ -208,7 +208,7 @@ export async function deleteAppointment(
 
     // Notifica cliente: agendamento cancelado (mesmo fluxo do updateAppointmentStatus)
     if (appt?.client_id) {
-      void firePushToUser(appt.client_id, {
+      await firePushToUser(appt.client_id, {
         title: '❌ Seu agendamento foi cancelado',
         body: `${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)} foi cancelado pela barbearia.`,
         url: '/reservas',

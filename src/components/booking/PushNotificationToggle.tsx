@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Bell, BellOff } from 'lucide-react'
+import { Bell, BellOff, X, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { savePushSubscription, removePushSubscription } from '@/app/api/push/actions'
 
@@ -40,6 +40,7 @@ export function PushNotificationToggle() {
   const [supported, setSupported] = useState(false)
   const [iosPwaRequired, setIosPwaRequired] = useState(false)
   const [permissionDenied, setPermissionDenied] = useState(false)
+  const [showDeniedModal, setShowDeniedModal] = useState(false)
   const [subscribed, setSubscribed] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -72,30 +73,7 @@ export function PushNotificationToggle() {
   }, [])
 
   function showDeniedHelp() {
-    const ios = isIos()
-    const standalone = isStandalone()
-    if (ios && standalone) {
-      toast.error(
-        'Permissão bloqueada. Vá em Configurações do iPhone → Barbearia Leste → Notificações e ative.',
-        { duration: 9000 },
-      )
-    } else if (!ios && standalone) {
-      // Android Chrome PWA
-      toast.error(
-        'Permissão bloqueada. Abra o Chrome → toque no 🔒 ao lado do endereço → Permissões do site → Notificações → Permitir.',
-        { duration: 9000 },
-      )
-    } else if (ios) {
-      toast.error(
-        'Para notificações no iPhone, instale o app: Compartilhar → Adicionar à Tela de Início.',
-        { duration: 9000 },
-      )
-    } else {
-      toast.error(
-        'Permissão bloqueada. Clique no 🔒 na barra de endereço → Permissões do site → Notificações → Permitir.',
-        { duration: 9000 },
-      )
-    }
+    setShowDeniedModal(true)
   }
 
   async function handleToggle() {
@@ -168,39 +146,115 @@ export function PushNotificationToggle() {
     )
   }
 
-  // Permissão negada: botão visível que explica como reativar
+  // Permissão negada: botão + modal step-by-step
   if (permissionDenied) {
+    const ios = isIos()
+    const standalone = isStandalone()
+
+    const steps: string[] = ios && standalone
+      ? [
+          'Abra o app Configurações do iPhone',
+          'Role até encontrar "Barbearia Leste"',
+          'Toque em Notificações',
+          'Ative "Permitir Notificações"',
+          'Volte aqui e toque em Ativar',
+        ]
+      : !ios && standalone
+      ? [
+          'Toque no ícone 🔒 ao lado da barra de endereço',
+          'Toque em "Permissões do site"',
+          'Toque em "Notificações"',
+          'Selecione "Permitir"',
+          'Volte aqui e toque em Ativar',
+        ]
+      : ios
+      ? [
+          'Toque em Compartilhar (ícone de caixa com seta)',
+          'Toque em "Adicionar à Tela de Início"',
+          'Abra o app pela ícone na tela inicial',
+          'Toque em Ativar notificações',
+        ]
+      : [
+          'Clique no ícone 🔒 na barra de endereço',
+          'Clique em "Permissões do site"',
+          'Em Notificações, selecione "Permitir"',
+          'Recarregue a página e ative',
+        ]
+
     return (
-      <button
-        onClick={showDeniedHelp}
-        className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-      >
-        <BellOff size={14} />
-        <span>Notificações bloqueadas</span>
-      </button>
+      <>
+        <button
+          onClick={showDeniedHelp}
+          className="flex items-center gap-2 text-sm px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+        >
+          <BellOff size={14} />
+          <span>Notificações bloqueadas — como ativar?</span>
+        </button>
+
+        {showDeniedModal && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-4">
+            <div className="bg-card border border-border rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-2xl">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="font-bold text-base text-foreground">Como ativar notificações</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">Siga os passos abaixo no seu celular</p>
+                </div>
+                <button
+                  onClick={() => setShowDeniedModal(false)}
+                  className="text-muted-foreground hover:text-foreground p-1 rounded-lg"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <ol className="space-y-2">
+                {steps.map((step, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
+                      {i + 1}
+                    </span>
+                    <span className="text-sm text-foreground leading-snug">{step}</span>
+                  </li>
+                ))}
+              </ol>
+
+              <button
+                onClick={() => setShowDeniedModal(false)}
+                className="w-full bg-primary text-primary-foreground rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2"
+              >
+                Entendi <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+      </>
     )
   }
 
   if (!supported || !VAPID_PUBLIC_KEY) return null
 
-  // N\u00e3o subscrito: exibe banner proeminente pedindo ativa\u00e7\u00e3o
+  // Não subscrito: exibe banner pedindo ativação
   if (!subscribed) {
     return (
       <button
         onClick={handleToggle}
         disabled={loading}
-        className="w-full flex items-center gap-3 bg-amber-500/12 border border-amber-500/25 rounded-2xl px-4 py-3.5 text-left hover:bg-amber-500/18 transition-colors disabled:opacity-50"
+        className="w-full flex items-center gap-3 bg-amber-500/10 border border-amber-500/25 rounded-2xl px-4 py-3 text-left hover:bg-amber-500/15 transition-colors disabled:opacity-50"
       >
         <Bell size={18} className="text-amber-400 shrink-0" />
         <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-          <span className="text-xs font-bold text-amber-300">
-            {loading ? 'Aguarde...' : 'Ative as notifica\u00e7\u00f5es para receber alertas'}
+          <span className="text-xs font-bold text-amber-300 leading-snug">
+            {loading ? 'Aguarde...' : 'Ativar lembretes e avisos'}
           </span>
           <span className="text-[11px] text-amber-400/70 leading-tight">
-            Lembretes de hor\u00e1rio e confirma\u00e7\u00f5es direto no seu celular
+            Notificações direto no celular
           </span>
         </div>
-        <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/60 shrink-0">Ativar</span>
+        {!loading && (
+          <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 shrink-0 bg-amber-500/20 px-2 py-1 rounded-lg">
+            Ativar
+          </span>
+        )}
       </button>
     )
   }

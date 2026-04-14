@@ -536,7 +536,7 @@ export async function createAppointment(data: {
     const clientDisplayName = signedInWithGoogle
       ? ((user.user_metadata?.full_name as string | undefined) ?? data.clientName ?? user.email ?? 'Cliente')
       : (data.clientName ?? 'Visitante')
-    void firePushToAdmins({
+    await firePushToAdmins({
       title: '📅 Novo agendamento (aguardando pagamento)',
       body: `${clientDisplayName} — ${serviceSnapshot.name} em ${data.date.split('-').reverse().join('/')} às ${data.startTime.slice(0, 5)}`,
       url: '/admin',
@@ -553,26 +553,28 @@ export async function createAppointment(data: {
     }
   }
 
-  // Notifica cliente: agendamento confirmado (apenas usuários logados têm push subscription)
-  if (signedInWithGoogle) {
-    void firePushToUser(user.id, {
-      title: '✅ Agendamento confirmado!',
-      body: `${serviceSnapshot.name} em ${data.date.split('-').reverse().join('/')} às ${data.startTime.slice(0, 5)}.`,
-      url: '/reservas',
-      tag: `cliente-confirma-${appointment.id}`,
-    })
-  }
-
-  // Notifica admins: novo agendamento (presencial/dinheiro)
-  const clientName = signedInWithGoogle
-    ? ((user.user_metadata?.full_name as string | undefined) ?? data.clientName ?? user.email ?? 'Cliente')
-    : (data.clientName ?? 'Visitante')
-  void firePushToAdmins({
-    title: '📅 Novo agendamento!',
-    body: `${clientName} — ${serviceSnapshot.name} em ${data.date.split('-').reverse().join('/')} às ${data.startTime.slice(0, 5)}`,
-    url: '/admin',
-    tag: `admin-novo-agend-${appointment.id}`,
-  })
+  // Notifica cliente + admins em paralelo (presencial/dinheiro)
+  await Promise.allSettled([
+    signedInWithGoogle
+      ? firePushToUser(user.id, {
+          title: '✅ Agendamento confirmado!',
+          body: `${serviceSnapshot.name} em ${data.date.split('-').reverse().join('/')} às ${data.startTime.slice(0, 5)}.`,
+          url: '/reservas',
+          tag: `cliente-confirma-${appointment.id}`,
+        })
+      : Promise.resolve(),
+    firePushToAdmins({
+      title: '📅 Novo agendamento!',
+      body: `${(() => {
+        const clientName = signedInWithGoogle
+          ? ((user.user_metadata?.full_name as string | undefined) ?? data.clientName ?? user.email ?? 'Cliente')
+          : (data.clientName ?? 'Visitante')
+        return clientName
+      })()} — ${serviceSnapshot.name} em ${data.date.split('-').reverse().join('/')} às ${data.startTime.slice(0, 5)}`,
+      url: '/admin',
+      tag: `admin-novo-agend-${appointment.id}`,
+    }),
+  ])
 
   revalidatePath('/agendar')
   return { success: true, appointmentId: appointment.id }
@@ -635,7 +637,7 @@ export async function cancelMyAppointment(
   if (error) return { success: false, error: 'Erro ao cancelar. Tente novamente.' }
 
   // Notifica admins: cliente cancelou
-  void firePushToAdmins({
+  await firePushToAdmins({
     title: '❌ Agendamento cancelado pelo cliente',
     body: `${appt.client_name ?? 'Cliente'} — ${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)}`,
     url: '/admin',
