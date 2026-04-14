@@ -192,7 +192,6 @@ export async function processMercadoPagoPaymentRequest(
             },
           ],
           payer: {
-            email: (normalizedFormData.payer as Record<string, unknown> | undefined)?.email,
             first_name: (normalizedFormData.payer as Record<string, unknown> | undefined)?.first_name,
             last_name: (normalizedFormData.payer as Record<string, unknown> | undefined)?.last_name,
             phone: (normalizedFormData.payer as Record<string, unknown> | undefined)?.phone,
