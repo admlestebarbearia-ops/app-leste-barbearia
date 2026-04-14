@@ -61,6 +61,16 @@ function buildVisitorClientKey(phone: string) {
   return `visitor:${phone}`
 }
 
+// Usuário deletado do auth.users → client_id virou NULL, mas client_email ainda existe
+function buildEmailClientKey(email: string) {
+  return `email:${email.toLowerCase()}`
+}
+
+// Agendamento anônimo sem client_id, sem phone, sem email — chave pelo próprio id
+function buildApptClientKey(apptId: string) {
+  return `appt:${apptId}`
+}
+
 function getDaysSinceDate(date: string, now = new Date()) {
   const base = new Date(`${date}T12:00:00`)
   if (Number.isNaN(base.getTime())) return 0
@@ -963,7 +973,10 @@ export async function deleteClientFromDirectory(
     const adminSupabase = createAdminClient()
 
     const isRegistered = clientKey.startsWith('user:')
-    const targetId = clientKey.replace(/^user:|^visitor:/, '')
+    const isVisitor = clientKey.startsWith('visitor:')
+    const isEmailOrphan = clientKey.startsWith('email:')
+    const isApptOrphan = clientKey.startsWith('appt:')
+    const targetId = clientKey.replace(/^user:|^visitor:|^email:|^appt:/, '')
 
     if (!targetId) return { success: false, error: 'Cliente inválido.' }
 
@@ -981,7 +994,7 @@ export async function deleteClientFromDirectory(
       // Remove da auth (cascade: profiles, push_subscriptions, client_ratings etc.)
       const { error: deleteError } = await adminSupabase.auth.admin.deleteUser(targetId)
       if (deleteError) throw deleteError
-    } else {
+    } else if (isVisitor) {
       // Visitante: limpa agendamentos pelo telefone normalizado
       const { data: appts } = await adminSupabase
         .from('appointments')
@@ -995,6 +1008,16 @@ export async function deleteClientFromDirectory(
       if (matchIds.length > 0) {
         await adminSupabase.from('appointments').delete().in('id', matchIds)
       }
+    } else if (isEmailOrphan) {
+      // Usuário deletado do auth: appointments órfãos agrupados por e-mail
+      await adminSupabase
+        .from('appointments')
+        .delete()
+        .is('client_id', null)
+        .ilike('client_email', targetId)
+    } else if (isApptOrphan) {
+      // Agendamento completamente anônimo: deleta pelo ID
+      await adminSupabase.from('appointments').delete().eq('id', targetId)
     }
 
     revalidatePath('/admin')
@@ -1563,15 +1586,24 @@ export async function listClientDirectory(dormantDays = 30): Promise<{
         : null
 
       const resolvedClientId = appointment.client_id ?? matchedProfile?.id ?? null
+      // Hierarquia de chaves:
+      // 1. user:uuid   → usuário cadastrado ativo
+      // 2. visitor:phone → visitante com telefone
+      // 3. email:addr  → usuário deletado do auth (client_id=null, phone=null, email ainda existe)
+      // 4. appt:id     → agendamento completamente anônimo sem identificador
       const clientKey = resolvedClientId
         ? buildRegisteredClientKey(resolvedClientId)
-        : buildVisitorClientKey(normalizedPhone ?? appointment.id)
+        : normalizedPhone
+        ? buildVisitorClientKey(normalizedPhone)
+        : appointment.client_email
+        ? buildEmailClientKey(appointment.client_email)
+        : buildApptClientKey(appointment.id)
       appointmentClientKey.set(appointment.id, clientKey)
 
       const current = directoryMap.get(clientKey) ?? {
         client_key: clientKey,
         client_id: resolvedClientId,
-        name: matchedProfile?.display_name ?? appointment.client_name ?? matchedProfile?.email ?? 'Visitante',
+        name: matchedProfile?.display_name ?? appointment.client_name ?? appointment.client_email ?? matchedProfile?.email ?? 'Visitante',
         email: matchedProfile?.email ?? appointment.client_email ?? null,
         phone: matchedProfile?.phone ?? normalizedPhone ?? appointment.client_phone ?? null,
         is_registered: Boolean(resolvedClientId),
@@ -1688,7 +1720,11 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
     const supabase = createAdminClient()
 
     const isRegistered = clientKey.startsWith('user:')
-    const targetId = clientKey.replace(/^user:|^visitor:/, '')
+    const isRegistered  = clientKey.startsWith('user:')
+    const isVisitor     = clientKey.startsWith('visitor:')
+    const isEmailOrphan = clientKey.startsWith('email:')
+    const isApptOrphan  = clientKey.startsWith('appt:')
+    const targetId = clientKey.replace(/^user:|^visitor:|^email:|^appt:/, '')
 
     if (!targetId) {
       return { success: false, error: 'Cliente inválido.' }
@@ -1721,7 +1757,6 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
         .from('appointments')
         .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
         .eq('client_id', targetId)
-        .is('deleted_at', null)
         .order('date', { ascending: false })
         .order('start_time', { ascending: false })
 
@@ -1731,7 +1766,6 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
             .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
             .is('client_id', null)
             .eq('client_phone', normalizePhoneLookup(profile.phone))
-            .is('deleted_at', null)
             .order('date', { ascending: false })
             .order('start_time', { ascending: false })
         : { data: [] }
@@ -1741,16 +1775,35 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
           [...(directAppointments.data ?? []), ...(phoneAppointments.data ?? [])].map((appointment) => [appointment.id, appointment])
         ).values()
       )
-    } else {
+    } else if (isVisitor) {
+      // Visitante identificado por telefone normalizado
       const normalizedPhone = normalizePhoneLookup(targetId)
       const { data } = await supabase
         .from('appointments')
         .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
         .is('client_id', null)
         .eq('client_phone', normalizedPhone)
-        .is('deleted_at', null)
         .order('date', { ascending: false })
         .order('start_time', { ascending: false })
+
+      appointments = data ?? []
+    } else if (isEmailOrphan) {
+      // Usuário removido do auth: client_id virou NULL mas client_email ainda existe
+      const { data } = await supabase
+        .from('appointments')
+        .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
+        .is('client_id', null)
+        .ilike('client_email', targetId)
+        .order('date', { ascending: false })
+        .order('start_time', { ascending: false })
+
+      appointments = data ?? []
+    } else if (isApptOrphan) {
+      // Agendamento completamente anônimo — sem client_id, phone ou email
+      const { data } = await supabase
+        .from('appointments')
+        .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
+        .eq('id', targetId)
 
       appointments = data ?? []
     }
@@ -1797,7 +1850,7 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
     const client: ClientDirectoryItem = {
       client_key: clientKey,
       client_id: profile?.id ?? null,
-      name: profile?.display_name ?? appointments[0]?.client_name ?? profile?.email ?? 'Visitante',
+      name: profile?.display_name ?? appointments[0]?.client_name ?? profile?.email ?? appointments[0]?.client_email ?? 'Visitante',
       email: profile?.email ?? appointments[0]?.client_email ?? null,
       phone: profile?.phone ?? normalizePhoneLookup(appointments[0]?.client_phone) ?? appointments[0]?.client_phone ?? null,
       is_registered: Boolean(profile?.id),
