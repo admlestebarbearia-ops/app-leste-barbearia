@@ -20,18 +20,22 @@ const noop = () => {}
 // vida da página — mesmo que PaymentBrick desmonte e remonte via React transitions.
 let _mpInitialized = false
 
-// ─── StatusScreenView ─────────────────────────────────────────────────────────
-// Componente separado + React.memo para garantir que o <StatusScreen> do SDK do
-// MercadoPago NÃO desmonte/remonte quando o pai (PaymentBrick / BookingForm) faz
-// re-render por polling, router.refresh(), realtime ou qualquer outro motivo.
-// O SDK compara os props por REFERÊNCIA: se initialization ou customization forem
-// objetos inline recriados a cada render, ele destrói o iframe e reconstrói —
-// causando o piscar visível. Aqui eles são memoizados dentro do próprio componente
-// e o memo externo impede renders supérfluos quando paymentId não muda.
-interface StatusScreenViewProps {
+// ─── StatusScreenOnly ─────────────────────────────────────────────────────────
+// Envolve o <StatusScreen> do SDK do MercadoPago de forma completamente isolada.
+//
+// Problema: o SKD compara os props do StatusScreen por REFERÊNCIA. Se qualquer
+// prop mudar de referência (initialization inline, onError inline, etc.), o SDK
+// destrói e recria o iframe — causando o piscar visível.
+//
+// O pai (BookingForm) re-renderiza todo segundo pelo timer de countdown, e toda
+// vez que router.refresh() / realtime roda. Isso recria callbacks inline a cada
+// render. React.memo NÃO resolve quando onError é uma lambda nova a cada render.
+//
+// Solução: useRef para capturar o callback mais recente sem expô-lo como dep do
+// useCallback. Assim handleError passado ao StatusScreen é SEMPRE a mesma
+// referência — o SDK nunca vê mudança de prop e não remonta o iframe.
+interface StatusScreenOnlyProps {
   activePaymentId: string
-  checkingStatus: boolean
-  onVerify: () => void
   onError: () => void
 }
 
@@ -43,37 +47,31 @@ const STATUS_SCREEN_CUSTOMIZATION = {
   },
 }
 
-const StatusScreenView = memo(function StatusScreenView({
+const StatusScreenOnly = memo(function StatusScreenOnly({
   activePaymentId,
-  checkingStatus,
-  onVerify,
   onError,
-}: StatusScreenViewProps) {
+}: StatusScreenOnlyProps) {
   const initialization = useMemo(
     () => ({ paymentId: activePaymentId }),
     [activePaymentId],
   )
+  // Ref sempre aponta para o callback mais recente sem ser dep do useCallback
+  const onErrorRef = useRef(onError)
+  useEffect(() => { onErrorRef.current = onError }, [onError])
+
+  // Callback ESTÁVEL (deps vazias) — o StatusScreen nunca recebe nova referência
   const handleError = useCallback((e: unknown) => {
     console.error('[MP StatusScreen]', e)
-    onError()
-  }, [onError])
+    onErrorRef.current()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="w-full">
-      <StatusScreen
-        initialization={initialization}
-        customization={STATUS_SCREEN_CUSTOMIZATION}
-        onReady={noop}
-        onError={handleError}
-      />
-      <button
-        onClick={onVerify}
-        disabled={checkingStatus}
-        className="mt-4 w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest bg-primary text-primary-foreground disabled:opacity-60"
-      >
-        {checkingStatus ? 'Verificando pagamento...' : 'Já paguei — Verificar agora'}
-      </button>
-    </div>
+    <StatusScreen
+      initialization={initialization}
+      customization={STATUS_SCREEN_CUSTOMIZATION}
+      onReady={noop}
+      onError={handleError}
+    />
   )
 })
 
@@ -375,13 +373,22 @@ export function PaymentBrick({
       )
     }
 
+    const handleStatusError = useCallback(() => setStatusScreenFailed(true), [])
+
     return (
-      <StatusScreenView
-        activePaymentId={activePaymentId}
-        checkingStatus={checkingStatus}
-        onVerify={() => void checkBackendConfirmation({ attempts: MP_STATUS_POLL_ATTEMPTS, silent: false })}
-        onError={() => setStatusScreenFailed(true)}
-      />
+      <div className="w-full">
+        <StatusScreenOnly
+          activePaymentId={activePaymentId}
+          onError={handleStatusError}
+        />
+        <button
+          onClick={() => void checkBackendConfirmation({ attempts: MP_STATUS_POLL_ATTEMPTS, silent: false })}
+          disabled={checkingStatus}
+          className="mt-4 w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest bg-primary text-primary-foreground disabled:opacity-60"
+        >
+          {checkingStatus ? 'Verificando pagamento...' : 'Já paguei — Verificar agora'}
+        </button>
+      </div>
     )
   }
 
