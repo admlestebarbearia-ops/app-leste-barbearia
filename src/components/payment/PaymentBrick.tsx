@@ -210,12 +210,22 @@ export function PaymentBrick({
         throw new Error(result.error ?? 'Erro ao processar pagamento.')
       }
 
-      if (result.paymentId) {
+      // "pending" = PIX ou boleto aguardando; "approved" = cartão aprovado; "in_process" = análise manual.
+      // Para qualquer um desses, mostra o StatusScreen (QR code do PIX ou confirmação de cartão).
+      // Para "rejected" e outros status de falha, NÃO troca para StatusScreen — deixa o Brick
+      // mostrar o erro inline para que o cliente possa tentar novamente ou trocar a forma de pagamento.
+      const isAwaitingConfirmation =
+        result.status === 'pending' || result.status === 'approved' || result.status === 'in_process'
+      if (result.paymentId && isAwaitingConfirmation) {
         setPaymentId(String(result.paymentId))
         return
       }
 
-      throw new Error(result.statusDetail ?? 'Pagamento recusado.')
+      throw new Error(
+        result.status === 'rejected'
+          ? 'Pagamento recusado. Tente novamente ou escolha outro meio de pagamento.'
+          : (result.statusDetail ?? result.error ?? 'Pagamento recusado.')
+      )
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao processar pagamento.'
       onErrorRef.current?.(message)

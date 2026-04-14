@@ -184,6 +184,10 @@ export function BookingForm({
     mpMethod?: PublicMpMethod
   } | null>(null)
   const [cancellingPaymentStep, setCancellingPaymentStep] = useState(false)
+  // Cronômetro de pagamento: conta regressiva desde a criação do agendamento
+  const [paymentSecondsLeft, setPaymentSecondsLeft] = useState<number | null>(null)
+  const [paymentExpired, setPaymentExpired] = useState(false)
+  const paymentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // Bug 02/03: previne duplo clique no botão de pagamento
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -591,6 +595,52 @@ const handleConfirm = async () => {
     setIsSubmitting(false)
   }, [paymentData])
 
+  // Inicia/reinicia o cronômetro quando um novo agendamento é criado aguardando pagamento
+  useEffect(() => {
+    if (!paymentData) {
+      if (paymentTimerRef.current) {
+        clearInterval(paymentTimerRef.current)
+        paymentTimerRef.current = null
+      }
+      setPaymentSecondsLeft(null)
+      setPaymentExpired(false)
+      return
+    }
+
+    const totalSeconds = paymentHoldMinutes * 60
+    setPaymentSecondsLeft(totalSeconds)
+    paymentTimerRef.current = setInterval(() => {
+      setPaymentSecondsLeft(prev => {
+        if (prev === null || prev <= 1) return 0
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      if (paymentTimerRef.current) {
+        clearInterval(paymentTimerRef.current)
+        paymentTimerRef.current = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentData?.appointmentId])
+
+  // Cancela o agendamento automaticamente quando o cronômetro chega a zero
+  useEffect(() => {
+    if (paymentSecondsLeft !== 0 || !paymentData || paymentExpired) return
+    setPaymentExpired(true)
+    if (paymentTimerRef.current) {
+      clearInterval(paymentTimerRef.current)
+      paymentTimerRef.current = null
+    }
+    void cancelPendingPayment(paymentData.appointmentId).finally(() => {
+      setPaymentData(null)
+      toast.error('Tempo para pagamento esgotado. Faça um novo agendamento.', { duration: 8000 })
+      router.push('/agendar')
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentSecondsLeft])
+
   const handleOpenProfile = () => {
     if (isAuthenticatedUser) {
       router.push('/perfil')
@@ -866,16 +916,25 @@ const handleConfirm = async () => {
         <div className="sticky top-0 z-50 flex items-center gap-3 px-4 py-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
           <button
             onClick={handleCancelPayment}
-            disabled={cancellingPaymentStep}
+            disabled={cancellingPaymentStep || paymentExpired}
             className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/50 hover:text-white/80 transition-colors disabled:opacity-40"
           >
             <span className="text-base">←</span>
-            {cancellingPaymentStep ? 'Cancelando...' : 'Voltar'}
+            {cancellingPaymentStep ? 'Cancelando...' : paymentExpired ? 'Aguarde...' : 'Voltar'}
           </button>
           <span className="flex-1 text-center text-xs font-bold uppercase tracking-[0.2em] text-foreground">
             Pagamento
           </span>
-          <div className="w-16" />
+          {paymentSecondsLeft !== null ? (
+            <div className={[
+              'w-16 text-right text-xs font-mono font-bold tabular-nums',
+              paymentSecondsLeft <= 60 ? 'text-red-400 animate-pulse' : 'text-white/40',
+            ].join(' ')}>
+              {String(Math.floor(paymentSecondsLeft / 60)).padStart(2, '0')}:{String(paymentSecondsLeft % 60).padStart(2, '0')}
+            </div>
+          ) : (
+            <div className="w-16" />
+          )}
         </div>
 
         <div className="flex flex-col gap-6 px-4 pt-6 pb-12 max-w-lg mx-auto w-full">
