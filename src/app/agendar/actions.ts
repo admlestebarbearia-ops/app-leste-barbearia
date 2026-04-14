@@ -225,6 +225,10 @@ export async function createAppointment(data: {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const signedInWithGoogle = isAuthenticatedUser(user)
+  // Captura o id ANTES do type narrowing do TypeScript. Necessário para o caso de sessão
+  // anônima Supabase (is_anonymous: true): o papel Postgres é 'authenticated' mas o código
+  // trata como guest. Sem client_id no INSERT, a policy 'authenticated' falha com RLS.
+  const rawUserId = (user as { id?: string } | null)?.id ?? null
   const effectivePhone = normalizePhoneLookup(data.loggedUserPhone ?? data.clientPhone)
 
   // Busca configs de agenda (limite diário + controles) em uma única query
@@ -397,6 +401,12 @@ export async function createAppointment(data: {
     return { success: false, error: 'Sessão expirada. Por favor, recarregue a página e tente novamente.' }
   }
 
+  // Guard: sem JWT (role = anon) a policy exige client_phone IS NOT NULL.
+  // Cobre o caso raro de sessão limpa + telefone inválido sem passar pelo form.
+  if (!signedInWithGoogle && !user && !effectivePhone) {
+    return { success: false, error: 'Número de telefone inválido. Verifique e tente novamente.' }
+  }
+
   const appointmentData = signedInWithGoogle
     ? {
         client_id: user.id,
@@ -413,6 +423,11 @@ export async function createAppointment(data: {
         status: appointmentStatus,
       }
     : {
+        // Sessão anônima Supabase (is_anonymous: true): o papel Postgres é 'authenticated'
+        // mas o código trata o usuário como guest (client_id = null). Sem client_id, a
+        // policy INSERT de 'authenticated' (auth.uid() = client_id) falha com RLS.
+        // Incluímos client_id quando user existe para satisfazer a policy.
+        ...(rawUserId ? { client_id: rawUserId } : {}),
         client_name: data.clientName,
         client_email: null,
         client_phone: effectivePhone,
