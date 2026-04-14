@@ -1443,11 +1443,14 @@ export async function listClientDirectory(dormantDays = 30): Promise<{
     const supabase = createAdminClient()
     const now = new Date()
 
+    // Sem filtros de soft-delete: o diretório precisa do histórico COMPLETO
+    // de cada cliente, incluindo agendamentos que o admin ocultou do painel "hoje"
+    // (admin_hidden_at) ou que o cliente dispensou (deleted_at). Ambos os campos
+    // podem não existir em instâncias onde as migrations antigas não foram aplicadas,
+    // portanto não devemos filtrar por eles aqui.
     const { data: appointments, error: appointmentError } = await supabase
       .from('appointments')
       .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_price_snapshot')
-      .is('deleted_at', null)
-      .is('admin_hidden_at', null)
       .order('date', { ascending: false })
       .order('start_time', { ascending: false })
 
