@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { initMercadoPago, Payment, StatusScreen } from '@mercadopago/sdk-react'
 import type { IPaymentBrickCustomization } from '@mercadopago/sdk-react/esm/bricks/payment/type'
 import type { TPaymentType } from '@mercadopago/sdk-react/esm/bricks/payment/type'
@@ -19,6 +19,63 @@ const noop = () => {}
 // módulo (fora do componente) garantimos que ele só roda uma vez para toda a
 // vida da página — mesmo que PaymentBrick desmonte e remonte via React transitions.
 let _mpInitialized = false
+
+// ─── StatusScreenView ─────────────────────────────────────────────────────────
+// Componente separado + React.memo para garantir que o <StatusScreen> do SDK do
+// MercadoPago NÃO desmonte/remonte quando o pai (PaymentBrick / BookingForm) faz
+// re-render por polling, router.refresh(), realtime ou qualquer outro motivo.
+// O SDK compara os props por REFERÊNCIA: se initialization ou customization forem
+// objetos inline recriados a cada render, ele destrói o iframe e reconstrói —
+// causando o piscar visível. Aqui eles são memoizados dentro do próprio componente
+// e o memo externo impede renders supérfluos quando paymentId não muda.
+interface StatusScreenViewProps {
+  activePaymentId: string
+  checkingStatus: boolean
+  onVerify: () => void
+  onError: () => void
+}
+
+const STATUS_SCREEN_CUSTOMIZATION = {
+  visual: {
+    style: { theme: 'dark' as const },
+    hideStatusDetails: false,
+    hideTransactionDate: false,
+  },
+}
+
+const StatusScreenView = memo(function StatusScreenView({
+  activePaymentId,
+  checkingStatus,
+  onVerify,
+  onError,
+}: StatusScreenViewProps) {
+  const initialization = useMemo(
+    () => ({ paymentId: activePaymentId }),
+    [activePaymentId],
+  )
+  const handleError = useCallback((e: unknown) => {
+    console.error('[MP StatusScreen]', e)
+    onError()
+  }, [onError])
+
+  return (
+    <div className="w-full">
+      <StatusScreen
+        initialization={initialization}
+        customization={STATUS_SCREEN_CUSTOMIZATION}
+        onReady={noop}
+        onError={handleError}
+      />
+      <button
+        onClick={onVerify}
+        disabled={checkingStatus}
+        className="mt-4 w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest bg-primary text-primary-foreground disabled:opacity-60"
+      >
+        {checkingStatus ? 'Verificando pagamento...' : 'Já paguei — Verificar agora'}
+      </button>
+    </div>
+  )
+})
 
 export type PaymentBrickCheckoutKind = 'appointment' | 'product_reservation'
 
@@ -319,32 +376,12 @@ export function PaymentBrick({
     }
 
     return (
-      <div className="w-full">
-        <StatusScreen
-          initialization={{ paymentId: activePaymentId }}
-          customization={{
-            visual: {
-              style: { theme: 'dark' },
-              hideStatusDetails: false,
-              hideTransactionDate: false,
-            },
-          }}
-          onReady={noop}
-          onError={(e) => {
-            console.error('[MP StatusScreen]', e)
-            // Para evitar loop infinito: ao receber erro crítico (ex: pagamento não
-            // encontrado com a public_key atual), desmonta o StatusScreen.
-            setStatusScreenFailed(true)
-          }}
-        />
-        <button
-          onClick={() => void checkBackendConfirmation({ attempts: MP_STATUS_POLL_ATTEMPTS, silent: false })}
-          disabled={checkingStatus}
-          className="mt-4 w-full py-3 rounded-xl text-xs font-bold uppercase tracking-widest bg-primary text-primary-foreground disabled:opacity-60"
-        >
-          {checkingStatus ? 'Verificando pagamento...' : 'Já paguei — Verificar agora'}
-        </button>
-      </div>
+      <StatusScreenView
+        activePaymentId={activePaymentId}
+        checkingStatus={checkingStatus}
+        onVerify={() => void checkBackendConfirmation({ attempts: MP_STATUS_POLL_ATTEMPTS, silent: false })}
+        onError={() => setStatusScreenFailed(true)}
+      />
     )
   }
 
