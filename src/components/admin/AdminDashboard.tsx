@@ -59,6 +59,7 @@ import {
   saveCardRates,
   listClientDirectory,
   getClientDirectoryDetails,
+  deleteClientFromDirectory,
   saveMercadoPagoConfig,
   disconnectMercadoPago,
   getPendingPaymentsCount,
@@ -4340,6 +4341,8 @@ function TabClientes() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detailData, setDetailData] = useState<ClientDirectoryDetails | null>(null)
+  const [deleteClientConfirm, setDeleteClientConfirm] = useState(false)
+  const [deletingClient, setDeletingClient] = useState(false)
 
   const loadDirectory = async () => {
     setLoading(true)
@@ -4459,6 +4462,23 @@ function TabClientes() {
     setDetailLoading(false)
     setDetailError(null)
     setDetailData(null)
+    setDeleteClientConfirm(false)
+    setDeletingClient(false)
+  }
+
+  const handleDeleteClient = async () => {
+    if (!selectedClientKey) return
+    setDeletingClient(true)
+    const result = await deleteClientFromDirectory(selectedClientKey)
+    setDeletingClient(false)
+    if (!result.success) {
+      toast.error(result.error ?? 'Erro ao excluir cliente.')
+      setDeleteClientConfirm(false)
+      return
+    }
+    toast.success('Cliente excluído com sucesso.')
+    closeClientDetails()
+    void loadDirectory()
   }
 
   return (
@@ -4824,6 +4844,41 @@ function TabClientes() {
               </div>
             </div>
           ) : null}
+
+          {detailData && (
+            <div className="mt-2 pt-3 border-t border-white/[0.06] flex items-center justify-between gap-3">
+              {deleteClientConfirm ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-red-300 font-semibold">Confirma exclusão permanente?</span>
+                  <button
+                    onClick={() => void handleDeleteClient()}
+                    disabled={deletingClient}
+                    className="rounded-lg border border-red-500/40 bg-red-500/20 px-3 py-1.5 text-[11px] font-bold text-red-300 hover:bg-red-500/30 disabled:opacity-50 transition-colors"
+                  >
+                    {deletingClient ? 'Excluindo...' : 'Sim, excluir tudo'}
+                  </button>
+                  <button
+                    onClick={() => setDeleteClientConfirm(false)}
+                    disabled={deletingClient}
+                    className="rounded-lg border border-zinc-600/40 bg-zinc-500/10 px-3 py-1.5 text-[11px] font-bold text-zinc-300 hover:bg-zinc-500/20 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setDeleteClientConfirm(true)}
+                  className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold text-red-400 hover:bg-red-500/20 transition-colors flex items-center gap-1.5"
+                >
+                  <Trash2 size={12} />
+                  Excluir cliente
+                </button>
+              )}
+              <span className="text-[10px] text-zinc-600">
+                {detailData.client.is_registered ? 'Remove conta e todo o histórico' : 'Remove histórico de agendamentos'}
+              </span>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

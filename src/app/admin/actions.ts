@@ -950,6 +950,60 @@ export async function deleteUser(
   }
 }
 
+// ─── Excluir cliente do diretório (admin override, sem guard de histórico) ──
+// Visitantes: apaga todos os agendamentos com aquele telefone.
+// Cadastrados: apaga todas as appointments, depois remove da auth.users
+//   (cascade apaga profiles). Os agendamentos já deletados viram SET NULL no client_id,
+//   mas como os excluímos antes isso não ocorre.
+export async function deleteClientFromDirectory(
+  clientKey: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { user: adminUser } = await requireAdmin()
+    const adminSupabase = createAdminClient()
+
+    const isRegistered = clientKey.startsWith('user:')
+    const targetId = clientKey.replace(/^user:|^visitor:/, '')
+
+    if (!targetId) return { success: false, error: 'Cliente inválido.' }
+
+    if (isRegistered) {
+      // Bloqueia auto-exclusão
+      if (targetId === adminUser.id) {
+        return { success: false, error: 'Você não pode excluir sua própria conta.' }
+      }
+
+      // Apaga todos os agendamentos do usuário antes de remover o auth user,
+      // para evitar que a FK SET NULL acione a CHECK constraint client_identifier
+      // em linhas que não têm client_name/client_phone.
+      await adminSupabase.from('appointments').delete().eq('client_id', targetId)
+
+      // Remove da auth (cascade: profiles, push_subscriptions, client_ratings etc.)
+      const { error: deleteError } = await adminSupabase.auth.admin.deleteUser(targetId)
+      if (deleteError) throw deleteError
+    } else {
+      // Visitante: limpa agendamentos pelo telefone normalizado
+      const { data: appts } = await adminSupabase
+        .from('appointments')
+        .select('id, client_phone')
+        .is('client_id', null)
+
+      const matchIds = (appts ?? [])
+        .filter((a) => normalizePhoneLookup(a.client_phone) === normalizePhoneLookup(targetId))
+        .map((a) => a.id)
+
+      if (matchIds.length > 0) {
+        await adminSupabase.from('appointments').delete().in('id', matchIds)
+      }
+    }
+
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
 // ─── Detalhes de um usuário (perfil + histórico de agendamentos) ───────────
 export async function getUserDetails(userId: string): Promise<{
   success: boolean
