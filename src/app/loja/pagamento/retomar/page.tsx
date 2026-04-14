@@ -23,6 +23,7 @@ export default async function RetomarPagamentoProdutoPage({ searchParams }: Prop
         amount: reservation.amount,
         title: reservation.productName,
         subtitle: reservation.quantity > 1 ? `${reservation.quantity} unidades` : '1 unidade',
+        preferenceId: reservation.preferenceId,
         existingPaymentId: reservation.existingPaymentId,
       }}
       publicKey={process.env.NEXT_PUBLIC_MP_PUBLIC_KEY ?? ''}

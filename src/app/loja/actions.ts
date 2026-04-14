@@ -183,7 +183,8 @@ export async function iniciarCheckoutProduto(
       statementDescriptor: 'BARBEARIA LESTE',
     })
     mpPreferenceId = prefResult.preferenceId
-  } catch {
+  } catch (error) {
+    console.warn('[mp/preference][product] createPreference failed:', error)
     // Preference é opcional — o checkout transparente (Bricks) funciona sem ela.
   }
 
@@ -278,6 +279,7 @@ export async function getPendingProductPaymentDetails(reservationId: string): Pr
     amount: number
     productName: string
     quantity: number
+    preferenceId?: string
     existingPaymentId?: string
   }
   error?: string
@@ -301,7 +303,7 @@ export async function getPendingProductPaymentDetails(reservationId: string): Pr
 
   const { data: paymentIntent } = await admin
     .from('product_payment_intents')
-    .select('status, mp_payment_id, expires_at')
+    .select('status, mp_payment_id, mp_preference_id, expires_at')
     .eq('reservation_id', reservationId)
     .single()
 
@@ -318,6 +320,9 @@ export async function getPendingProductPaymentDetails(reservationId: string): Pr
   const existingPaymentId = paymentIntent.mp_payment_id && shouldReuseMercadoPagoPayment(paymentIntent.status)
     ? paymentIntent.mp_payment_id
     : undefined
+  const preferenceId = typeof paymentIntent.mp_preference_id === 'string' && paymentIntent.mp_preference_id.trim()
+    ? paymentIntent.mp_preference_id
+    : undefined
 
   return {
     reservation: {
@@ -325,6 +330,7 @@ export async function getPendingProductPaymentDetails(reservationId: string): Pr
       amount: Number(reservation.product_price_snapshot) * reservation.quantity,
       productName: reservation.product_name_snapshot,
       quantity: reservation.quantity,
+      preferenceId,
       existingPaymentId,
     },
   }

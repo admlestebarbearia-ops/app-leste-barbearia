@@ -130,6 +130,8 @@ export async function processMercadoPagoPaymentRequest(
       clientPhone: appt.client_phone,
     }),
   }
+  const apiCompatibleFormData = { ...normalizedFormData } as Record<string, unknown>
+  delete apiCompatibleFormData.payment_type_id
 
   const paymentDescription = appt.service_name_snapshot ?? 'Serviço Barbearia'
   const validationError = validateMercadoPagoPaymentRequest({
@@ -170,7 +172,7 @@ export async function processMercadoPagoPaymentRequest(
     const payment = await deps.createPayment({
       accessToken,
       body: {
-        ...normalizedFormData,
+        ...apiCompatibleFormData,
         transaction_amount: Number(appt.service_price_snapshot),
         description: paymentDescription,
         statement_descriptor: 'BARBEARIA LESTE',

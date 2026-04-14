@@ -11,6 +11,7 @@ interface Props {
     amount: number
     title: string
     subtitle: string
+    preferenceId?: string
     existingPaymentId?: string
   }
   publicKey: string
@@ -57,6 +58,7 @@ export function ResumePaymentCheckout({ checkoutKind, checkout, publicKey, backH
         {publicKey ? (
           <PaymentBrick
             amount={checkout.amount}
+            preferenceId={checkout.preferenceId}
             checkoutId={checkout.id}
             checkoutKind={checkoutKind}
             publicKey={publicKey}

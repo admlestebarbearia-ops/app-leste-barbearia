@@ -132,6 +132,8 @@ export async function processMercadoPagoProductPaymentRequest(
       clientPhone: reservation.client_phone,
     }),
   }
+  const apiCompatibleFormData = { ...normalizedFormData } as Record<string, unknown>
+  delete apiCompatibleFormData.payment_type_id
 
   const amount = Number(reservation.product_price_snapshot) * reservation.quantity
   const paymentDescription = reservation.product_name_snapshot ?? 'Produto Barbearia'
@@ -173,7 +175,7 @@ export async function processMercadoPagoProductPaymentRequest(
     const payment = await deps.createPayment({
       accessToken,
       body: {
-        ...normalizedFormData,
+        ...apiCompatibleFormData,
         transaction_amount: amount,
         description: paymentDescription,
         statement_descriptor: 'BARBEARIA LESTE',

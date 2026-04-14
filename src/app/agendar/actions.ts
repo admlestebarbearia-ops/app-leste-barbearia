@@ -518,7 +518,8 @@ export async function createAppointment(data: {
         statementDescriptor: 'BARBEARIA LESTE',
       })
       mpPreferenceId = prefResult.preferenceId
-    } catch {
+    } catch (error) {
+      console.warn('[mp/preference][appointment] createPreference failed:', error)
       // Preference é opcional — o checkout transparente (Bricks) funciona sem ela.
     }
 
@@ -678,6 +679,7 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
     serviceName: string
     serviceDate: string
     serviceTime: string
+    preferenceId?: string
     existingPaymentId?: string
   }
   error?: string
@@ -707,7 +709,7 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
   const adminClient = createAdminClient()
   const { data: paymentIntent } = await adminClient
     .from('payment_intents')
-    .select('status, mp_payment_id, expires_at')
+    .select('status, mp_payment_id, mp_preference_id, expires_at')
     .eq('appointment_id', appointmentId)
     .single()
 
@@ -724,6 +726,9 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
   const existingPaymentId = paymentIntent.mp_payment_id && shouldReuseMercadoPagoPayment(paymentIntent.status)
     ? paymentIntent.mp_payment_id
     : undefined
+  const preferenceId = typeof paymentIntent.mp_preference_id === 'string' && paymentIntent.mp_preference_id.trim()
+    ? paymentIntent.mp_preference_id
+    : undefined
 
   return {
     appointment: {
@@ -732,6 +737,7 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
       serviceName: appt.service_name_snapshot ?? service?.name ?? 'Serviço',
       serviceDate: appt.date,
       serviceTime: appt.start_time.slice(0, 5),
+      preferenceId,
       existingPaymentId,
     },
   }

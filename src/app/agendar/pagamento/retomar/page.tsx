@@ -25,6 +25,7 @@ export default async function RetomarPagamentoPage({ searchParams }: Props) {
         amount: appointment.amount,
         title: appointment.serviceName,
         subtitle: `${format(parseISO(appointment.serviceDate), "dd 'de' MMMM", { locale: ptBR })} às ${appointment.serviceTime}`,
+        preferenceId: appointment.preferenceId,
         existingPaymentId: appointment.existingPaymentId,
       }}
       publicKey={process.env.NEXT_PUBLIC_MP_PUBLIC_KEY ?? ''}
