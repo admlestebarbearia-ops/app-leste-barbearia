@@ -54,10 +54,13 @@ self.addEventListener('fetch', (e) => {
   }
 
   if (request.mode === 'navigate') {
+    // Captura a promise SINCRONICAMENTE antes de qualquer await
+    // para evitar que o navigation preload seja cancelado
+    const preloadPromise = e.preloadResponse
     e.respondWith(
       (async () => {
         try {
-          const preloaded = await e.preloadResponse
+          const preloaded = await preloadPromise
           if (preloaded) return preloaded
         } catch {}
         return fetch(request)
