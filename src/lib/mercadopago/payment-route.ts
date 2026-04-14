@@ -179,6 +179,18 @@ export async function processMercadoPagoPaymentRequest(
         external_reference: appointmentId,
         installments: 1,
         notification_url: buildMercadoPagoNotificationUrl(deps.getBaseUrl()),
+        additional_info: {
+          items: [
+            {
+              id: appointmentId,
+              title: paymentDescription,
+              description: paymentDescription,
+              category_id: 'services',
+              quantity: 1,
+              unit_price: Number(appt.service_price_snapshot),
+            },
+          ],
+        },
       },
       idempotencyKey: paymentIntent.mp_payment_id
         ? deps.generateRandomId()

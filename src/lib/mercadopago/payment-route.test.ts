@@ -201,7 +201,7 @@ describe('mercadopago payment route logic', () => {
     assert.equal(creations[0]?.body.payment_method_id, 'pix')
   })
 
-  it('nao envia additional_info no payment.create; score fica por conta da Preference auxiliar', async () => {
+  it('envia additional_info.items com dados do servico para score de aprovacao', async () => {
     const { deps, creations } = createDeps()
 
     const result = await processMercadoPagoPaymentRequest(
@@ -218,6 +218,15 @@ describe('mercadopago payment route logic', () => {
 
     assert.equal(result.status, 200)
     assert.equal(creations.length, 1)
-    assert.equal('additional_info' in (creations[0]?.body ?? {}), false)
+    const additionalInfo = creations[0]?.body.additional_info as Record<string, unknown> | undefined
+    assert.ok(additionalInfo, 'additional_info deve estar presente')
+    const items = additionalInfo.items as Array<Record<string, unknown>>
+    assert.equal(items.length, 1)
+    assert.equal(items[0]?.id, '123e4567-e89b-12d3-a456-426614174000')
+    assert.equal(items[0]?.title, 'Corte + Barba')
+    assert.equal(items[0]?.quantity, 1)
+    assert.equal(items[0]?.unit_price, 55)
+    // payer NAO deve estar em additional_info — email nao e campo valido la
+    assert.equal('payer' in additionalInfo, false)
   })
 })

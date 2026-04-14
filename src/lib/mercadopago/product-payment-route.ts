@@ -182,6 +182,18 @@ export async function processMercadoPagoProductPaymentRequest(
         external_reference: buildProductReservationExternalReference(reservationId),
         installments: 1,
         notification_url: buildMercadoPagoNotificationUrl(deps.getBaseUrl()),
+        additional_info: {
+          items: [
+            {
+              id: reservationId,
+              title: paymentDescription,
+              description: paymentDescription,
+              category_id: 'services',
+              quantity: reservation.quantity,
+              unit_price: Number(reservation.product_price_snapshot),
+            },
+          ],
+        },
       },
       idempotencyKey: paymentIntent.mp_payment_id
         ? deps.generateRandomId()
