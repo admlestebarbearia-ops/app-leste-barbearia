@@ -10,12 +10,7 @@ self.addEventListener('install', () => {
 })
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    Promise.all([
-      clients.claim(),
-      self.registration.navigationPreload?.enable(),
-    ])
-  )
+  e.waitUntil(clients.claim())
 })
 
 // ─── Cache estratégico ──────────────────────────────────────────────────────
@@ -52,22 +47,7 @@ self.addEventListener('fetch', (e) => {
     )
     return
   }
-
-  if (request.mode === 'navigate') {
-    // Captura a promise SINCRONICAMENTE antes de qualquer await
-    // para evitar que o navigation preload seja cancelado
-    const preloadPromise = e.preloadResponse
-    e.respondWith(
-      (async () => {
-        try {
-          const preloaded = await preloadPromise
-          if (preloaded) return preloaded
-        } catch {}
-        return fetch(request)
-      })()
-    )
-    return
-  }
+  // Navigate requests: sem respondWith → browser faz fetch direto sem interferência
 })
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
