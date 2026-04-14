@@ -1931,7 +1931,7 @@ export async function disconnectMercadoPago(): Promise<{ success: boolean; error
     const adminClient = createAdminClient()
     const { error } = await adminClient
       .from('business_config')
-      .update({ mp_access_token: null, mp_refresh_token: null })
+      .update({ mp_access_token: null, mp_refresh_token: null, mp_public_key: null })
       .eq('id', 1)
     if (error) throw error
     revalidatePath('/admin')

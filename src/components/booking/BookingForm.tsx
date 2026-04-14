@@ -725,7 +725,9 @@ const handleConfirm = async () => {
     }
   }
 
-  const mpPublicKey = process.env.NEXT_PUBLIC_MP_PUBLIC_KEY ?? ''
+  // Usa a chave pública salva no banco durante o OAuth — garante que pertence à
+  // mesma conta do mp_access_token. Fallback para env var (legado / desenvolvimento).
+  const mpPublicKey = config?.mp_public_key ?? process.env.NEXT_PUBLIC_MP_PUBLIC_KEY ?? ''
 
   const needsPaymentStep = config?.payment_mode === 'online_obrigatorio'
   const aceitaDinheiro = config?.aceita_dinheiro ?? false

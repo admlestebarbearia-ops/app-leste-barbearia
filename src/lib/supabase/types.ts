@@ -53,6 +53,7 @@ export interface BusinessConfig {
   aceita_dinheiro: boolean                  // quando online_obrigatorio, permite cliente escolher pagar em dinheiro
   mp_access_token: string | null            // token de acesso MP (null = não configurado)
   mp_refresh_token: string | null           // refresh token OAuth MP
+  mp_public_key: string | null              // chave pública MP salva no OAuth (APP_USR-...)
   mp_webhook_secret: string | null          // assinatura secreta de webhook MP (legado)
   payment_expiry_minutes: number            // minutos para expirar payment_intent (padrão 5, máximo 5)
   updated_at: string

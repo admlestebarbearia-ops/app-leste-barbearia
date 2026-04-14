@@ -52,6 +52,7 @@ export function PaymentBrick({
   const [submitting, setSubmitting] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(false)
   const [brickFailed, setBrickFailed] = useState(false)
+  const [statusScreenFailed, setStatusScreenFailed] = useState(false)
   const [retryKey, setRetryKey] = useState(0)
   // Sinaliza que o último pagamento foi recusado — exibe botão de trocar método
   const [wasRejected, setWasRejected] = useState(false)
@@ -290,6 +291,33 @@ export function PaymentBrick({
 
   // Após criar pagamento PIX/pendente — Status Screen mostra QR code
   if (activePaymentId) {
+    // Se o StatusScreen falhou (ex: public_key ≠ conta que criou o pagamento),
+    // exibe tela de fallback em vez de entrar em loop infinito de re-renders.
+    if (statusScreenFailed) {
+      return (
+        <div className="flex flex-col items-center gap-5 py-8 px-2 text-center">
+          <div className="w-12 h-12 rounded-full bg-amber-500/15 flex items-center justify-center">
+            <span className="text-2xl">⏳</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm font-bold text-foreground">Pagamento registrado</p>
+            <p className="text-xs text-white/50 leading-relaxed max-w-xs mx-auto">
+              Não foi possível exibir o QR code agora. Seu horário está
+              <strong className="text-white/70"> reservado aguardando pagamento</strong>.
+              Use o botão abaixo para verificar se já foi processado, ou acesse <strong className="text-white/70">Minhas Reservas</strong> para retomar o pagamento mais tarde.
+            </p>
+          </div>
+          <button
+            onClick={() => void checkBackendConfirmation({ attempts: MP_STATUS_POLL_ATTEMPTS, silent: false })}
+            disabled={checkingStatus}
+            className="h-12 px-8 rounded-2xl text-xs font-extrabold uppercase tracking-widest bg-primary text-primary-foreground disabled:opacity-60 hover:bg-primary/90 transition-colors"
+          >
+            {checkingStatus ? 'Verificando...' : 'Verificar pagamento'}
+          </button>
+        </div>
+      )
+    }
+
     return (
       <div className="w-full">
         <StatusScreen
@@ -302,7 +330,12 @@ export function PaymentBrick({
             },
           }}
           onReady={noop}
-          onError={(e) => console.error('[MP StatusScreen]', e)}
+          onError={(e) => {
+            console.error('[MP StatusScreen]', e)
+            // Para evitar loop infinito: ao receber erro crítico (ex: pagamento não
+            // encontrado com a public_key atual), desmonta o StatusScreen.
+            setStatusScreenFailed(true)
+          }}
         />
         <button
           onClick={() => void checkBackendConfirmation({ attempts: MP_STATUS_POLL_ATTEMPTS, silent: false })}

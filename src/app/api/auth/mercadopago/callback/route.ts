@@ -148,6 +148,7 @@ export async function GET(request: NextRequest) {
   const tokenData = await tokenRes.json() as {
     access_token?: string
     refresh_token?: string
+    public_key?: string
     error?: string
     message?: string
   }
@@ -164,6 +165,7 @@ export async function GET(request: NextRequest) {
     .update({
       mp_access_token: tokenData.access_token,
       mp_refresh_token: tokenData.refresh_token ?? null,
+      mp_public_key: tokenData.public_key ?? null,
     })
     .eq('id', 1)
 
