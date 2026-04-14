@@ -200,4 +200,24 @@ describe('mercadopago payment route logic', () => {
     assert.equal('payment_type_id' in (creations[0]?.body ?? {}), false)
     assert.equal(creations[0]?.body.payment_method_id, 'pix')
   })
+
+  it('nao envia additional_info no payment.create; score fica por conta da Preference auxiliar', async () => {
+    const { deps, creations } = createDeps()
+
+    const result = await processMercadoPagoPaymentRequest(
+      {
+        appointmentId: '123e4567-e89b-12d3-a456-426614174000',
+        formData: {
+          payment_method_id: 'pix',
+          payment_type_id: 'bank_transfer',
+          payer: { email: 'maria@cliente.com' },
+        },
+      },
+      deps
+    )
+
+    assert.equal(result.status, 200)
+    assert.equal(creations.length, 1)
+    assert.equal('additional_info' in (creations[0]?.body ?? {}), false)
+  })
 })
