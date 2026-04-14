@@ -307,6 +307,8 @@ export function PaymentBrick({
     // Errors não-críticos são informativos — o brick continua funcionando.
   }, [])
 
+  const handleStatusError = useCallback(() => setStatusScreenFailed(true), [])
+
   const handleRetry = useCallback(() => {
     // Limpa script tags do SDK MercadoPago para forçar re-download limpo.
     // Necessário quando deploy skew (Vercel) causa 404 em chunks ou quando
@@ -372,8 +374,6 @@ export function PaymentBrick({
         </div>
       )
     }
-
-    const handleStatusError = useCallback(() => setStatusScreenFailed(true), [])
 
     return (
       <div className="w-full">
