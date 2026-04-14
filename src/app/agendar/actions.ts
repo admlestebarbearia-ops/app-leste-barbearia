@@ -390,6 +390,13 @@ export async function createAppointment(data: {
   const isOnlinePayment = paymentMode === 'online_obrigatorio' && !!mpToken && !(data.payCash && aceitaDinheiroConfig)
   const appointmentStatus = isOnlinePayment ? 'aguardando_pagamento' as const : 'confirmado' as const
 
+  // Guard: usuário não autenticado precisa de nome e telefone (anon RLS policy).
+  // Protege contra sessão expirada — o form de usuário logado não coleta nome/telefone,
+  // então se a sessão expirar no meio do fluxo o INSERT falharia silenciosamente no RLS.
+  if (!signedInWithGoogle && !data.clientName?.trim()) {
+    return { success: false, error: 'Sessão expirada. Por favor, recarregue a página e tente novamente.' }
+  }
+
   const appointmentData = signedInWithGoogle
     ? {
         client_id: user.id,

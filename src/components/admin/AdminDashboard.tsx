@@ -4691,7 +4691,7 @@ function TabClientes() {
       )}
 
       <Dialog open={Boolean(selectedClientKey)} onOpenChange={(open) => { if (!open) closeClientDetails() }}>
-        <DialogContent className="max-w-4xl border-[#2a2a2a] bg-[#111111] text-white sm:max-h-[85vh]">
+        <DialogContent className="sm:max-w-4xl border-[#2a2a2a] bg-[#111111] text-white max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-white">{detailData?.client.name ?? selectedClientName ?? 'Cliente'}</DialogTitle>
             <DialogDescription className="text-zinc-400">
@@ -4709,7 +4709,7 @@ function TabClientes() {
               {detailError}
             </div>
           ) : detailData ? (
-            <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] overflow-y-auto pr-1">
+            <div className="flex-1 min-h-0 grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] overflow-y-auto pr-1">
               <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4 flex flex-col gap-4 h-fit">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${detailData.client.is_registered ? 'border-sky-500/20 bg-sky-500/10 text-sky-300' : 'border-zinc-600/40 bg-zinc-500/10 text-zinc-300'}`}>
@@ -4755,7 +4755,7 @@ function TabClientes() {
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4 flex flex-col gap-3 overflow-y-auto">
+              <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4 flex flex-col gap-3">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Linha do tempo</p>
                   <span className="text-[11px] text-zinc-500">{detailData.appointments.length} registro(s)</span>
