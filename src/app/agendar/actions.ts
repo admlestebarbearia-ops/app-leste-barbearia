@@ -2,7 +2,9 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
+import { createMpCheckoutPreference } from '@/lib/mercadopago/create-preference'
+import { normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
 import {
   buildBlockedDeviceLookup,
   getCreateAppointmentStateError,
@@ -464,9 +466,43 @@ export async function createAppointment(data: {
   // ─── Bifurcar por payment_mode ────────────────────────────────────────────
   if (isOnlinePayment) {
     const adminForMp = createAdminClient()
+    const expiryMinutes = normalizePaymentExpiryMinutes(agendaConfig?.payment_expiry_minutes)
+
+    // Tenta criar uma Preference MP (melhora o score de qualidade da integração
+    // adicionando items.quantity, items.unit_price e back_urls avaliados pelo checker).
+    // Falha silenciosa: se a criação da preference falhar o checkout Bricks ainda funciona.
+    let mpPreferenceId: string | null = null
+    try {
+      const h = await headers()
+      const host = h.get('host') ?? ''
+      const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
+      const baseUrl = `${proto}://${host}`
+
+      const prefResult = await createMpCheckoutPreference({
+        accessToken: mpToken,
+        externalReference: appointment.id,
+        itemId: `svc-${appointment.id.slice(0, 8)}`,
+        title: serviceSnapshot.name,
+        unitPrice: Number(serviceSnapshot.price),
+        quantity: 1,
+        payerEmail: signedInWithGoogle ? (user.email ?? null) : null,
+        baseUrl,
+        expiryMinutes,
+        backUrls: {
+          success: `${baseUrl}/agendar/sucesso`,
+          failure: `${baseUrl}/agendar`,
+          pending: `${baseUrl}/reservas`,
+        },
+        statementDescriptor: 'BARBEARIA LESTE',
+      })
+      mpPreferenceId = prefResult.preferenceId
+    } catch {
+      // Preference é opcional — o checkout transparente (Bricks) funciona sem ela.
+    }
+
     await adminForMp.from('payment_intents').insert({
       appointment_id: appointment.id,
-      mp_preference_id: null,
+      mp_preference_id: mpPreferenceId,
       status: 'pending',
       amount: Number(serviceSnapshot.price),
       expires_at: buildPaymentExpirationIso(new Date(), agendaConfig?.payment_expiry_minutes),
@@ -484,7 +520,12 @@ export async function createAppointment(data: {
     })
 
     revalidatePath('/agendar')
-    return { success: true, appointmentId: appointment.id, amount: Number(serviceSnapshot.price) }
+    return {
+      success: true,
+      appointmentId: appointment.id,
+      amount: Number(serviceSnapshot.price),
+      ...(mpPreferenceId ? { preferenceId: mpPreferenceId } : {}),
+    }
   }
 
   // Notifica cliente: agendamento confirmado (apenas usuários logados têm push subscription)

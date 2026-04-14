@@ -4,7 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { validateAtualizarQuantidadeReserva, validateCancelarReservaProduto, validateReservarProduto } from '@/lib/booking/product-reservation-guards'
 import { isPaymentIntentExpired, shouldReuseMercadoPagoPayment } from '@/lib/mercadopago/payment-flow'
 import { buildPaymentExpirationIso, normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
+import { createMpCheckoutPreference } from '@/lib/mercadopago/create-preference'
 import { createClient } from '@/lib/supabase/server'
+import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 
 async function restoreProductStock(
@@ -58,7 +60,7 @@ async function expirePendingProductPayment(
 export async function iniciarCheckoutProduto(
   productId: string,
   quantity: number = 1
-): Promise<{ success?: boolean; reservationId?: string; amount?: number; error?: string }> {
+): Promise<{ success?: boolean; reservationId?: string; amount?: number; preferenceId?: string; error?: string }> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -153,11 +155,43 @@ export async function iniciarCheckoutProduto(
   const expiresAt = buildPaymentExpirationIso(new Date(), paymentExpiryMinutes)
   const amount = Number(product.price) * quantity
 
+  // Tenta criar uma Preference MP antes de inserir o payment_intent.
+  // Isso preenche items.quantity, items.unit_price e back_urls no checker de qualidade MP.
+  // Falha silenciosa: sem preference o Bricks ainda funciona.
+  let mpPreferenceId: string | null = null
+  try {
+    const h = await headers()
+    const host = h.get('host') ?? ''
+    const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
+    const baseUrl = `${proto}://${host}`
+
+    const prefResult = await createMpCheckoutPreference({
+      accessToken: config.mp_access_token!,
+      externalReference: reservation.id,
+      itemId: `prd-${reservation.id.slice(0, 8)}`,
+      title: product.name,
+      unitPrice: Number(product.price),
+      quantity,
+      payerEmail: profile?.email ?? null,
+      baseUrl,
+      expiryMinutes: paymentExpiryMinutes,
+      backUrls: {
+        success: `${baseUrl}/loja/pagamento/sucesso`,
+        failure: `${baseUrl}/loja`,
+        pending: `${baseUrl}/loja/pagamento/pendente`,
+      },
+      statementDescriptor: 'BARBEARIA LESTE',
+    })
+    mpPreferenceId = prefResult.preferenceId
+  } catch {
+    // Preference é opcional — o checkout transparente (Bricks) funciona sem ela.
+  }
+
   const { data: paymentIntent, error: paymentIntentError } = await admin
     .from('product_payment_intents')
     .insert({
       reservation_id: reservation.id,
-      mp_preference_id: null,
+      mp_preference_id: mpPreferenceId,
       status: 'pending',
       amount,
       expires_at: expiresAt,
@@ -176,6 +210,7 @@ export async function iniciarCheckoutProduto(
     success: true,
     reservationId: reservation.id,
     amount,
+    ...(mpPreferenceId ? { preferenceId: mpPreferenceId } : {}),
   }
 }
 
