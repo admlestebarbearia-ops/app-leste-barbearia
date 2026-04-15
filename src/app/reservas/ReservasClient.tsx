@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { parseISO, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle, X, Check, QrCode } from 'lucide-react'
-import { cancelMyAppointment, cancelPendingPayment, dismissCancelledAppointment } from '@/app/agendar/actions'
+import { cancelMyAppointment, cancelPendingPayment, dismissCancelledAppointment, createFiadoPaymentLink } from '@/app/agendar/actions'
 import { DayPicker } from 'react-day-picker'
 import { getReservationHistoryCalendarMeta } from '@/lib/booking/reservation-history'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
@@ -187,6 +187,7 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
   const [cancelling, setCancelling] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [dismissing, setDismissing] = useState<string | null>(null)
+  const [fiadoLoadingId, setFiadoLoadingId] = useState<string | null>(null)
   // IDs de reservas pendentes que expiraram no client — removidas enquanto o server cancela
   const [expiredIds, setExpiredIds] = useState<Set<string>>(new Set())
   const historyCalendar = useMemo(
@@ -231,6 +232,22 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
       toast.error(result.error ?? 'Erro ao dispensar aviso.')
     }
     setDismissing(null)
+  }
+
+  const handleFiadoPay = async (apptId: string) => {
+    setFiadoLoadingId(apptId)
+    try {
+      const result = await createFiadoPaymentLink(apptId)
+      if (result.error) {
+        toast.error(result.error)
+      } else if (result.initPoint) {
+        window.location.href = result.initPoint
+      }
+    } catch {
+      toast.error('Não foi possível gerar o link de pagamento.')
+    } finally {
+      setFiadoLoadingId(null)
+    }
   }
 
   const handleCancelPending = async (id: string) => {
@@ -584,20 +601,31 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                       {selectedDayAppts.map((appt) => (
                         <div
                           key={appt.id}
-                          className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-3"
+                          className="bg-white/5 rounded-xl px-3 py-3 flex flex-col gap-2"
                         >
-                          <span className="text-base font-black text-white tabular-nums w-10 shrink-0">
-                            {appt.start_time.slice(0, 5)}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-white truncate">
-                              {appt.service_name_snapshot ?? (appt.services as { name: string } | null)?.name ?? 'Serviço'}
-                            </p>
-                            <div className="mt-1 flex flex-wrap gap-2">
-                              <AppointmentStatusBadge status={appt.status} />
-                              <AppointmentPaymentBadge paymentContext={appt.payment_context} />
+                          <div className="flex items-center gap-3">
+                            <span className="text-base font-black text-white tabular-nums w-10 shrink-0">
+                              {appt.start_time.slice(0, 5)}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-white truncate">
+                                {appt.service_name_snapshot ?? (appt.services as { name: string } | null)?.name ?? 'Serviço'}
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-2">
+                                <AppointmentStatusBadge status={appt.status} />
+                                <AppointmentPaymentBadge paymentContext={appt.payment_context} />
+                              </div>
                             </div>
                           </div>
+                          {appt.payment_context === 'pending_fiado' && (
+                            <button
+                              onClick={() => { void handleFiadoPay(appt.id) }}
+                              disabled={fiadoLoadingId === appt.id}
+                              className="w-full text-center text-[11px] font-black uppercase tracking-widest text-white bg-amber-500/20 border border-amber-500/30 py-2 rounded-lg hover:bg-amber-500/30 transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              {fiadoLoadingId === appt.id ? 'Aguarde...' : '💳 Pagar dívida (Mercado Pago)'}
+                            </button>
+                          )}
                         </div>
                       ))}
                     </div>

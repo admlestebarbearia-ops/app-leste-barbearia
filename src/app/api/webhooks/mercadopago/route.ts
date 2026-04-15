@@ -120,10 +120,10 @@ export async function POST(request: NextRequest) {
           if (error) throw error
         },
         updateAppointmentStatus: async (appointmentId, status) => {
-          // Busca detalhes ANTES de atualizar (para push notification)
+          // Busca detalhes ANTES de atualizar (push + detecção de fiado)
           const { data: appt } = await adminClient
             .from('appointments')
-            .select('client_id, client_name, service_name_snapshot, date, start_time')
+            .select('client_id, client_name, service_name_snapshot, date, start_time, current_status:status, expected_payment_date')
             .eq('id', appointmentId)
             .single()
 
@@ -135,7 +135,40 @@ export async function POST(request: NextRequest) {
 
           if (error) throw error
 
-          // Pagamento aprovado → notifica cliente e admins
+          // ── Baixa automática de fiado ──────────────────────────────────────
+          // Se o agendamento já estava `concluido` com promessa de pagamento
+          // e o MP aprovou → marcar transação financeira como PAID.
+          // O trigger de INSERT não é acionado aqui (é só UPDATE).
+          const isFiadoQuitacao =
+            status === 'confirmado' &&
+            (appt as Record<string, unknown>)?.current_status === 'concluido' &&
+            (appt as Record<string, unknown>)?.expected_payment_date != null
+
+          if (isFiadoQuitacao) {
+            try {
+              const { error: ftErr } = await adminClient
+                .from('financial_transactions')
+                .update({ status: 'PAID' })
+                .eq('source_id', appointmentId)
+                .eq('source_type', 'APPOINTMENT')
+                .eq('status', 'PENDING')
+
+              if (ftErr) console.error('[Fiado] Erro ao dar baixa automática:', ftErr)
+            } catch (ftEx) {
+              console.error('[Fiado] Exceção ao dar baixa automática:', ftEx)
+            }
+
+            // Notifica admin: fiado quitado via MP
+            void firePushToAdmins({
+              title: '💰 Fiado quitado via Mercado Pago',
+              body: `${(appt as Record<string, unknown>)?.client_name ?? 'Cliente'} pagou o agendamento de ${String((appt as Record<string, unknown>)?.date ?? '').split('-').reverse().join('/')} às ${String((appt as Record<string, unknown>)?.start_time ?? '').slice(0, 5)}`,
+              url: '/admin',
+              tag: `admin-fiado-quitado-${appointmentId}`,
+            })
+            return // não processa push de "confirmação" normal para agendados concluídos
+          }
+
+          // Pagamento normal aprovado → notifica cliente e admins
           if (status === 'confirmado') {
             if (appt?.client_id) {
               void firePushToUser(appt.client_id, {

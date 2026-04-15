@@ -1028,6 +1028,95 @@ export async function cancelPendingPayment(
 // ─── Dispensar alerta de cancelamento pelo admin ───────────────────────────
 // Oculta o card de aviso da página "Minhas Reservas" usando o soft-delete
 // (deleted_at) — o agendamento já está cancelado, não afeta disponibilidade.
+// ─── Gerar link de pagamento Mercado Pago para dívida de "fiado" ──────────────
+// Chamado pelo cliente quando o contexto do agendamento é pending_fiado.
+// Cria uma Preference MP para o valor da transação PENDING correspondente.
+export async function createFiadoPaymentLink(appointmentId: string): Promise<{
+  initPoint?: string
+  error?: string
+}> {
+  try {
+    const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
+    const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+
+    if (!ownershipFilter) {
+      return { error: 'Identificação da reserva não encontrada neste aparelho.' }
+    }
+
+    // 1. Verificar propriedade e que o agendamento é concluído com fiado pendente
+    const { data: appt } = await supabase
+      .from('appointments')
+      .select('id, service_name_snapshot, expected_payment_date, services(name, price)')
+      .eq('id', appointmentId)
+      .eq('status', 'concluido')
+      .not('expected_payment_date', 'is', null)
+      .or(ownershipFilter)
+      .single()
+
+    if (!appt) {
+      return { error: 'Agendamento não encontrado ou já quitado.' }
+    }
+
+    // 2. Confirmar que ainda existe transação PENDING no livro-razão
+    const adminForFiado = createAdminClient()
+    const { data: pendingTx } = await adminForFiado
+      .from('financial_transactions')
+      .select('id, amount')
+      .eq('source_id', appointmentId)
+      .eq('source_type', 'APPOINTMENT')
+      .eq('status', 'PENDING')
+      .maybeSingle()
+
+    if (!pendingTx) {
+      return { error: 'Não há pendência financeira para este agendamento.' }
+    }
+
+    // 3. Obter access token do MP configurado pelo admin
+    const { data: bizConfig } = await adminForFiado
+      .from('business_config')
+      .select('mp_access_token')
+      .eq('id', 1)
+      .single()
+
+    if (!bizConfig?.mp_access_token) {
+      return { error: 'Sistema de pagamento online não está ativo no momento.' }
+    }
+
+    // 4. Derivar baseUrl a partir dos headers da request
+    const h = await headers()
+    const host = h.get('host') ?? ''
+    const proto = h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
+    const baseUrl = `${proto}://${host}`
+
+    const serviceData = Array.isArray(appt.services) ? appt.services[0] : appt.services as { name?: string; price?: number } | null
+    const serviceTitle = (appt.service_name_snapshot ?? serviceData?.name ?? 'Serviço') as string
+
+    // 5. Criar preferência de pagamento (Checkout Pro)
+    const pref = await createMpCheckoutPreference({
+      accessToken: bizConfig.mp_access_token as string,
+      externalReference: appointmentId,
+      itemId: `fiado-${appointmentId.slice(0, 8)}`,
+      title: serviceTitle,
+      unitPrice: Number(pendingTx.amount),
+      quantity: 1,
+      payerEmail: null,
+      baseUrl,
+      expiryMinutes: 60 * 24 * 30, // 30 dias de validade do link
+      backUrls: {
+        success: `${baseUrl}/reservas?notice=fiado-paid`,
+        failure: `${baseUrl}/reservas`,
+        pending: `${baseUrl}/reservas`,
+      },
+      statementDescriptor: 'BARBEARIA LESTE',
+    })
+
+    return { initPoint: pref.initPoint }
+  } catch (err) {
+    console.error('[createFiadoPaymentLink] erro:', err)
+    return { error: 'Não foi possível gerar o link de pagamento. Tente novamente.' }
+  }
+}
+
 export async function dismissCancelledAppointment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
