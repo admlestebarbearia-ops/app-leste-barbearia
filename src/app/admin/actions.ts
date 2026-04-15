@@ -1829,17 +1829,22 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
         ).values()
       )
     } else if (isVisitor) {
-      // Visitante identificado por telefone normalizado
+      // Visitante identificado por telefone normalizado.
+      // Usa filtro JS (mesmo padrão do branch isRegistered) para lidar com
+      // client_phone armazenado com formatação em registros antigos (pré-14/04).
       const normalizedPhone = normalizePhoneLookup(targetId)
-      const { data } = await supabase
-        .from('appointments')
-        .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
-        .is('client_id', null)
-        .eq('client_phone', normalizedPhone)
-        .order('date', { ascending: false })
-        .order('start_time', { ascending: false })
+      if (normalizedPhone) {
+        const { data: allVisitorAppts } = await supabase
+          .from('appointments')
+          .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
+          .is('client_id', null)
+          .order('date', { ascending: false })
+          .order('start_time', { ascending: false })
 
-      appointments = data ?? []
+        appointments = (allVisitorAppts ?? []).filter(
+          (a) => normalizePhoneLookup(a.client_phone) === normalizedPhone
+        )
+      }
     } else if (isEmailOrphan) {
       // Usuário removido do auth: client_id virou NULL mas client_email ainda existe
       const { data } = await supabase

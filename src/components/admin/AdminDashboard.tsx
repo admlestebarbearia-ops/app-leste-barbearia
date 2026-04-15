@@ -4683,6 +4683,7 @@ function TabClientes() {
                 return (
                   <div
                     key={client.client_key}
+                    data-client-id={client.client_key}
                     className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
                   >
                     <div className="min-w-0 flex-1 flex flex-col gap-2">
@@ -4856,12 +4857,38 @@ function TabClientes() {
           ) : detailError ? (
             <div className="flex flex-col gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
               <p className="text-sm text-red-300">{detailError}</p>
-              <button
-                onClick={() => { closeClientDetails(); void loadDirectory() }}
-                className="self-start rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold text-red-200 hover:bg-red-500/20 transition-colors"
-              >
-                Atualizar lista
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => { closeClientDetails(); void loadDirectory() }}
+                  className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold text-red-200 hover:bg-red-500/20 transition-colors"
+                >
+                  Atualizar lista
+                </button>
+                {!deleteClientConfirm ? (
+                  <button
+                    onClick={() => setDeleteClientConfirm(true)}
+                    className="rounded-xl border border-rose-600/40 bg-rose-600/10 px-3 py-1.5 text-[11px] font-bold text-rose-300 hover:bg-rose-600/20 transition-colors"
+                  >
+                    Forçar exclusão
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => void handleDeleteClient()}
+                      disabled={deletingClient}
+                      className="rounded-xl border border-rose-600/50 bg-rose-600/20 px-3 py-1.5 text-[11px] font-bold text-rose-200 hover:bg-rose-600/30 transition-colors disabled:opacity-50"
+                    >
+                      {deletingClient ? 'Excluindo...' : 'Confirmar exclusão'}
+                    </button>
+                    <button
+                      onClick={() => setDeleteClientConfirm(false)}
+                      className="rounded-xl border border-zinc-600/40 bg-zinc-500/10 px-3 py-1.5 text-[11px] font-bold text-zinc-400 hover:bg-zinc-500/20 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ) : detailData ? (
             <div className="flex-1 min-h-0 grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] overflow-y-auto pr-1">
