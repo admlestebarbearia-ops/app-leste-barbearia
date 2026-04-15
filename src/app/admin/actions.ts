@@ -1823,7 +1823,7 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
       status: string
       service_name_snapshot: string | null
       service_price_snapshot: number | null
-      payment_context: 'paid_online' | 'pay_locally' | 'paid' | 'refunded' | null
+      payment_context: 'paid_online' | 'pay_locally' | 'paid' | 'refunded' | 'pending_fiado' | null
       rating_score: number | null
       rating_note: string | null
     }[]
