@@ -26,6 +26,7 @@ const APPOINTMENT_PAYMENT_LABEL: Record<AppointmentPaymentContext, string> = {
   pay_locally: 'Pagar no local',
   paid: 'Pago',
   refunded: 'Estornado',
+  pending_fiado: 'Pendente (Fiado)',
 }
 
 function AppointmentStatusBadge({ status }: { status: string }) {
@@ -54,6 +55,7 @@ function AppointmentPaymentBadge({ paymentContext }: { paymentContext: Appointme
     pay_locally: 'border-zinc-500/30 bg-zinc-500/10 text-zinc-300',
     paid: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-200',
     refunded: 'border-orange-500/30 bg-orange-500/12 text-orange-200',
+    pending_fiado: 'border-amber-500/30 bg-amber-500/12 text-amber-300',
   }
 
   return (
