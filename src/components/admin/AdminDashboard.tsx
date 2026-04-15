@@ -1171,6 +1171,31 @@ function TabHoje({
                             Bloqueado
                           </span>
                         )}
+                        {(() => {
+                          if (refundedApptIds.has(appt.id)) {
+                            return (
+                              <span className="text-[9px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded-full shrink-0">
+                                ESTORNADO
+                              </span>
+                            )
+                          }
+                          const isPaid = Boolean(paymentMethodByApptId[appt.id]) || onlineMpApptIds.has(appt.id)
+                          if (isPaid && appt.status === 'concluido') {
+                            return (
+                              <span className="text-[9px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded-full shrink-0">
+                                PAGO
+                              </span>
+                            )
+                          }
+                          if (appt.status === 'confirmado') {
+                            return (
+                              <span className="text-[9px] font-black bg-amber-500/20 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded-full shrink-0">
+                                A PAGAR
+                              </span>
+                            )
+                          }
+                          return null
+                        })()}
                       </div>
                       {appt.services && (
                         <span className="text-xs text-zinc-400">{appt.services.name}</span>
@@ -1414,10 +1439,16 @@ function TabHoje({
                   ? 'Pago no local'
                   : null
                 if (!label) return null
+                const isPaid = Boolean(method) || isOnline
+                const badgeClass = isRefunded
+                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/20'
+                  : isPaid
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20'
+                  : 'bg-amber-500/20 text-amber-400 border border-amber-500/20'
                 return (
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Pagamento</span>
-                    <span className="text-xs text-zinc-300">{label}</span>
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${badgeClass}`}>{label}</span>
                   </div>
                 )
               })()}
