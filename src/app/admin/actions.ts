@@ -986,10 +986,38 @@ export async function deleteClientFromDirectory(
         return { success: false, error: 'Você não pode excluir sua própria conta.' }
       }
 
-      // Apaga todos os agendamentos do usuário antes de remover o auth user,
-      // para evitar que a FK SET NULL acione a CHECK constraint client_identifier
-      // em linhas que não têm client_name/client_phone.
-      await adminSupabase.from('appointments').delete().eq('client_id', targetId)
+      // Busca o telefone do perfil para limpar também agendamentos em modo visitante
+      // (agendamentos criados antes do usuário se cadastrar com Google Login)
+      const { data: profileData } = await adminSupabase
+        .from('profiles')
+        .select('phone')
+        .eq('id', targetId)
+        .maybeSingle()
+
+      // Apaga agendamentos vinculados à conta (client_id = targetId)
+      const { error: apptDeleteError } = await adminSupabase
+        .from('appointments')
+        .delete()
+        .eq('client_id', targetId)
+      if (apptDeleteError) throw apptDeleteError
+
+      // Apaga também agendamentos em modo visitante com o mesmo telefone
+      // (para evitar que o cliente reapareça no diretório como "visitante" após a exclusão)
+      if (profileData?.phone) {
+        const normalizedPhone = normalizePhoneLookup(profileData.phone)
+        if (normalizedPhone) {
+          const { data: visitorAppts } = await adminSupabase
+            .from('appointments')
+            .select('id, client_phone')
+            .is('client_id', null)
+          const visitorIds = (visitorAppts ?? [])
+            .filter((a) => normalizePhoneLookup(a.client_phone) === normalizedPhone)
+            .map((a) => a.id)
+          if (visitorIds.length > 0) {
+            await adminSupabase.from('appointments').delete().in('id', visitorIds)
+          }
+        }
+      }
 
       // Remove da auth (cascade: profiles, push_subscriptions, client_ratings etc.)
       const { error: deleteError } = await adminSupabase.auth.admin.deleteUser(targetId)
@@ -1650,6 +1678,34 @@ export async function listClientDirectory(dormantDays = 30): Promise<{
       const bucket = ratingBuckets.get(clientKey) ?? []
       bucket.push(rating.score)
       ratingBuckets.set(clientKey, bucket)
+    }
+
+    // Bug 1.2: inclui perfis registrados que não aparecem em nenhum agendamento
+    // (ex: usuários que fizeram login mas ainda não agendaram nada)
+    const { data: allProfilesData } = await supabase
+      .from('profiles')
+      .select('id, email, display_name, phone, is_blocked')
+
+    for (const profile of allProfilesData ?? []) {
+      const key = buildRegisteredClientKey(profile.id)
+      if (!directoryMap.has(key)) {
+        directoryMap.set(key, {
+          client_key: key,
+          client_id: profile.id,
+          name: profile.display_name ?? profile.email ?? 'Usuário cadastrado',
+          email: profile.email ?? null,
+          phone: profile.phone ? normalizePhoneLookup(profile.phone) ?? profile.phone : null,
+          is_registered: true,
+          is_blocked: profile.is_blocked ?? false,
+          total_bookings: 0,
+          total_services: 0,
+          total_spent: 0,
+          avg_rating: null,
+          last_service_date: null,
+          next_service_date: null,
+          next_service_time: null,
+        })
+      }
     }
 
     const directory = Array.from(directoryMap.values()).map((client) => {

@@ -2863,6 +2863,11 @@ function TabAdmins() {
     totalAppointments: number
   } | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
+  const [adminToggleConfirm, setAdminToggleConfirm] = useState<{
+    userId: string
+    email: string
+    toAdmin: boolean
+  } | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -2942,7 +2947,7 @@ function TabAdmins() {
 
       {admins.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Admins atuais</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Admins atuais ({admins.length})</p>
           {admins.map((u) => (
             <div
               key={u.id}
@@ -2964,7 +2969,7 @@ function TabAdmins() {
                 </button>
                 <Switch
                   checked={true}
-                  onCheckedChange={() => handleToggleAdmin(u.id, true)}
+                  onCheckedChange={() => setAdminToggleConfirm({ userId: u.id, email: u.email ?? u.id, toAdmin: false })}
                   disabled={togglingId === u.id}
                 />
               </div>
@@ -2975,7 +2980,7 @@ function TabAdmins() {
 
       {others.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Outros usuarios</p>
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Outros usuários ({others.length})</p>
           {others.map((u) => (
             <div
               key={u.id}
@@ -2990,7 +2995,7 @@ function TabAdmins() {
               <div className="flex items-center gap-2 shrink-0">
                 <Switch
                   checked={false}
-                  onCheckedChange={() => handleToggleAdmin(u.id, false)}
+                  onCheckedChange={() => setAdminToggleConfirm({ userId: u.id, email: u.email ?? u.id, toAdmin: true })}
                   disabled={togglingId === u.id}
                 />
                 <button
@@ -3010,6 +3015,45 @@ function TabAdmins() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal de confirmação de toggle admin */}
+      {adminToggleConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-card border border-border rounded-2xl p-6 max-w-sm w-full flex flex-col gap-4 shadow-2xl">
+            <div className="flex flex-col gap-1">
+              <p className="font-semibold text-foreground">
+                {adminToggleConfirm.toAdmin ? 'Promover a administrador?' : 'Remover acesso admin?'}
+              </p>
+              <p className="text-sm text-muted-foreground break-all">{adminToggleConfirm.email}</p>
+            </div>
+            <p className="text-sm text-muted-foreground leading-snug">
+              {adminToggleConfirm.toAdmin
+                ? 'Esta pessoa terá acesso total ao painel administrativo — agendamentos, finanças, configurações e clientes.'
+                : 'Esta pessoa perderá o acesso ao painel administrativo imediatamente.'}
+            </p>
+            <div className="flex gap-3 mt-1">
+              <button
+                onClick={() => setAdminToggleConfirm(null)}
+                disabled={togglingId === adminToggleConfirm.userId}
+                className="flex-1 py-2 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted/20 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  const { userId, toAdmin } = adminToggleConfirm
+                  setAdminToggleConfirm(null)
+                  await handleToggleAdmin(userId, !toAdmin)
+                }}
+                disabled={togglingId === adminToggleConfirm.userId}
+                className="flex-1 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors disabled:opacity-60"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
