@@ -56,6 +56,10 @@ import {
   listFinancialEntries,
   addManualFinancialEntry,
   deleteManualFinancialEntry,
+  listFinancialTransactions,
+  addManualTransaction,
+  deleteManualTransaction,
+  markTransactionAsPaid,
   saveCardRates,
   listClientDirectory,
   getClientDirectoryDetails,
@@ -77,6 +81,7 @@ import type {
   ProductReservation,
   ProductReservationStatus,
   FinancialEntry,
+  FinancialTransaction,
 } from '@/lib/supabase/types'
 
 const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab']
@@ -4099,7 +4104,7 @@ function TabFinanceiro({
   const today = new Date().toISOString().split('T')[0]
   const firstOfMonth = today.slice(0, 8) + '01'
 
-  const [entries, setEntries] = useState<FinancialEntry[]>([])
+  const [transactions, setTransactions] = useState<FinancialTransaction[]>([])
   const [loadingEntries, setLoadingEntries] = useState(true)
   const [dateFrom, setDateFrom] = useState(firstOfMonth)
   const [dateTo, setDateTo] = useState(today)
@@ -4120,24 +4125,25 @@ function TabFinanceiro({
   const [savingForm, setSavingForm] = useState(false)
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
-  const [formPaymentMethod, setFormPaymentMethod] = useState<PaymentMethod | ''>('')
+  const [baixaLoadingId, setBaixaLoadingId] = useState<string | null>(null)
 
   const loadEntries = async () => {
     setLoadingEntries(true)
-    const result = await listFinancialEntries({ dateFrom, dateTo })
-    setEntries(result.entries)
+    const result = await listFinancialTransactions({ dateFrom, dateTo })
+    setTransactions(result.transactions)
     setLoadingEntries(false)
   }
 
   useEffect(() => { loadEntries() }, [dateFrom, dateTo])
 
-  const totalEntradas = entries.filter(e => e.type === 'receita').reduce((s, e) => s + (e.net_amount ?? e.amount), 0)
-  const totalSaidas   = entries.filter(e => e.type === 'despesa').reduce((s, e) => s + e.amount, 0)
+  const totalEntradas  = transactions.filter(t => t.type === 'IN'  && t.status === 'PAID').reduce((s, t) => s + t.amount, 0)
+  const totalSaidas    = transactions.filter(t => t.type === 'OUT' && t.status === 'PAID').reduce((s, t) => s + t.amount, 0)
+  const totalPendente  = transactions.filter(t => t.type === 'IN'  && t.status === 'PENDING').reduce((s, t) => s + t.amount, 0)
   const saldo = totalEntradas - totalSaidas
 
-  const todayEntries  = entries.filter(e => e.date === today)
-  const todayEntradas = todayEntries.filter(e => e.type === 'receita').reduce((s, e) => s + (e.net_amount ?? e.amount), 0)
-  const todaySaidas   = todayEntries.filter(e => e.type === 'despesa').reduce((s, e) => s + e.amount, 0)
+  const todayTransactions = transactions.filter(t => t.due_date === today)
+  const todayEntradas = todayTransactions.filter(t => t.type === 'IN'  && t.status === 'PAID').reduce((s, t) => s + t.amount, 0)
+  const todaySaidas   = todayTransactions.filter(t => t.type === 'OUT' && t.status === 'PAID').reduce((s, t) => s + t.amount, 0)
 
   const handleSaveMachine = async () => {
     setSavingMachine(true)
@@ -4164,19 +4170,11 @@ function TabFinanceiro({
     if (isNaN(amount) || amount <= 0) { toast.error('Informe um valor válido.'); return }
     if (!formDesc.trim()) { toast.error('Informe uma descrição.'); return }
     setSavingForm(true)
-    const method = formPaymentMethod || undefined
-    const cardRate = method === 'debito'
-      ? (config.debit_rate_pct ?? 0)
-      : method === 'credito'
-        ? (config.credit_rate_pct ?? 0)
-        : 0
-    const result = await addManualFinancialEntry({
-      type: formKind === 'entrada' ? 'receita' : 'despesa',
+    const result = await addManualTransaction({
+      type: formKind === 'entrada' ? 'IN' : 'OUT',
       amount,
       description: formDesc.trim(),
-      date: formDate,
-      payment_method: method,
-      card_rate_pct: cardRate,
+      due_date: formDate,
     })
     setSavingForm(false)
     if (result.success) {
@@ -4184,7 +4182,6 @@ function TabFinanceiro({
       setShowForm(false)
       setFormDesc('')
       setFormAmount('')
-      setFormPaymentMethod('')
       loadEntries()
     } else {
       toast.error(result.error ?? 'Erro ao salvar.')
@@ -4192,43 +4189,30 @@ function TabFinanceiro({
   }
 
   const handleDelete = async (id: string) => {
-    const result = await deleteManualFinancialEntry(id)
+    const result = await deleteManualTransaction(id)
     if (result.success) {
       toast.success('Removido.')
       setDeleteConfirmId(null)
-      setEntries(prev => prev.filter(e => e.id !== id))
+      setTransactions(prev => prev.filter(t => t.id !== id))
     } else {
       toast.error(result.error ?? 'Erro.')
     }
   }
 
+  const handleBaixa = async (id: string) => {
+    setBaixaLoadingId(id)
+    const result = await markTransactionAsPaid(id)
+    setBaixaLoadingId(null)
+    if (result.success) {
+      toast.success('Pagamento registrado.')
+      setTransactions(prev => prev.map(t => t.id === id ? { ...t, status: 'PAID' as const } : t))
+    } else {
+      toast.error(result.error ?? 'Erro ao dar baixa.')
+    }
+  }
+
   const brl = (v: number) =>
     v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-  const sourceLabel = (s: string) => {
-    if (s === 'agendamento') return 'Serviço'
-    if (s === 'produto')     return 'Produto'
-    if (s === 'estorno')     return 'Estorno'
-    return 'Manual'
-  }
-
-  const methodLabel = (m: string) => {
-    if (m === 'dinheiro') return 'Dinheiro'
-    if (m === 'pix')      return 'PIX'
-    if (m === 'debito')   return 'Débito'
-    if (m === 'credito')  return 'Crédito'
-    return m
-  }
-
-  // Ícone por método de pagamento
-  const MethodIcon = ({ method }: { method: string }) => {
-    const base = 'text-[9px] font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider'
-    if (method === 'pix')      return <span className={`${base} bg-[#00BDAE]/10 text-[#00BDAE]`}>PIX</span>
-    if (method === 'debito')   return <span className={`${base} bg-sky-500/10 text-sky-400`}>DEB</span>
-    if (method === 'credito')  return <span className={`${base} bg-violet-500/10 text-violet-400`}>CRÉ</span>
-    if (method === 'dinheiro') return <span className={`${base} bg-amber-500/10 text-amber-400`}>DIN</span>
-    return null
-  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -4266,7 +4250,7 @@ function TabFinanceiro({
           {brl(saldo)}
         </p>
         <p className="text-[11px] text-zinc-600 mt-1.5">
-          {saldo >= 0 ? 'Caixa positivo' : 'Caixa negativo'} · {entries.length} lançamento{entries.length !== 1 ? 's' : ''}
+          {saldo >= 0 ? 'Caixa positivo' : 'Caixa negativo'} · {transactions.length} lançamento{transactions.length !== 1 ? 's' : ''}
         </p>
       </div>
 
@@ -4293,6 +4277,17 @@ function TabFinanceiro({
           <p className="text-[10px] text-zinc-600">Hoje: <span className="text-zinc-400">{brl(todaySaidas)}</span></p>
         </div>
       </div>
+
+      {/* ── Card A Receber (Pendentes / Fiado) ───────────────────── */}
+      {totalPendente > 0 && (
+        <div className="bg-amber-500/[0.06] border border-amber-500/20 rounded-xl p-4 flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-amber-600">A Receber (Fiado)</span>
+            <p className="text-lg font-semibold tabular-nums text-amber-400 leading-tight">{brl(totalPendente)}</p>
+          </div>
+          <span className="text-[10px] text-amber-700">Dê Baixa nos lançamentos abaixo ↓</span>
+        </div>
+      )}
 
       {/* ── Configuração de maquininha ────────────────────────────── */}
       <div className="bg-[#1a1a1a] border border-[#262626] rounded-xl overflow-hidden">
@@ -4368,7 +4363,7 @@ function TabFinanceiro({
         <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl p-5 flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-white">Novo Lançamento</p>
-            <button onClick={() => { setShowForm(false); setFormDesc(''); setFormAmount(''); setFormPaymentMethod('') }}
+            <button onClick={() => { setShowForm(false); setFormDesc(''); setFormAmount('') }}
               className="text-zinc-600 hover:text-zinc-300 transition-colors text-xs uppercase tracking-wider">
               Cancelar
             </button>
@@ -4400,18 +4395,6 @@ function TabFinanceiro({
                 className="bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-[#3a3a3a]"
               />
             </div>
-            <select value={formPaymentMethod} onChange={(e) => setFormPaymentMethod(e.target.value as PaymentMethod | '')}
-              className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-3 py-2.5 text-sm text-zinc-300 focus:outline-none focus:border-[#3a3a3a]">
-              <option value="">Forma de pagamento (opcional)</option>
-              <option value="dinheiro">Dinheiro</option>
-              <option value="pix">PIX</option>
-              <option value="credito">Crédito</option>
-            </select>
-            {formPaymentMethod === 'credito' && hasMachine && (
-              <p className="text-[11px] text-zinc-600">
-                Taxa {config.credit_rate_pct ?? 0}% será aplicada automaticamente.
-              </p>
-            )}
           </div>
 
           <button onClick={handleAddEntry} disabled={savingForm}
@@ -4443,7 +4426,7 @@ function TabFinanceiro({
               </div>
             ))}
           </div>
-        ) : entries.length === 0 ? (
+        ) : transactions.length === 0 ? (
           /* Empty state estruturado */
           <div className="flex flex-col">
             {[0, 1, 2].map(i => (
@@ -4462,52 +4445,77 @@ function TabFinanceiro({
             </div>
           </div>
         ) : (
-          entries.map((entry) => (
-            <div
-              key={entry.id}
-              className="flex items-center gap-3 px-4 py-3.5 border-b border-[#262626] last:border-0 hover:bg-[#1f1f1f] transition-colors group"
-            >
-              <div className={`w-1 h-8 rounded-full shrink-0 ${entry.type === 'receita' ? 'bg-[#34a853]' : 'bg-[#e05c5c]'}`} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-zinc-200 truncate">{entry.description}</p>
-                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                  <span className="text-[10px] text-zinc-600">{entry.date?.split('-').reverse().join('/')}</span>
-                  <span className="text-[10px] text-zinc-700">·</span>
-                  <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                    entry.source === 'agendamento' ? 'text-sky-400 bg-sky-500/10' :
-                    entry.source === 'produto'     ? 'text-violet-400 bg-violet-500/10' :
-                    entry.source === 'estorno'     ? 'text-orange-400 bg-orange-500/10' :
-                    'text-zinc-500 bg-zinc-500/10'
-                  }`}>{sourceLabel(entry.source)}</span>
-                  {entry.payment_method && <MethodIcon method={entry.payment_method} />}
-                  {entry.card_rate_pct != null && entry.card_rate_pct > 0 && (
-                    <span className="text-[10px] text-zinc-700">{entry.card_rate_pct}% taxa</span>
-                  )}
+          transactions.map((tx) => {
+            const isIN      = tx.type === 'IN'
+            const isPending = tx.status === 'PENDING'
+            const isCancelled = tx.status === 'CANCELLED' || tx.status === 'REFUNDED'
+
+            const sourceLabel = (s: string) => {
+              if (s === 'APPOINTMENT') return 'Serviço'
+              if (s === 'STORE_SALE')  return 'Produto'
+              return 'Manual'
+            }
+            const statusBadge = () => {
+              if (tx.status === 'PAID')      return <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider text-emerald-400 bg-emerald-500/10">Pago</span>
+              if (tx.status === 'PENDING')   return <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider text-amber-400 bg-amber-500/10">Pendente</span>
+              if (tx.status === 'CANCELLED') return <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider text-zinc-500 bg-zinc-500/10">Cancelado</span>
+              if (tx.status === 'REFUNDED')  return <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider text-orange-400 bg-orange-500/10">Estornado</span>
+              return null
+            }
+
+            return (
+              <div
+                key={tx.id}
+                className={`flex items-center gap-3 px-4 py-3.5 border-b border-[#262626] last:border-0 transition-colors group ${isCancelled ? 'opacity-50' : 'hover:bg-[#1f1f1f]'}`}
+              >
+                <div className={`w-1 h-8 rounded-full shrink-0 ${isIN ? (isPending ? 'bg-amber-500' : 'bg-[#34a853]') : 'bg-[#e05c5c]'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-zinc-200 truncate">{tx.description ?? '—'}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="text-[10px] text-zinc-600">{tx.due_date?.split('-').reverse().join('/')}</span>
+                    <span className="text-[10px] text-zinc-700">·</span>
+                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                      tx.source_type === 'APPOINTMENT' ? 'text-sky-400 bg-sky-500/10' :
+                      tx.source_type === 'STORE_SALE'  ? 'text-violet-400 bg-violet-500/10' :
+                      'text-zinc-500 bg-zinc-500/10'
+                    }`}>{sourceLabel(tx.source_type)}</span>
+                    {statusBadge()}
+                  </div>
                 </div>
-              </div>
-              <div className="flex flex-col items-end gap-0.5 shrink-0">
-                <span className={`text-sm font-semibold tabular-nums ${entry.type === 'receita' ? 'text-[#34a853]' : 'text-[#e05c5c]'}`}>
-                  {entry.type === 'receita' ? '+' : '−'}{brl(entry.type === 'receita' ? (entry.net_amount ?? entry.amount) : entry.amount)}
+
+                {/* Valor */}
+                <span className={`text-sm font-semibold tabular-nums shrink-0 ${isIN ? (isPending ? 'text-amber-400' : 'text-[#34a853]') : 'text-[#e05c5c]'}`}>
+                  {isIN ? '+' : '−'}{brl(tx.amount)}
                 </span>
-                {entry.net_amount != null && entry.net_amount !== entry.amount && entry.type === 'receita' && (
-                  <span className="text-[10px] text-zinc-700 tabular-nums">bruto {brl(entry.amount)}</span>
+
+                {/* Botão Dar Baixa */}
+                {isPending && (
+                  <button
+                    onClick={() => handleBaixa(tx.id)}
+                    disabled={baixaLoadingId === tx.id}
+                    className="shrink-0 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold text-amber-900 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 transition-colors"
+                  >
+                    {baixaLoadingId === tx.id ? '...' : 'Dar Baixa'}
+                  </button>
+                )}
+
+                {/* Botão deletar (só manual) */}
+                {tx.source_type === 'MANUAL' && !isPending && (
+                  deleteConfirmId === tx.id ? (
+                    <div className="flex gap-1 shrink-0">
+                      <button onClick={() => handleDelete(tx.id)} className="text-[10px] text-red-400 border border-red-900/40 px-2 py-1 rounded-md">Sim</button>
+                      <button onClick={() => setDeleteConfirmId(null)} className="text-[10px] text-zinc-600 border border-[#2a2a2a] px-2 py-1 rounded-md">Não</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setDeleteConfirmId(tx.id)}
+                      className="text-zinc-700 hover:text-[#e05c5c] transition-colors opacity-0 group-hover:opacity-100 shrink-0 ml-1">
+                      <Trash2 size={13} />
+                    </button>
+                  )
                 )}
               </div>
-              {entry.source === 'manual' && (
-                deleteConfirmId === entry.id ? (
-                  <div className="flex gap-1 shrink-0">
-                    <button onClick={() => handleDelete(entry.id)} className="text-[10px] text-red-400 border border-red-900/40 px-2 py-1 rounded-md">Sim</button>
-                    <button onClick={() => setDeleteConfirmId(null)} className="text-[10px] text-zinc-600 border border-[#2a2a2a] px-2 py-1 rounded-md">Não</button>
-                  </div>
-                ) : (
-                  <button onClick={() => setDeleteConfirmId(entry.id)}
-                    className="text-zinc-700 hover:text-[#e05c5c] transition-colors opacity-0 group-hover:opacity-100 shrink-0 ml-1">
-                    <Trash2 size={13} />
-                  </button>
-                )
-              )}
-            </div>
-          ))
+            )
+          })
         )}
       </div>
     </div>

@@ -1135,14 +1135,6 @@ export async function concludeAppointment(
     if (appt.status !== 'confirmado') return { success: false, error: 'Só é possível concluir agendamentos confirmados.' }
     if (appt.date !== today) return { success: false, error: 'Só é possível concluir agendamentos do dia atual.' }
 
-    const { data: existingRevenue } = await supabase
-      .from('financial_entries')
-      .select('id')
-      .eq('source', 'agendamento')
-      .eq('reference_id', appointmentId)
-      .limit(1)
-      .maybeSingle()
-
     const { data: paymentIntent } = await supabase
       .from('payment_intents')
       .select('status, payment_method, refunded_at')
@@ -1153,17 +1145,11 @@ export async function concludeAppointment(
       ? paymentIntent.payment_method ?? paymentMethod ?? 'mercado_pago'
       : paymentMethod
 
-    // Busca taxas por tipo de pagamento
-    const { data: configData } = await supabase
-      .from('business_config')
-      .select('debit_rate_pct, credit_rate_pct, default_card_rate_pct')
-      .single()
-    const cardRate = getCardRateByPaymentMethod(configData, resolvedPaymentMethod)
-
     const amount = appt.service_price_snapshot ?? 0
-    const netAmount = amount * (1 - cardRate / 100)
 
-    if (amount > 0 && !existingRevenue && !resolvedPaymentMethod && !expectedPaymentDate) {
+    // O trigger process_appointment_financials() cuida da entrada em financial_transactions.
+    // Aqui apenas validamos que alguma forma de pagamento foi indicada.
+    if (amount > 0 && !resolvedPaymentMethod && !expectedPaymentDate) {
       return { success: false, error: 'Informe a forma de pagamento para concluir este atendimento.' }
     }
 
@@ -1173,23 +1159,6 @@ export async function concludeAppointment(
       .update({ status: 'concluido', ...(expectedPaymentDate ? { expected_payment_date: expectedPaymentDate } : {}) })
       .eq('id', appointmentId)
     if (updateError) throw updateError
-
-    // Cria entrada financeira apenas quando ainda não houver receita lançada e não for fiado.
-    if (amount > 0 && !existingRevenue && !expectedPaymentDate) {
-      const { data: { user } } = await supabase.auth.getUser()
-      await supabase.from('financial_entries').insert({
-        type: 'receita',
-        source: 'agendamento',
-        amount,
-        description: appt.service_name_snapshot ?? 'Serviço',
-        payment_method: resolvedPaymentMethod,
-        card_rate_pct: cardRate,
-        net_amount: netAmount,
-        reference_id: appointmentId,
-        date: today,
-        created_by: user?.id ?? null,
-      })
-    }
 
     // Salva rating se fornecido
     if (rating && rating.score >= 1 && rating.score <= 5) {
@@ -1390,6 +1359,103 @@ export async function deleteManualFinancialEntry(
     }
 
     const { error } = await supabase.from('financial_entries').delete().eq('id', id)
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+// ─── TAREFA 3: Livro-Razão (financial_transactions) ──────────────────────────
+
+export async function listFinancialTransactions(filters?: {
+  dateFrom?: string
+  dateTo?: string
+}): Promise<{ transactions: import('@/lib/supabase/types').FinancialTransaction[]; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    let query = supabase
+      .from('financial_transactions')
+      .select('*')
+      .order('due_date', { ascending: false })
+      .order('created_at', { ascending: false })
+
+    if (filters?.dateFrom) query = query.gte('due_date', filters.dateFrom)
+    if (filters?.dateTo)   query = query.lte('due_date', filters.dateTo)
+
+    const { data, error } = await query.limit(500)
+    if (error) throw error
+    return { transactions: (data ?? []) as import('@/lib/supabase/types').FinancialTransaction[] }
+  } catch (e) {
+    return { transactions: [], error: (e as Error).message }
+  }
+}
+
+export async function addManualTransaction(data: {
+  type: 'IN' | 'OUT'
+  amount: number
+  description: string
+  due_date: string
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    if (!data.description.trim()) return { success: false, error: 'Descrição obrigatória.' }
+    if (data.amount <= 0) return { success: false, error: 'Valor deve ser maior que zero.' }
+
+    const { error } = await supabase.from('financial_transactions').insert({
+      amount: data.amount,
+      type: data.type,
+      status: 'PAID',
+      due_date: data.due_date,
+      source_id: crypto.randomUUID(),
+      source_type: 'MANUAL',
+      description: data.description.trim(),
+    })
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function markTransactionAsPaid(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    const { error } = await supabase
+      .from('financial_transactions')
+      .update({ status: 'PAID' })
+      .eq('id', id)
+      .eq('status', 'PENDING') // guard: só atualiza se ainda PENDING
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+export async function deleteManualTransaction(
+  id: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    // CA: só entradas manuais podem ser excluídas pelo admin
+    const { data: tx } = await supabase
+      .from('financial_transactions')
+      .select('source_type')
+      .eq('id', id)
+      .single()
+    if (!tx) return { success: false, error: 'Lançamento não encontrado.' }
+    if (tx.source_type !== 'MANUAL') {
+      return { success: false, error: 'Apenas lançamentos manuais podem ser excluídos.' }
+    }
+
+    const { error } = await supabase.from('financial_transactions').delete().eq('id', id)
     if (error) throw error
     revalidatePath('/admin')
     return { success: true }

@@ -168,6 +168,23 @@ export interface FinancialEntry {
   updated_at: string
 }
 
+// ─── Livro-Razão (Tarefa 3) ─────────────────────────────────────────────────
+export type FinancialTransactionType = 'IN' | 'OUT'
+export type FinancialTransactionStatus = 'PAID' | 'PENDING' | 'CANCELLED' | 'REFUNDED'
+export type FinancialTransactionSourceType = 'APPOINTMENT' | 'STORE_SALE' | 'MANUAL'
+
+export interface FinancialTransaction {
+  id: string
+  amount: number
+  type: FinancialTransactionType
+  status: FinancialTransactionStatus
+  due_date: string
+  source_id: string
+  source_type: FinancialTransactionSourceType
+  description: string | null
+  created_at: string
+}
+
 // ─── Produtos ────────────────────────────────────────────────────────────────
 export type ProductReservationStatus = 'aguardando_pagamento' | 'reservado' | 'cancelado' | 'retirado'
 
