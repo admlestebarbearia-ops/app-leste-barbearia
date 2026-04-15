@@ -1773,7 +1773,7 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
       return { success: false, error: 'Cliente inválido.' }
     }
 
-    let profile: { id: string; email: string | null; display_name: string | null; phone: string | null; is_blocked: boolean } | null = null
+    let profile: { id: string; email: string | null; display_name: string | null; phone: string | null; is_blocked: boolean; created_at: string | null } | null = null
     let appointments: Array<{
       id: string
       client_id: string | null
@@ -1790,7 +1790,7 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
     if (isRegistered) {
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('id, email, display_name, phone, is_blocked')
+        .select('id, email, display_name, phone, is_blocked, created_at')
         .eq('id', targetId)
         .single()
 
