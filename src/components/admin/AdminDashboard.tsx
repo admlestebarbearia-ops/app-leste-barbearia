@@ -1464,6 +1464,7 @@ function TabHoje({
                   credito: 'Crédito',
                   mercado_pago: 'Saldo MP',
                 }
+                const isPaid = Boolean(method) || isOnline
                 const label = isRefunded
                   ? 'Estornado'
                   : method
@@ -1478,7 +1479,6 @@ function TabHoje({
                   ? 'Pago no local'
                   : null
                 if (!label) return null
-                const isPaid = Boolean(method) || isOnline
                 const badgeClass = isRefunded
                   ? 'bg-orange-500/20 text-orange-400 border border-orange-500/20'
                   : isPaid
