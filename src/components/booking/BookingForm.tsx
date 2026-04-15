@@ -7,7 +7,7 @@ import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
-import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone, cancelPendingPayment, getPendingPaymentStatus } from '@/app/agendar/actions'
+import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone, cancelPendingPayment, getPendingPaymentStatus, getMyPendingFiadoSummary } from '@/app/agendar/actions'
 import { PaymentBrick } from '@/components/payment/PaymentBrick'
 import { createClient } from '@/lib/supabase/client'
 import { PUBLIC_MP_METHOD_OPTIONS, getPublicMpMethodBadge, type PublicMpMethod } from '@/lib/mercadopago/checkout-config'
@@ -1683,10 +1683,15 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
   const [cancelling, setCancelling] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [now, setNow] = useState(() => new Date())
+  const [pendingFiado, setPendingFiado] = useState<{ count: number; total: number } | null>(null)
 
   const fetchAppointments = () => {
-    getMyAppointments().then(({ appointments: data }) => {
+    Promise.all([
+      getMyAppointments(),
+      getMyPendingFiadoSummary(),
+    ]).then(([{ appointments: data }, fiado]) => {
       setAppointments(data as Appt[])
+      setPendingFiado(fiado.total > 0 ? fiado : null)
       setLoaded(true)
     })
   }
@@ -1744,9 +1749,27 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
 
   if (!nextAppt) {
     return (
-      <div className="rounded-2xl border border-white/[0.06] bg-[#1a1a1a] px-5 py-5 flex flex-col gap-1.5">
-        <p className="text-sm font-semibold text-white/80">Nenhum agendamento futuro</p>
-        <p className="text-xs text-white/40 leading-relaxed">Escolha um serviço acima para fazer sua reserva.</p>
+      <div className="flex flex-col gap-3">
+        {pendingFiado && (
+          <a
+            href="/reservas"
+            className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-amber-500/15 transition-colors"
+          >
+            <span className="text-2xl">⚠️</span>
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <p className="text-sm font-black text-amber-300 uppercase tracking-widest">Pagamento pendente</p>
+              <p className="text-xs text-amber-400/80 leading-relaxed">
+                Você tem {pendingFiado.count > 1 ? `${pendingFiado.count} dívidas` : 'uma dívida'} de{' '}
+                <strong>R$ {pendingFiado.total.toFixed(2).replace('.', ',')}</strong> em aberto.
+              </p>
+              <p className="text-[10px] text-amber-600 font-bold uppercase tracking-widest mt-0.5">Toque para ver e pagar →</p>
+            </div>
+          </a>
+        )}
+        <div className="rounded-2xl border border-white/[0.06] bg-[#1a1a1a] px-5 py-5 flex flex-col gap-1.5">
+          <p className="text-sm font-semibold text-white/80">Nenhum agendamento futuro</p>
+          <p className="text-xs text-white/40 leading-relaxed">Escolha um serviço acima para fazer sua reserva.</p>
+        </div>
       </div>
     )
   }
@@ -1761,7 +1784,24 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
   const canCancel = !isPendingPayment && now < deadline
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#1a1a1a] px-5 py-5 flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
+      {pendingFiado && (
+        <a
+          href="/reservas"
+          className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 flex items-center gap-3 cursor-pointer hover:bg-amber-500/15 transition-colors"
+        >
+          <span className="text-2xl">⚠️</span>
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <p className="text-sm font-black text-amber-300 uppercase tracking-widest">Pagamento pendente</p>
+            <p className="text-xs text-amber-400/80 leading-relaxed">
+              {pendingFiado.count > 1 ? `${pendingFiado.count} dívidas` : 'Uma dívida'} de{' '}
+              <strong>R$ {pendingFiado.total.toFixed(2).replace('.', ',')}</strong> em aberto.
+            </p>
+            <p className="text-[10px] text-amber-600 font-bold uppercase tracking-widest mt-0.5">Toque para pagar →</p>
+          </div>
+        </a>
+      )}
+      <div className="rounded-2xl border border-white/[0.06] bg-[#1a1a1a] px-5 py-5 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-0.5">
           <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Próximo agendamento</p>
@@ -1829,6 +1869,7 @@ function MyAppointments({ cancellationWindowMinutes }: { cancellationWindowMinut
         <p className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Faltam</p>
         <p className="text-xl font-black text-white/90 tabular-nums">{countdownText}</p>
       </div>
+    </div>
     </div>
   )
 }

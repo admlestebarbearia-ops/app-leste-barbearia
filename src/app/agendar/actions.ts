@@ -1117,6 +1117,41 @@ export async function createFiadoPaymentLink(appointmentId: string): Promise<{
   }
 }
 
+// ─── Resumo de dívidas pendentes do cliente (para alerta na Home) ─────────────
+export async function getMyPendingFiadoSummary(): Promise<{ count: number; total: number }> {
+  try {
+    const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
+    const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+    if (!ownershipFilter) return { count: 0, total: 0 }
+
+    // Agendamentos concluídos com promessa de pagamento pendente
+    const { data: appts } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('status', 'concluido')
+      .not('expected_payment_date', 'is', null)
+      .or(ownershipFilter)
+
+    if (!appts?.length) return { count: 0, total: 0 }
+
+    const apptIds = appts.map((a: { id: string }) => a.id)
+
+    const { data: txs } = await supabase
+      .from('financial_transactions')
+      .select('amount')
+      .eq('status', 'PENDING')
+      .eq('source_type', 'APPOINTMENT')
+      .in('source_id', apptIds)
+
+    if (!txs?.length) return { count: 0, total: 0 }
+
+    const total = (txs as Array<{ amount: number }>).reduce((sum, t) => sum + (t.amount ?? 0), 0)
+    return { count: txs.length, total }
+  } catch {
+    return { count: 0, total: 0 }
+  }
+}
+
 export async function dismissCancelledAppointment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {

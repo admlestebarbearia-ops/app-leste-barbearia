@@ -1160,6 +1160,43 @@ export async function concludeAppointment(
       .eq('id', appointmentId)
     if (updateError) throw updateError
 
+    // Cria entrada em financial_transactions explicitamente.
+    // Garante dados no painel financeiro independente de triggers no banco.
+    if (amount > 0) {
+      const { data: existingTx } = await supabase
+        .from('financial_transactions')
+        .select('id')
+        .eq('source_id', appointmentId)
+        .eq('source_type', 'APPOINTMENT')
+        .maybeSingle()
+
+      if (!existingTx) {
+        if (expectedPaymentDate) {
+          // Fiado: PENDENTE até o cliente pagar
+          await supabase.from('financial_transactions').insert({
+            amount,
+            type: 'IN',
+            status: 'PENDING',
+            due_date: expectedPaymentDate,
+            source_id: appointmentId,
+            source_type: 'APPOINTMENT',
+            description: appt.service_name_snapshot ?? 'Serviço',
+          })
+        } else if (resolvedPaymentMethod) {
+          // Pago imediatamente
+          await supabase.from('financial_transactions').insert({
+            amount,
+            type: 'IN',
+            status: 'PAID',
+            due_date: today,
+            source_id: appointmentId,
+            source_type: 'APPOINTMENT',
+            description: `${appt.service_name_snapshot ?? 'Serviço'} (${resolvedPaymentMethod})`,
+          })
+        }
+      }
+    }
+
     // Salva rating se fornecido
     if (rating && rating.score >= 1 && rating.score <= 5) {
       await supabase.from('client_ratings').insert({
@@ -1457,6 +1494,58 @@ export async function deleteManualTransaction(
 
     const { error } = await supabase.from('financial_transactions').delete().eq('id', id)
     if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+// ─── Baixa manual de fiado pelo administrador ─────────────────────────────────
+export async function adminConfirmFiadoPayment(
+  appointmentId: string,
+  paymentMethod: PaymentMethod
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    const { data: appt } = await supabase
+      .from('appointments')
+      .select('id, client_id, client_name, service_name_snapshot, service_price_snapshot, date, start_time')
+      .eq('id', appointmentId)
+      .eq('status', 'concluido')
+      .not('expected_payment_date', 'is', null)
+      .single()
+
+    if (!appt) return { success: false, error: 'Agendamento não encontrado ou já foi quitado.' }
+
+    // 1. Marca transação PENDING → PAID
+    const { error: txErr } = await supabase
+      .from('financial_transactions')
+      .update({ status: 'PAID' })
+      .eq('source_id', appointmentId)
+      .eq('source_type', 'APPOINTMENT')
+      .eq('status', 'PENDING')
+
+    if (txErr) throw txErr
+
+    // 2. Remove expected_payment_date (dívida quitada)
+    await supabase
+      .from('appointments')
+      .update({ expected_payment_date: null })
+      .eq('id', appointmentId)
+
+    // 3. Notifica o cliente (se tiver conta)
+    if (appt.client_id) {
+      const { firePushToUser: push } = await import('@/app/api/push/actions')
+      void push(appt.client_id, {
+        title: '✅ Pagamento confirmado pelo barbeiro',
+        body: `Seu débito de ${appt.service_name_snapshot ?? 'Serviço'} foi quitado. Obrigado!`,
+        url: '/reservas',
+        tag: `fiado-confirmed-${appointmentId}`,
+      })
+    }
+
     revalidatePath('/admin')
     return { success: true }
   } catch (e) {

@@ -67,6 +67,7 @@ import {
   saveMercadoPagoConfig,
   disconnectMercadoPago,
   getPendingPaymentsCount,
+  adminConfirmFiadoPayment,
 } from '@/app/admin/actions'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
 import type { PaymentMethod } from '@/lib/supabase/types'
@@ -647,6 +648,8 @@ function TabHoje({
   const [selectedDay, setSelectedDay] = useState<string | null>(todayStr)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
+  const [fiadoPaymentMethod, setFiadoPaymentMethod] = useState<PaymentMethod | null>(null)
+  const [confirmingFiado, setConfirmingFiado] = useState(false)
   const [pendingAppts, setPendingAppts] = useState<Appointment[]>([])
   const concludeHasApprovedOnlinePayment = concludeAppt
     ? onlineMpApptIds.has(concludeAppt.id) && !refundedApptIds.has(concludeAppt.id)
@@ -998,6 +1001,20 @@ function TabHoje({
       onRefresh()
     } else {
       toast.error(result.error ?? 'Erro ao estornar.')
+    }
+  }
+
+  const handleConfirmFiado = async (apptId: string, method: PaymentMethod) => {
+    setConfirmingFiado(true)
+    const result = await adminConfirmFiadoPayment(apptId, method)
+    setConfirmingFiado(false)
+    if (result.success) {
+      toast.success('Pagamento confirmado!')
+      setSelectedAppt(null)
+      setFiadoPaymentMethod(null)
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao confirmar pagamento.')
     }
   }
 
@@ -1492,6 +1509,38 @@ function TabHoje({
                 )
               })()}
             </div>
+
+            {/* ── Baixa Manual de Fiado ── */}
+            {selectedAppt.status === 'concluido' &&
+              selectedAppt.expected_payment_date &&
+              !paymentMethodByApptId[selectedAppt.id] &&
+              !onlineMpApptIds.has(selectedAppt.id) && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex flex-col gap-2">
+                <span className="text-[10px] uppercase tracking-widest text-amber-500 font-bold">Confirmar Recebimento Manual</span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['dinheiro', 'pix', 'credito'] as PaymentMethod[]).map((pm) => (
+                    <button
+                      key={pm}
+                      onClick={() => setFiadoPaymentMethod(pm)}
+                      className={`text-[10px] font-bold px-2 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                        fiadoPaymentMethod === pm
+                          ? 'border-amber-500 bg-amber-500/20 text-amber-300'
+                          : 'border-white/10 bg-white/5 text-zinc-400'
+                      }`}
+                    >
+                      {pm === 'dinheiro' ? 'Dinheiro' : pm === 'pix' ? 'PIX' : 'Crédito'}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={!fiadoPaymentMethod || confirmingFiado}
+                  onClick={() => fiadoPaymentMethod && void handleConfirmFiado(selectedAppt.id, fiadoPaymentMethod)}
+                  className="w-full text-[11px] font-black uppercase tracking-widest py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 disabled:opacity-40 transition-colors cursor-pointer"
+                >
+                  {confirmingFiado ? 'Aguarde...' : '✓ Confirmar Recebimento'}
+                </button>
+              </div>
+            )}
 
             {/* Info do cliente */}
             <div className="bg-white/5 rounded-xl px-4 py-3 flex flex-col gap-2">
