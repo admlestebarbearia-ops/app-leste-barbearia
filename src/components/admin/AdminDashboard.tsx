@@ -1180,7 +1180,7 @@ function TabHoje({
                             )
                           }
                           const isPaid = Boolean(paymentMethodByApptId[appt.id]) || onlineMpApptIds.has(appt.id)
-                          if (isPaid && appt.status === 'concluido') {
+                          if (isPaid) {
                             return (
                               <span className="text-[9px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded-full shrink-0">
                                 PAGO
