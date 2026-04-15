@@ -422,7 +422,7 @@ export function AdminDashboard({
 
           <div className="flex items-center gap-2 shrink-0">
             {/* Notificações push para o admin */}
-            <PushNotificationToggle />
+            <PushNotificationToggle compact />
 
             {/* Botão Pausar Agendamentos */}
             <button
@@ -4396,6 +4396,7 @@ function TabClientes() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [cardFilter, setCardFilter] = useState<'all' | 'registered' | 'visitor' | 'dormant'>('all')
   const [selectedClientKey, setSelectedClientKey] = useState<string | null>(null)
   const [selectedClientName, setSelectedClientName] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -4430,15 +4431,27 @@ function TabClientes() {
 
   const filteredDirectory = useMemo(() => {
     const term = normalizeSearchValue(search.trim())
-    if (!term) return directory
 
-    return directory.filter((client) => {
+    // Melhoria: determina o conjunto base pelo filtro de card ativo
+    let base: ClientDirectoryItem[]
+    if (cardFilter === 'registered') {
+      base = directory.filter((c) => c.is_registered)
+    } else if (cardFilter === 'visitor') {
+      base = directory.filter((c) => !c.is_registered)
+    } else if (cardFilter === 'dormant') {
+      base = dormant
+    } else {
+      base = directory
+    }
+
+    if (!term) return base
+    return base.filter((client) => {
       const haystack = [client.name, client.email, client.phone]
         .map((value) => normalizeSearchValue(value))
         .join(' ')
       return haystack.includes(term)
     })
-  }, [directory, search])
+  }, [directory, dormant, search, cardFilter])
 
   const formatCurrency = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -4509,6 +4522,9 @@ function TabClientes() {
 
     setDetailLoading(false)
     if (!result.success || !result.data) {
+      // Bug 1: remove o registro órfão imediatamente do estado local
+      setDirectory((prev) => prev.filter((c) => c.client_key !== client.client_key))
+      setDormant((prev) => prev.filter((c) => c.client_key !== client.client_key))
       setDetailError(result.error ?? 'Não foi possível carregar a ficha do cliente.')
       return
     }
@@ -4551,26 +4567,58 @@ function TabClientes() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4">
+        <button
+          onClick={() => setCardFilter(cardFilter === 'all' ? 'all' : 'all')}
+          className={`rounded-2xl border p-4 text-left transition-all ${
+            cardFilter === 'all'
+              ? 'border-white/30 bg-white/5 ring-1 ring-white/20'
+              : 'border-[#2a2a2a] bg-neutral-900 hover:border-white/15 hover:bg-white/[0.03]'
+          }`}
+        >
           <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Total</p>
           <p className="mt-2 text-2xl font-black text-white">{totals.total_clients}</p>
           <p className="text-xs text-zinc-500">Clientes identificados no histórico</p>
-        </div>
-        <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Cadastrados</p>
+        </button>
+        <button
+          onClick={() => setCardFilter(cardFilter === 'registered' ? 'all' : 'registered')}
+          className={`rounded-2xl border p-4 text-left transition-all ${
+            cardFilter === 'registered'
+              ? 'border-sky-500/50 bg-sky-500/10 ring-1 ring-sky-500/30'
+              : 'border-[#2a2a2a] bg-neutral-900 hover:border-sky-500/20 hover:bg-sky-500/[0.04]'
+          }`}
+        >
+          <p className={`text-[10px] font-black uppercase tracking-widest ${
+            cardFilter === 'registered' ? 'text-sky-400' : 'text-zinc-500'
+          }`}>Cadastrados</p>
           <p className="mt-2 text-2xl font-black text-white">{totals.registered_clients}</p>
-          <p className="text-xs text-zinc-500">Com conta vinculada</p>
-        </div>
-        <div className="rounded-2xl border border-[#2a2a2a] bg-neutral-900 p-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Visitantes</p>
+          <p className={`text-xs ${cardFilter === 'registered' ? 'text-sky-200/60' : 'text-zinc-500'}`}>Com conta vinculada</p>
+        </button>
+        <button
+          onClick={() => setCardFilter(cardFilter === 'visitor' ? 'all' : 'visitor')}
+          className={`rounded-2xl border p-4 text-left transition-all ${
+            cardFilter === 'visitor'
+              ? 'border-zinc-400/40 bg-zinc-500/10 ring-1 ring-zinc-400/20'
+              : 'border-[#2a2a2a] bg-neutral-900 hover:border-zinc-500/30 hover:bg-zinc-500/[0.04]'
+          }`}
+        >
+          <p className={`text-[10px] font-black uppercase tracking-widest ${
+            cardFilter === 'visitor' ? 'text-zinc-300' : 'text-zinc-500'
+          }`}>Visitantes</p>
           <p className="mt-2 text-2xl font-black text-white">{totals.visitor_clients}</p>
-          <p className="text-xs text-zinc-500">Atendidos sem cadastro</p>
-        </div>
-        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+          <p className={`text-xs ${cardFilter === 'visitor' ? 'text-zinc-300/60' : 'text-zinc-500'}`}>Atendidos sem cadastro</p>
+        </button>
+        <button
+          onClick={() => setCardFilter(cardFilter === 'dormant' ? 'all' : 'dormant')}
+          className={`rounded-2xl border p-4 text-left transition-all ${
+            cardFilter === 'dormant'
+              ? 'border-amber-500/50 bg-amber-500/15 ring-1 ring-amber-500/30'
+              : 'border-amber-500/20 bg-amber-500/10 hover:bg-amber-500/15 hover:border-amber-500/30'
+          }`}
+        >
           <p className="text-[10px] font-black uppercase tracking-widest text-amber-300">Sem retorno</p>
           <p className="mt-2 text-2xl font-black text-white">{dormant.length}</p>
           <p className="text-xs text-amber-100/70">30+ dias sem novo atendimento</p>
-        </div>
+        </button>
       </div>
 
       <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
@@ -4578,13 +4626,21 @@ function TabClientes() {
           <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Busca rápida</p>
           <p className="text-sm text-zinc-500">Procure por nome, e-mail ou telefone.</p>
         </div>
-        <div className="w-full xl:max-w-sm">
+        <div className="flex items-center gap-2 w-full xl:max-w-sm">
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar cliente"
             className="border-[#2a2a2a] bg-neutral-900 text-white placeholder:text-zinc-600"
           />
+          {cardFilter !== 'all' && (
+            <button
+              onClick={() => setCardFilter('all')}
+              className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-bold text-zinc-400 hover:text-white hover:border-white/20 transition-colors"
+            >
+              Limpar filtro
+            </button>
+          )}
         </div>
       </div>
 

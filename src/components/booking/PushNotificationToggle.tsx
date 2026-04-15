@@ -36,7 +36,7 @@ async function injectVapidKeyToSw(reg: ServiceWorkerRegistration) {
   sw.postMessage({ type: 'SET_VAPID_KEY', vapidKey: VAPID_PUBLIC_KEY })
 }
 
-export function PushNotificationToggle() {
+export function PushNotificationToggle({ compact = false }: { compact?: boolean }) {
   const [supported, setSupported] = useState(false)
   const [iosPwaRequired, setIosPwaRequired] = useState(false)
   const [permissionDenied, setPermissionDenied] = useState(false)
@@ -235,6 +235,20 @@ export function PushNotificationToggle() {
 
   // Não subscrito: exibe banner pedindo ativação
   if (!subscribed) {
+    // Modo compacto (ex: header do admin): apenas ícone de sino
+    if (compact) {
+      return (
+        <button
+          onClick={handleToggle}
+          disabled={loading}
+          title="Ativar lembretes e avisos"
+          className="flex items-center justify-center p-2 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+        >
+          <Bell size={16} />
+        </button>
+      )
+    }
+
     return (
       <button
         onClick={handleToggle}
