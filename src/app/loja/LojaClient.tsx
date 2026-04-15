@@ -278,7 +278,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
       {/* Modal de produto (bottom sheet) */}
       {modalProduct && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={closeModal} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer" onClick={closeModal} />
           <div className="relative bg-zinc-950 border-t border-white/10 rounded-t-3xl max-h-[90dvh] overflow-y-auto flex flex-col">
             {/* Imagem */}
             {modalProduct.cover_image_url && (

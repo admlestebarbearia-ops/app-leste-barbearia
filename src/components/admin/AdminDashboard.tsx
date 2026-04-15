@@ -1472,6 +1472,8 @@ function TabHoje({
                   ? 'Pago online'
                   : selectedAppt.status === 'confirmado'
                   ? 'Pagar no local'
+                  : selectedAppt.status === 'concluido' && selectedAppt.expected_payment_date && !isPaid
+                  ? 'Pendente (Fiado)'
                   : selectedAppt.status === 'concluido'
                   ? 'Pago no local'
                   : null

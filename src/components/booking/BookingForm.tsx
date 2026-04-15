@@ -1475,7 +1475,7 @@ const handleConfirm = async () => {
       {showWhatsCapture && (
         <div className="fixed inset-0 z-[70] flex flex-col justify-end">
           <div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
             onClick={setupPhone && !savedPhone ? undefined : () => setShowWhatsCapture(false)}
           />
           <div className="relative bg-[#111] border-t border-white/[0.08] rounded-t-3xl px-6 pt-6 pb-10 flex flex-col gap-5 animate-in slide-in-from-bottom duration-300">
@@ -1530,7 +1530,7 @@ const handleConfirm = async () => {
         <div className="fixed inset-0 z-[60] flex flex-col justify-end">
           {/* Overlay */}
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-pointer"
             onClick={() => setMenuOpen(false)}
           />
           {/* Painel */}
@@ -1626,7 +1626,7 @@ const handleConfirm = async () => {
       {/* ── MODAL iOS: instrução "Adicionar à tela inicial" ── */}
       {showIOSTip && (
         <div className="fixed inset-0 z-[70] flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowIOSTip(false)} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-pointer" onClick={() => setShowIOSTip(false)} />
           <div className="relative bg-[#111] border-t border-white/8 rounded-t-3xl px-5 pb-safe pt-5 flex flex-col gap-4">
             <div className="w-10 h-1 bg-white/20 rounded-full mx-auto" />
             <button

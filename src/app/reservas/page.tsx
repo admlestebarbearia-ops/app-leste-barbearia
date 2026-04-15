@@ -16,6 +16,7 @@ interface HistoryApptBase {
   status: AppointmentStatus | 'aguardando_acao_barbeiro'
   service_name_snapshot: string | null
   services: { name: string } | null
+  expected_payment_date?: string | null
 }
 
 interface HistoryAppt extends HistoryApptBase {
@@ -117,7 +118,7 @@ export default async function ReservasPage({ searchParams }: Props) {
       : Promise.resolve({ data: [] }),
     supabase
       .from('appointments')
-      .select('id, date, start_time, status, service_name_snapshot, services(name)')
+      .select('id, date, start_time, status, service_name_snapshot, expected_payment_date, services(name)')
       .or(ownershipFilter)
       .is('deleted_at', null)
       .order('date', { ascending: false })
@@ -164,11 +165,18 @@ export default async function ReservasPage({ searchParams }: Props) {
     ...a,
     expiresAt: pendingExpiresAtMap[a.id] ?? null,
   }))
-  const historyAppts = historyRows.map((appointment) => ({
-    ...appointment,
-    status: getAppointmentOperationalStatus(appointment.status, appointment.date, appointment.start_time),
-    payment_context: paymentSummaryById[appointment.id]?.paymentContext ?? null,
-  }))
+  const historyAppts = historyRows.map((appointment) => {
+    const paymentCtx = paymentSummaryById[appointment.id]?.paymentContext ?? null
+    const isPendingFiado =
+      appointment.status === 'concluido' &&
+      appointment.expected_payment_date &&
+      paymentCtx === 'pay_locally'
+    return {
+      ...appointment,
+      status: getAppointmentOperationalStatus(appointment.status, appointment.date, appointment.start_time),
+      payment_context: isPendingFiado ? ('pending_fiado' as AppointmentPaymentContext) : paymentCtx,
+    }
+  })
 
   return (
     <ReservasClient

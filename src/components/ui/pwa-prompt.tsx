@@ -87,7 +87,7 @@ export default function PwaPrompt() {
   if (!visible) return null
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-4 pointer-events-none">
+    <div className="fixed bottom-[72px] left-0 right-0 z-50 px-4 pb-4 pointer-events-none">
       <div className="pointer-events-auto w-full max-w-sm mx-auto bg-card border border-border rounded-2xl shadow-2xl flex items-center gap-3 p-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { PaymentMethod } from '@/lib/supabase/types'
 
-export type AppointmentPaymentContext = 'paid_online' | 'pay_locally' | 'paid' | 'refunded'
+export type AppointmentPaymentContext = 'paid_online' | 'pay_locally' | 'paid' | 'refunded' | 'pending_fiado'
 
 export interface AppointmentPaymentSummary {
   paymentContext: AppointmentPaymentContext
