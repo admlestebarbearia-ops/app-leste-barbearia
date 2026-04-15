@@ -156,7 +156,8 @@ export async function togglePauseStatus(
 // ─── Atualizar status de agendamento ────────────────────────────────────
 export async function updateAppointmentStatus(
   appointmentId: string,
-  status: 'cancelado' | 'faltou'
+  status: 'cancelado' | 'faltou',
+  reason?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
@@ -170,7 +171,11 @@ export async function updateAppointmentStatus(
 
     const { error } = await supabase
       .from('appointments')
-      .update({ status, ...(status === 'cancelado' ? { cancelled_by_admin: true } : {}) })
+      .update({
+        status,
+        ...(status === 'cancelado' ? { cancelled_by_admin: true } : {}),
+        ...(reason ? { cancellation_reason: reason } : {}),
+      })
       .eq('id', appointmentId)
     if (error) throw error
 
@@ -1112,7 +1117,8 @@ export async function getUserDetails(userId: string): Promise<{
 export async function concludeAppointment(
   appointmentId: string,
   paymentMethod?: PaymentMethod,
-  rating?: { score: number; note?: string }
+  rating?: { score: number; note?: string },
+  expectedPaymentDate?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
@@ -1157,19 +1163,19 @@ export async function concludeAppointment(
     const amount = appt.service_price_snapshot ?? 0
     const netAmount = amount * (1 - cardRate / 100)
 
-    if (amount > 0 && !existingRevenue && !resolvedPaymentMethod) {
+    if (amount > 0 && !existingRevenue && !resolvedPaymentMethod && !expectedPaymentDate) {
       return { success: false, error: 'Informe a forma de pagamento para concluir este atendimento.' }
     }
 
     // Atualiza status do agendamento
     const { error: updateError } = await supabase
       .from('appointments')
-      .update({ status: 'concluido' })
+      .update({ status: 'concluido', ...(expectedPaymentDate ? { expected_payment_date: expectedPaymentDate } : {}) })
       .eq('id', appointmentId)
     if (updateError) throw updateError
 
-    // Cria entrada financeira apenas quando ainda não houver receita lançada pelo webhook/manual.
-    if (amount > 0 && !existingRevenue) {
+    // Cria entrada financeira apenas quando ainda não houver receita lançada e não for fiado.
+    if (amount > 0 && !existingRevenue && !expectedPaymentDate) {
       const { data: { user } } = await supabase.auth.getUser()
       await supabase.from('financial_entries').insert({
         type: 'receita',

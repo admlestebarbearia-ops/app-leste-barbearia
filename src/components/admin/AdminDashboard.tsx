@@ -622,6 +622,15 @@ function TabHoje({
   const [concludePayment, setConcludePayment] = useState<PaymentMethod | ''>('')
   const [ratingScore, setRatingScore] = useState(0)
   const [ratingNote, setRatingNote] = useState('')
+  // Fiado
+  const [concludeIsPending, setConcludeIsPending] = useState(false)
+  const [concludePendingDate, setConcludePendingDate] = useState('')
+  // Modal Cancelar
+  const [cancelAppt, setCancelAppt] = useState<Appointment | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelCanRefund, setCancelCanRefund] = useState(false)
+  const [cancelWithRefund, setCancelWithRefund] = useState(false)
   // Estorno
   const [estornoLoading, setEstornoLoading] = useState<string | null>(null)
   const [newBadge, setNewBadge] = useState(0)
@@ -948,22 +957,25 @@ function TabHoje({
   }
 
   const handleConclude = async () => {
-    if (!concludeAppt || (!concludeHasExistingRevenue && !concludePayment)) return
+    if (!concludeAppt || (!concludeHasExistingRevenue && !concludePayment && !concludeIsPending)) return
     setConcludeLoading(true)
     const rating = ratingScore > 0 ? { score: ratingScore, note: ratingNote.trim() || undefined } : undefined
-    const concludePaymentMethod = concludeHasExistingRevenue || !concludePayment
+    const concludePaymentMethod = (concludeHasExistingRevenue || !concludePayment || concludeIsPending)
       ? undefined
       : concludePayment
     const result = await concludeAppointment(
       concludeAppt.id,
       concludePaymentMethod,
-      rating
+      rating,
+      concludeIsPending ? (concludePendingDate || undefined) : undefined
     )
     setConcludeLoading(false)
     if (result.success) {
-      toast.success('Agendamento concluído!')
+      toast.success(concludeIsPending ? 'Atendimento concluído! Pagamento pendente registrado.' : 'Agendamento concluído!')
       setConcludeAppt(null)
       setConcludePayment('')
+      setConcludeIsPending(false)
+      setConcludePendingDate('')
       setRatingScore(0)
       setRatingNote('')
       onRefresh()
@@ -982,6 +994,26 @@ function TabHoje({
     } else {
       toast.error(result.error ?? 'Erro ao estornar.')
     }
+  }
+
+  const handleCancel = async () => {
+    if (!cancelAppt) return
+    setCancelLoading(true)
+    const result = await updateAppointmentStatus(cancelAppt.id, 'cancelado', cancelReason.trim() || undefined)
+    if (result.success) {
+      if (cancelWithRefund && cancelCanRefund) {
+        const refundResult = await estornarAgendamento(cancelAppt.id)
+        if (!refundResult.success) toast.error(refundResult.error ?? 'Erro ao registrar estorno.')
+      }
+      toast.success('Agendamento cancelado.')
+      setCancelAppt(null)
+      setCancelReason('')
+      setCancelWithRefund(false)
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao cancelar.')
+    }
+    setCancelLoading(false)
   }
 
   const formatSelectedDay = (dateStr: string) => {
@@ -1247,7 +1279,7 @@ function TabHoje({
                         <span className="text-[9px] font-bold text-amber-300/70 self-center">💳 Aguardando pagamento MP</span>
                         <button
                           disabled={!!loading}
-                          onClick={() => handleStatus(appt.id, 'cancelado')}
+                          onClick={() => { setCancelAppt(appt); setCancelReason(''); setCancelWithRefund(false); setCancelCanRefund(false) }}
                           className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
                         >
                           Cancelar
@@ -1270,7 +1302,7 @@ function TabHoje({
                         {appt.date === todayStr && (
                           <button
                             disabled={!!loading}
-                            onClick={() => { setConcludeAppt(appt); setRatingScore(0); setRatingNote('') }}
+                            onClick={() => { setConcludeAppt(appt); setConcludeIsPending(false); setConcludePendingDate(''); setRatingScore(0); setRatingNote('') }}
                             className="text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
                           >
                             ✓ Concluir
@@ -1285,7 +1317,7 @@ function TabHoje({
                         </button>
                         <button
                           disabled={!!loading}
-                          onClick={() => handleStatus(appt.id, 'cancelado')}
+                          onClick={() => { setCancelAppt(appt); setCancelReason(''); setCancelWithRefund(false); setCancelCanRefund(canRefund) }}
                           className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
                         >
                           Cancelar
@@ -1520,7 +1552,7 @@ function TabHoje({
     </Dialog>
 
     {/* ── Modal: Concluir Agendamento + Pagamento + Rating ── */}
-    <Dialog open={!!concludeAppt} onOpenChange={(open) => { if (!open) { setConcludeAppt(null); setConcludePayment(''); setRatingScore(0); setRatingNote('') } }}>
+    <Dialog open={!!concludeAppt} onOpenChange={(open) => { if (!open) { setConcludeAppt(null); setConcludePayment(''); setConcludeIsPending(false); setConcludePendingDate(''); setRatingScore(0); setRatingNote('') } }}>
       <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-white">Concluir Atendimento</DialogTitle>
@@ -1559,9 +1591,9 @@ function TabHoje({
                     return (
                       <button
                         key={pm}
-                        onClick={() => setConcludePayment(pm)}
+                        onClick={() => { setConcludePayment(pm); setConcludeIsPending(false) }}
                         className={`flex flex-col items-start px-3 py-2 rounded-lg border text-sm transition-all ${
-                          concludePayment === pm
+                          concludePayment === pm && !concludeIsPending
                             ? 'border-blue-500 bg-blue-500/15 text-white'
                             : 'border-white/10 bg-white/5 text-zinc-300 hover:border-white/20'
                         }`}
@@ -1571,8 +1603,31 @@ function TabHoje({
                       </button>
                     )
                   })}
+                  <button
+                    onClick={() => { setConcludeIsPending(!concludeIsPending); setConcludePayment('') }}
+                    className={`flex flex-col items-start px-3 py-2 rounded-lg border text-sm transition-all ${
+                      concludeIsPending
+                        ? 'border-amber-500 bg-amber-500/15 text-white'
+                        : 'border-white/10 bg-white/5 text-zinc-300 hover:border-white/20'
+                    }`}
+                  >
+                    <span className="font-medium">Pagar Depois</span>
+                    <span className="text-[10px] text-zinc-500">Fiado / Promessa</span>
+                  </button>
                 </div>
-                {concludePayment && concludeAppt?.service_price_snapshot != null && concludeAppt.service_price_snapshot > 0 && (() => {
+                {concludeIsPending && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs text-zinc-400">Data prometida de pagamento (opcional)</span>
+                    <input
+                      type="date"
+                      value={concludePendingDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setConcludePendingDate(e.target.value)}
+                      className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
+                    />
+                  </div>
+                )}
+                {concludePayment && !concludeIsPending && concludeAppt?.service_price_snapshot != null && concludeAppt.service_price_snapshot > 0 && (() => {
                   const amount = concludeAppt.service_price_snapshot
                   const rate = concludePayment === 'credito' ? (config.credit_rate_pct ?? 0) : 0
                   const net = amount * (1 - rate / 100)
@@ -1614,15 +1669,62 @@ function TabHoje({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { setConcludeAppt(null); setConcludePayment(''); setRatingScore(0); setRatingNote('') }} disabled={concludeLoading}>
+          <Button variant="outline" onClick={() => { setConcludeAppt(null); setConcludePayment(''); setConcludeIsPending(false); setConcludePendingDate(''); setRatingScore(0); setRatingNote('') }} disabled={concludeLoading}>
             Cancelar
           </Button>
           <Button
             onClick={handleConclude}
-            disabled={concludeLoading || (!concludeCanSkipManualPayment && !concludePayment)}
+            disabled={concludeLoading || (!concludeCanSkipManualPayment && !concludePayment && !concludeIsPending)}
             className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40"
           >
-            {concludeLoading ? 'Salvando...' : 'Confirmar Conclusão'}
+            {concludeLoading ? 'Salvando...' : concludeIsPending ? 'Confirmar (Fiado)' : 'Confirmar Conclusão'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* ── Modal: Cancelar Agendamento ── */}
+    <Dialog open={!!cancelAppt} onOpenChange={(open) => { if (!open) { setCancelAppt(null); setCancelReason(''); setCancelWithRefund(false) } }}>
+      <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-white">Cancelar Agendamento</DialogTitle>
+          <DialogDescription className="text-zinc-400">
+            {cancelAppt && (
+              <>{getDisplayName(cancelAppt)} — {cancelAppt.start_time?.slice(0, 5)}</>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-1">
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-zinc-400">Motivo do cancelamento (opcional)</span>
+            <input
+              type="text"
+              placeholder="Ex: Cliente remarcou, feriado..."
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-white/30"
+            />
+          </div>
+          {cancelCanRefund && (
+            <div className="flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-3 gap-3">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-semibold text-amber-300">Efetuar reembolso?</span>
+                <span className="text-xs text-amber-200/70">Pagamento registrado neste agendamento.</span>
+              </div>
+              <Switch checked={cancelWithRefund} onCheckedChange={setCancelWithRefund} />
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setCancelAppt(null); setCancelReason(''); setCancelWithRefund(false) }} disabled={cancelLoading}>
+            Voltar
+          </Button>
+          <Button
+            onClick={handleCancel}
+            disabled={cancelLoading}
+            className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-40"
+          >
+            {cancelLoading ? 'Cancelando...' : 'Confirmar Cancelamento'}
           </Button>
         </DialogFooter>
       </DialogContent>

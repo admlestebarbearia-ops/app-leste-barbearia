@@ -115,6 +115,8 @@ export interface Appointment {
   deleted_at: string | null
   admin_hidden_at: string | null
   created_at: string
+  expected_payment_date?: string | null
+  cancellation_reason?: string | null
   services?: Pick<Service, 'name' | 'price' | 'duration_minutes'>
   profiles?: Pick<Profile, 'is_blocked'> & { display_name?: string; email?: string | null; phone?: string | null }
   client_ratings?: Pick<ClientRating, 'score' | 'note'> | null
