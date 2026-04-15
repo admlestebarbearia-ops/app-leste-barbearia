@@ -119,6 +119,22 @@ export function AdminDashboard({
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('hoje')
 
+  // Melhoria 2: lê ?tab= da URL na montagem para preservar aba após refresh
+  useEffect(() => {
+    const validTabs: Tab[] = ['hoje', 'configuracoes', 'servicos', 'barbeiros', 'admins', 'galeria', 'produtos', 'financeiro', 'clientes']
+    const params = new URLSearchParams(window.location.search)
+    const tabParam = params.get('tab') as Tab | null
+    if (tabParam && validTabs.includes(tabParam)) setTab(tabParam)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Melhoria 2: atualiza ?tab= na URL sempre que a aba mudar
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', tab)
+    window.history.replaceState({}, '', url.toString())
+  }, [tab])
+
   // Trata retorno do OAuth do Mercado Pago (?mp=connected ou ?mp=error)
   useEffect(() => {
     if (!mpStatus) return
@@ -4782,8 +4798,14 @@ function TabClientes() {
               <div className="h-64 rounded-2xl bg-neutral-900 animate-pulse" />
             </div>
           ) : detailError ? (
-            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
-              {detailError}
+            <div className="flex flex-col gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+              <p className="text-sm text-red-300">{detailError}</p>
+              <button
+                onClick={() => { closeClientDetails(); void loadDirectory() }}
+                className="self-start rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[11px] font-bold text-red-200 hover:bg-red-500/20 transition-colors"
+              >
+                Atualizar lista
+              </button>
             </div>
           ) : detailData ? (
             <div className="flex-1 min-h-0 grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] overflow-y-auto pr-1">
@@ -4829,6 +4851,9 @@ function TabClientes() {
                 <div className="flex flex-col gap-2 rounded-xl border border-[#2a2a2a] bg-black/20 p-3 text-[11px] text-zinc-400">
                   <p>Último concluído: <span className="text-zinc-200">{formatDate(detailData.client.last_service_date)}</span></p>
                   <p>Próximo agendamento: <span className="text-zinc-200">{formatDateTime(detailData.client.next_service_date, detailData.client.next_service_time)}</span></p>
+                  {detailData.client.created_at && (
+                    <p>Cadastro: <span className="text-zinc-200">{new Date(detailData.client.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</span></p>
+                  )}
                 </div>
               </div>
 

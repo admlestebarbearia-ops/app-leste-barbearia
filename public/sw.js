@@ -10,7 +10,14 @@ self.addEventListener('install', () => {
 })
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(clients.claim())
+  e.waitUntil(
+    Promise.all([
+      clients.claim(),
+      // Previne ruído "preload request cancelled before preloadResponse settled" no console:
+      // o fetch handler não chama respondWith para navegações, então o preload nunca é consumido.
+      self.registration.navigationPreload?.disable?.(),
+    ])
+  )
 })
 
 // ─── Cache estratégico ──────────────────────────────────────────────────────

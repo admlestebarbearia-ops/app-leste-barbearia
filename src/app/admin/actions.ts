@@ -1529,6 +1529,7 @@ type ClientDirectoryItem = {
   last_service_date: string | null
   next_service_date: string | null
   next_service_time: string | null
+  created_at: string | null
 }
 
 function sortClientDirectory(a: ClientDirectoryItem, b: ClientDirectoryItem) {
@@ -1561,51 +1562,40 @@ export async function listClientDirectory(dormantDays = 30): Promise<{
 
     if (appointmentError) throw appointmentError
 
-    if (!appointments || appointments.length === 0) {
-      return {
-        directory: [],
-        ranking: [],
-        dormant: [],
-        totals: { total_clients: 0, registered_clients: 0, visitor_clients: 0 },
-      }
-    }
+    // Busca TODOS os perfis de uma vez (Bug 1: is_admin para filtrar admins;
+    // Bug 3: normalização de telefone correta; Melhoria 1: created_at na ficha).
+    // Feito antes de processar appointments para que profileByPhone use telefone
+    // normalizado de TODOS os perfis, garantindo o merge visitante→cadastrado.
+    const { data: allProfiles } = await supabase
+      .from('profiles')
+      .select('id, email, display_name, phone, is_blocked, is_admin, created_at')
 
-    const directClientIds = [...new Set(appointments.map((appointment) => appointment.client_id).filter(Boolean))] as string[]
-    const visitorPhones = [...new Set(
-      appointments
-        .filter((appointment) => !appointment.client_id)
-        .map((appointment) => normalizePhoneLookup(appointment.client_phone))
-        .filter((phone): phone is string => Boolean(phone))
-    )]
+    // Bug 1: admins são excluídos do diretório de clientes
+    const adminIds = new Set((allProfiles ?? []).filter((p) => p.is_admin).map((p) => p.id))
+    const nonAdminProfiles = (allProfiles ?? []).filter((p) => !p.is_admin)
 
-    const [{ data: directProfiles }, { data: phoneProfiles }, { data: ratings }] = await Promise.all([
-      directClientIds.length > 0
-        ? supabase.from('profiles').select('id, email, display_name, phone, is_blocked').in('id', directClientIds)
-        : Promise.resolve({ data: [] }),
-      visitorPhones.length > 0
-        ? supabase.from('profiles').select('id, email, display_name, phone, is_blocked').in('phone', visitorPhones)
-        : Promise.resolve({ data: [] }),
-      supabase.from('client_ratings').select('appointment_id, score').in('appointment_id', appointments.map((appointment) => appointment.id)),
-    ])
-
-    const profileById = new Map((directProfiles ?? []).map((profile) => [profile.id, profile]))
-    for (const profile of phoneProfiles ?? []) {
-      if (!profileById.has(profile.id)) {
-        profileById.set(profile.id, profile)
-      }
-    }
-
+    // profileByPhone usa chave normalizada (apenas dígitos) para garantir merge
+    // mesmo quando profiles.phone está armazenado com hífen/espaço (Bug 3)
+    const profileById = new Map(nonAdminProfiles.map((p) => [p.id, p]))
     const profileByPhone = new Map(
-      (phoneProfiles ?? [])
-        .map((profile) => [normalizePhoneLookup(profile.phone), profile] as const)
-        .filter((entry): entry is [string, NonNullable<typeof phoneProfiles>[number]] => Boolean(entry[0]))
+      nonAdminProfiles
+        .map((p) => [normalizePhoneLookup(p.phone), p] as const)
+        .filter((entry): entry is [string, NonNullable<typeof nonAdminProfiles>[number]] => Boolean(entry[0]))
     )
+
+    const appointmentIds = (appointments ?? []).map((a) => a.id)
+    const { data: ratings } = appointmentIds.length > 0
+      ? await supabase.from('client_ratings').select('appointment_id, score').in('appointment_id', appointmentIds)
+      : { data: [] }
 
     const appointmentClientKey = new Map<string, string>()
     const ratingBuckets = new Map<string, number[]>()
     const directoryMap = new Map<string, ClientDirectoryItem>()
 
-    for (const appointment of appointments) {
+    for (const appointment of appointments ?? []) {
+      // Bug 1: pula agendamentos de contas admin
+      if (appointment.client_id && adminIds.has(appointment.client_id)) continue
+
       const normalizedPhone = normalizePhoneLookup(appointment.client_phone)
       const matchedProfile = appointment.client_id
         ? profileById.get(appointment.client_id)
@@ -1633,7 +1623,7 @@ export async function listClientDirectory(dormantDays = 30): Promise<{
         client_id: resolvedClientId,
         name: matchedProfile?.display_name ?? appointment.client_name ?? appointment.client_email ?? matchedProfile?.email ?? 'Visitante',
         email: matchedProfile?.email ?? appointment.client_email ?? null,
-        phone: matchedProfile?.phone ?? normalizedPhone ?? appointment.client_phone ?? null,
+        phone: matchedProfile?.phone ? normalizePhoneLookup(matchedProfile.phone) ?? matchedProfile.phone : normalizedPhone ?? appointment.client_phone ?? null,
         is_registered: Boolean(resolvedClientId),
         is_blocked: matchedProfile?.is_blocked ?? false,
         total_bookings: 0,
@@ -1643,6 +1633,7 @@ export async function listClientDirectory(dormantDays = 30): Promise<{
         last_service_date: null,
         next_service_date: null,
         next_service_time: null,
+        created_at: matchedProfile?.created_at ?? null,
       }
 
       current.total_bookings += 1
@@ -1680,13 +1671,9 @@ export async function listClientDirectory(dormantDays = 30): Promise<{
       ratingBuckets.set(clientKey, bucket)
     }
 
-    // Bug 1.2: inclui perfis registrados que não aparecem em nenhum agendamento
-    // (ex: usuários que fizeram login mas ainda não agendaram nada)
-    const { data: allProfilesData } = await supabase
-      .from('profiles')
-      .select('id, email, display_name, phone, is_blocked')
-
-    for (const profile of allProfilesData ?? []) {
+    // Inclui perfis não-admin que não possuem nenhum agendamento (ex: usuários que
+    // fizeram login mas ainda não agendaram). Bug 1.2 fix + Bug 1: admins excluídos.
+    for (const profile of nonAdminProfiles) {
       const key = buildRegisteredClientKey(profile.id)
       if (!directoryMap.has(key)) {
         directoryMap.set(key, {
@@ -1704,6 +1691,7 @@ export async function listClientDirectory(dormantDays = 30): Promise<{
           last_service_date: null,
           next_service_date: null,
           next_service_time: null,
+          created_at: profile.created_at ?? null,
         })
       }
     }
@@ -1815,15 +1803,25 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
         .order('date', { ascending: false })
         .order('start_time', { ascending: false })
 
-      const phoneAppointments = profile?.phone
-        ? await supabase
+      // Bug 3: busca visitante→cadastrado filtrando em JS com telefone normalizado,
+      // para não depender de armazenamento exato do profiles.phone no DB.
+      let phoneAppointments: { data: typeof appointments } = { data: [] }
+      if (profile?.phone) {
+        const normalizedProfilePhone = normalizePhoneLookup(profile.phone)
+        if (normalizedProfilePhone) {
+          const { data: allVisitorAppts } = await supabase
             .from('appointments')
             .select('id, client_id, client_name, client_email, client_phone, date, start_time, status, service_name_snapshot, service_price_snapshot')
             .is('client_id', null)
-            .eq('client_phone', normalizePhoneLookup(profile.phone))
             .order('date', { ascending: false })
             .order('start_time', { ascending: false })
-        : { data: [] }
+          phoneAppointments = {
+            data: (allVisitorAppts ?? []).filter(
+              (a) => normalizePhoneLookup(a.client_phone) === normalizedProfilePhone
+            ),
+          }
+        }
+      }
 
       appointments = Array.from(
         new Map(
@@ -1919,6 +1917,7 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
       last_service_date: completedAppointments[0]?.date ?? null,
       next_service_date: nextAppointment?.date ?? null,
       next_service_time: nextAppointment?.start_time ?? null,
+      created_at: profile?.created_at ?? null,
     }
 
     return {
