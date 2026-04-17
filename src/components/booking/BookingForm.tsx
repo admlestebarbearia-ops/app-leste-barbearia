@@ -275,6 +275,8 @@ export function BookingForm({
   const isSubmittingRef = useRef(false)
   const prevAvailabilityKeyRef = useRef('')
   const prevBarberIdRef = useRef<string | null>(barber?.id ?? null)
+  // Contador de fetches: descarta respostas obsoletas quando o usuário troca de data/serviço rapidamente
+  const fetchIdRef = useRef(0)
 
   const resetScheduleSelection = useCallback((options?: { clearDate?: boolean; clearService?: boolean }) => {
     setAvailableSlots([])
@@ -474,8 +476,12 @@ export function BookingForm({
 
       setLoadingSlots(true)
       const dateStr = format(date, 'yyyy-MM-dd')
+      const fetchId = ++fetchIdRef.current
       const { slots, error } = await getAvailableSlots(dateStr, selectedService.id)
       setLoadingSlots(false)
+
+      // Descarta resultado se o usuário já iniciou outro fetch (trocou serviço ou data)
+      if (fetchId !== fetchIdRef.current) return
 
       if (error) {
         toast.error(error)

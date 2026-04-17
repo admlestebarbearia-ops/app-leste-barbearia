@@ -160,7 +160,10 @@ export async function getAvailableSlots(
   const lunchEnd = typedWH?.lunch_end ?? null
 
   // Busca agendamentos que ocupam slot (confirmado ou aguardando pagamento MP)
-  const { data: existingAppointmentsWithSnapshots, error: existingAppointmentsError } = await supabase
+  // Usa adminClient para bypassar RLS — sem ele, usuários anônimos/outros veriam
+  // apenas os próprios agendamentos, fazendo todos os slots parecerem livres (ghost slots).
+  const adminForSlots = createAdminClient()
+  const { data: existingAppointmentsWithSnapshots, error: existingAppointmentsError } = await adminForSlots
     .from('appointments')
     .select('start_time, status, deleted_at, service_duration_minutes_snapshot, services(duration_minutes)')
     .eq('date', date)
@@ -178,7 +181,7 @@ export async function getAvailableSlots(
       return { slots: [], error: `Erro ao consultar disponibilidade: ${existingAppointmentsError.message}` }
     }
 
-    const { data: legacyExistingAppointments, error: legacyExistingAppointmentsError } = await supabase
+    const { data: legacyExistingAppointments, error: legacyExistingAppointmentsError } = await adminForSlots
       .from('appointments')
       .select('start_time, services(duration_minutes)')
       .eq('date', date)
@@ -466,6 +469,10 @@ export async function createAppointment(data: {
   }
 
   if (error) {
+    // Violação do índice único (overbooking): dois clientes tentaram o mesmo slot simultaneamente
+    if (error.code === '23505') {
+      return { success: false, error: 'Este horário acabou de ser reservado por outro cliente. Por favor, escolha outro horário.' }
+    }
     console.error('Erro ao criar agendamento:', error)
     return { success: false, error: `Erro ao confirmar agendamento: ${error.message}` }
   }
