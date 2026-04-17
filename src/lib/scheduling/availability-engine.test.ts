@@ -208,4 +208,31 @@ describe('calculateAvailableSlots', () => {
       error: 'Servico com duracao invalida.',
     })
   })
+
+  it('bloqueia slot adjacente quando agendamento usa duração maior que o snapshot (overbooking por aumento de serviço)', () => {
+    // Cenário: serviço agendado com snap=30, mas duração atual=40 min.
+    // Se usássemos snap=30, o slot das 09:30 apareceria livre, mas o barbeiro
+    // estaria ocupado até 09:40. Com MAX(30,40)=40 o slot das 09:30 é bloqueado.
+    const result = calculateAvailableSlots({
+      date: '2026-04-06',
+      serviceDurationMinutes: 30,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ close_time: '10:30:00' }),
+      specialSchedule: null,
+      existingAppointments: [
+        {
+          start_time: '09:00:00',
+          duration_minutes: 40, // MAX(snap=30, current=40) = 40 — já normalizado antes de chegar ao motor
+          status: 'confirmado',
+          deleted_at: null,
+        },
+      ],
+      now: new Date('2026-04-01T10:00:00'),
+    })
+
+    // 09:30 NÃO deve aparecer: [09:30, 10:00) conflita com [09:00, 09:40)
+    assert.ok(!result.slots.includes('09:30'), 'slot 09:30 deve estar bloqueado')
+    // 10:00 deve aparecer: [10:00, 10:30) não conflita com [09:00, 09:40)
+    assert.ok(result.slots.includes('10:00'), 'slot 10:00 deve estar disponível')
+  })
 })

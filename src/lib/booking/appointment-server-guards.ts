@@ -36,10 +36,16 @@ export function normalizeAppointmentWindows(
 ): ExistingAppointmentWindow[] {
   return (appointments ?? []).map((appointment) => ({
     start_time: appointment.start_time,
+    // Usa o MAIOR entre snapshot (duração no momento do agendamento) e duração atual
+    // do serviço. Isso previne overbooking quando a duração de um serviço é aumentada
+    // depois que agendamentos já foram feitos com snapshot menor:
+    //   ex: serviço era 30 min (snap=30), agora é 40 min → bloqueia 40 min no calendário.
+    // Quando a duração foi reduzida, mantém o snapshot maior (mais conservador).
     duration_minutes:
-      appointment.service_duration_minutes_snapshot ??
-      getRelatedServiceDuration(appointment.services) ??
-      30,
+      Math.max(
+        appointment.service_duration_minutes_snapshot ?? 0,
+        getRelatedServiceDuration(appointment.services) ?? 0,
+      ) || 30,
     status: appointment.status ?? 'confirmado',
     deleted_at: appointment.deleted_at ?? null,
   }))
