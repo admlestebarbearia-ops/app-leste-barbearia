@@ -26,21 +26,32 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "Leste Barbearia",
-  description: "Agende seu horário na Leste Barbearia",
+  title: "Leste Barbearia - Agende seu horário",
+  description: "Agende seu corte, barba e tratamentos de forma rápida e prática.",
   manifest: "/site.webmanifest",
   openGraph: {
-    title: "Leste Barbearia",
-    description: "Agende seu horário na Leste Barbearia",
-    images: [{ url: "/logo_barber.png", alt: "Leste Barbearia" }],
+    title: "Leste Barbearia - Agende seu horário",
+    description: "Agende seu corte, barba e tratamentos de forma rápida e prática.",
+    url: siteUrl,
+    siteName: "Leste Barbearia",
+    images: [
+      {
+        url: "/whatsapp-share.jpg",
+        secureUrl: "/whatsapp-share.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Leste Barbearia - Agende seu horário",
+        type: "image/jpeg",
+      },
+    ],
     type: "website",
     locale: "pt_BR",
   },
   twitter: {
-    card: "summary",
-    title: "Leste Barbearia",
-    description: "Agende seu horário na Leste Barbearia",
-    images: ["/logo_barber.png"],
+    card: "summary_large_image",
+    title: "Leste Barbearia - Agende seu horário",
+    description: "Agende seu corte, barba e tratamentos de forma rápida e prática.",
+    images: ["/whatsapp-share.jpg"],
   },
   icons: {
     icon: [
