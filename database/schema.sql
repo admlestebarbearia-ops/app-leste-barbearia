@@ -393,6 +393,7 @@ ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS pause_return_time TI
 ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS enable_gallery BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS allow_client_uploads BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS slot_interval_minutes INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE public.business_config ADD COLUMN IF NOT EXISTS show_tolerance_modal BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS client_email TEXT;
 ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;

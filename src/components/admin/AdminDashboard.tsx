@@ -2021,6 +2021,7 @@ function TabConfiguracoes({
   const [slotInterval, setSlotInterval] = useState(String(config.slot_interval_minutes ?? 30))
   const [enableGallery, setEnableGallery] = useState(config.enable_gallery)
   const [allowClientUploads, setAllowClientUploads] = useState(config.allow_client_uploads)
+  const [showToleranceModal, setShowToleranceModal] = useState(config.show_tolerance_modal ?? false)
   const [savingConfig, setSavingConfig] = useState(false)
 
   // Fase 2: Controles de Agenda
@@ -2155,6 +2156,7 @@ function TabConfiguracoes({
       slot_interval_minutes: parseInt(slotInterval, 10) || 30,
       enable_gallery: enableGallery,
       allow_client_uploads: allowClientUploads,
+      show_tolerance_modal: showToleranceModal,
     })
     setSavingConfig(false)
     if (result.success) {
@@ -2401,6 +2403,13 @@ function TabConfiguracoes({
                   <span className="text-xs text-muted-foreground">Clientes enviam fotos para aprovação antes da galeria.</span>
                 </div>
                 <Switch checked={allowClientUploads} onCheckedChange={setAllowClientUploads} />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col gap-0.5 flex-1">
+                  <span className="text-sm text-foreground">Exibir aviso de tolerância de 10 min</span>
+                  <span className="text-xs text-muted-foreground">Exige que o cliente confirme a regra de atraso antes de finalizar o agendamento.</span>
+                </div>
+                <Switch checked={showToleranceModal} onCheckedChange={setShowToleranceModal} />
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs text-muted-foreground">Prazo mínimo para cancelamento</Label>

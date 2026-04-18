@@ -739,6 +739,10 @@ const handleConfirm = async () => {
   const aceitaDinheiro = config?.aceita_dinheiro ?? false
   const paymentHoldMinutes = normalizePaymentExpiryMinutes(config?.payment_expiry_minutes)
 
+  // Modal de aviso de tolerância (RN08–RN10)
+  const [toleranceModalOpen, setToleranceModalOpen] = useState(false)
+  const [pendingToleranceAction, setPendingToleranceAction] = useState<(() => void) | null>(null)
+
   const renderMpMethodIcon = (method: PublicMpMethod, isSelected: boolean) => {
     if (method === 'pix') {
       return <QrCode size={22} className={isSelected ? 'text-[#00BDAE]' : 'text-white/40'} />
@@ -1352,7 +1356,7 @@ const handleConfirm = async () => {
       </div>
 
       {/* Barra de confirmacao flutuante (CTA) */}
-      <div className={`fixed bottom-[90px] left-0 right-0 px-4 z-40 transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] ${selectedTime ? 'translate-y-0 opacity-100 pointer-events-auto scale-100' : 'translate-y-full opacity-0 pointer-events-none scale-95'}`}>
+      <div className={`fixed bottom-[90px] left-0 right-0 px-4 z-50 transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] ${selectedTime ? 'translate-y-0 opacity-100 pointer-events-auto scale-100' : 'translate-y-full opacity-0 pointer-events-none scale-95'}`}>
         {/* Badge discreto indicando que o próximo passo é pagamento */}
         {needsPaymentStep && (
           <div className="max-w-[340px] mx-auto w-full mb-1.5 flex justify-center">
@@ -1370,15 +1374,26 @@ const handleConfirm = async () => {
               ← Voltar
             </button>
             <Button
-              onClick={needsPaymentStep ? () => {
-                // Verifica WhatsApp antes de entrar no payment step
-                if (isAuthenticatedUser && !savedPhone) {
-                  setPendingGoToPayment(true)
-                  setShowWhatsCapture(true)
-                  return
+              onClick={() => {
+                // Ação real do botão (executada diretamente ou após aceite no modal)
+                const executeAdvance = needsPaymentStep ? () => {
+                  if (isAuthenticatedUser && !savedPhone) {
+                    setPendingGoToPayment(true)
+                    setShowWhatsCapture(true)
+                    return
+                  }
+                  setShowPaymentStep(true)
+                } : handleConfirm
+
+                // Intercepta se o aviso de tolerância estiver ativado (RN09/RN10)
+                if (config?.show_tolerance_modal) {
+                  // Armazena a ação pendente no handler de confirmação do modal
+                  setPendingToleranceAction(() => executeAdvance)
+                  setToleranceModalOpen(true)
+                } else {
+                  executeAdvance()
                 }
-                setShowPaymentStep(true)
-              } : handleConfirm}
+              }}
               disabled={!canConfirm || isPending}
               className="flex-1 h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50 flex items-center justify-center gap-1.5"
             >
@@ -1386,6 +1401,51 @@ const handleConfirm = async () => {
             </Button>
          </div>
       </div>
+
+      {/* Modal de aviso de tolerância (CA06) */}
+      {toleranceModalOpen && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center px-4"
+          onClick={() => setToleranceModalOpen(false)}
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div
+            className="relative bg-[#111] border border-white/10 rounded-2xl px-6 py-6 max-w-sm w-full flex flex-col gap-5 shadow-[0_24px_64px_rgba(0,0,0,0.8)] animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Ícone */}
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 mx-auto">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            {/* Título e texto */}
+            <div className="flex flex-col gap-2 text-center">
+              <h3 className="text-base font-extrabold text-white tracking-tight">Aviso Importante</h3>
+              <p className="text-sm text-zinc-300 leading-relaxed">
+                Temos uma tolerância máxima de <span className="text-amber-400 font-bold">10 minutos</span> de atraso. Após esse período, seu agendamento será cancelado para não prejudicar o próximo cliente.
+              </p>
+            </div>
+            {/* Botões */}
+            <div className="flex flex-col gap-2">
+              <Button
+                onClick={() => {
+                  setToleranceModalOpen(false)
+                  pendingToleranceAction?.()
+                  setPendingToleranceAction(null)
+                }}
+                className="w-full h-12 rounded-xl text-xs font-extrabold tracking-[0.12em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                Estou Ciente e Confirmar
+              </Button>
+              <button
+                onClick={() => setToleranceModalOpen(false)}
+                className="w-full h-10 rounded-xl text-xs font-semibold text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                Voltar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Banner PWA — aparece 1× por sessão, 5s após carregar */}
       {pwaBannerVisible && !isInstalled && (installPrompt || isIOS) && (

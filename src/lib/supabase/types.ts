@@ -56,6 +56,7 @@ export interface BusinessConfig {
   mp_public_key: string | null              // chave pública MP salva no OAuth (APP_USR-...)
   mp_webhook_secret: string | null          // assinatura secreta de webhook MP (legado)
   payment_expiry_minutes: number            // minutos para expirar payment_intent (padrão 5, máximo 5)
+  show_tolerance_modal: boolean             // exibe modal de aviso de 10 min de tolerância no agendamento
   updated_at: string
 }
 
