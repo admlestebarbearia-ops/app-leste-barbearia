@@ -85,7 +85,11 @@ async function getAppointmentLookupContext() {
 // ─── Calcular slots disponíveis ────────────────────────────────────────────
 export async function getAvailableSlots(
   date: string,
-  serviceId: string
+  serviceId: string,
+  // Quando fornecido, filtra agendamentos apenas do barbeiro informado.
+  // Sem filtro, agendamentos de todos os barbeiros bloqueariam os slots,
+  // causando falsos negativos de disponibilidade para serviços mais longos.
+  barberId?: string | null
 ): Promise<{ slots: string[]; error?: string }> {
   const supabase = await createClient()
 
@@ -105,10 +109,11 @@ export async function getAvailableSlots(
   // Busca configurações da barbearia (pausa + intervalo de slots)
   const { data: configData } = await supabase
     .from('business_config')
-    .select('is_paused, slot_interval_minutes')
+    .select('is_paused, slot_interval_minutes, pause_return_time')
     .single()
 
   const isPaused = configData?.is_paused ?? false
+  const pauseReturnTime = configData?.pause_return_time ?? null
   const slotInterval = configData?.slot_interval_minutes ?? 30
 
   const duration = service.duration_minutes
@@ -152,7 +157,9 @@ export async function getAvailableSlots(
 
   // Verifica se está pausado temporariamente HOJE e se o dia da pesquisa é hoje
   const isToday = format(new Date(), 'yyyy-MM-dd') === date
-  if (isPaused && isToday) {
+  // CA04: pausa total (sem horário de retorno) bloqueia o dia inteiro;
+  // pausa parcial (com horário de retorno) é tratada como breakPeriod abaixo.
+  if (isPaused && isToday && !pauseReturnTime) {
     return { slots: [], error: 'A barbearia está em pausa (horário de almoço). Tente novamente em instantes ou escolha outro dia.' }
   }
 
@@ -163,12 +170,15 @@ export async function getAvailableSlots(
   // Usa adminClient para bypassar RLS — sem ele, usuários anônimos/outros veriam
   // apenas os próprios agendamentos, fazendo todos os slots parecerem livres (ghost slots).
   const adminForSlots = createAdminClient()
-  const { data: existingAppointmentsWithSnapshots, error: existingAppointmentsError } = await adminForSlots
+  const baseQuery = adminForSlots
     .from('appointments')
     .select('start_time, status, deleted_at, service_duration_minutes_snapshot, services(duration_minutes)')
     .eq('date', date)
     .in('status', ['confirmado', 'aguardando_pagamento'])
     .is('deleted_at', null)
+
+  const appointmentsQuery = barberId ? baseQuery.eq('barber_id', barberId) : baseQuery
+  const { data: existingAppointmentsWithSnapshots, error: existingAppointmentsError } = await appointmentsQuery
 
   let normalizedExistingAppointments = normalizeAppointmentWindows(
     existingAppointmentsWithSnapshots
@@ -181,11 +191,14 @@ export async function getAvailableSlots(
       return { slots: [], error: `Erro ao consultar disponibilidade: ${existingAppointmentsError.message}` }
     }
 
-    const { data: legacyExistingAppointments, error: legacyExistingAppointmentsError } = await adminForSlots
+    const legacyBaseQuery = adminForSlots
       .from('appointments')
       .select('start_time, services(duration_minutes)')
       .eq('date', date)
       .in('status', ['confirmado', 'aguardando_pagamento'])
+
+    const legacyQuery = barberId ? legacyBaseQuery.eq('barber_id', barberId) : legacyBaseQuery
+    const { data: legacyExistingAppointments, error: legacyExistingAppointmentsError } = await legacyQuery
 
     if (legacyExistingAppointmentsError) {
       return { slots: [], error: `Erro ao consultar disponibilidade: ${legacyExistingAppointmentsError.message}` }
@@ -202,14 +215,26 @@ export async function getAvailableSlots(
   // "passou essa hora hoje?" ocorra no mesmo referencial dos horários armazenados.
   const nowInBRT = new Date(Date.now() - 3 * 60 * 60 * 1_000)
 
+  // CA04: pausa dinâmica com horário de retorno — bloqueia apenas a janela [now, returnTime],
+  // mantendo os slots APÓS o retorno disponíveis. Equivalente a inserir a pausa
+  // como um breakPeriod, exatamente como o almoço fixo.
+  // pause_return_time é TIMESTAMPTZ (UTC); aplicamos -3h para converter ao mesmo
+  // referencial dos timestamps internos do motor (UTC-3 shifted).
+  const extraBreaks: Array<{ start: Date; end: Date }> = []
+  if (isPaused && isToday && pauseReturnTime) {
+    const returnDT = new Date(new Date(pauseReturnTime).getTime() - 3 * 60 * 60 * 1_000)
+    extraBreaks.push({ start: nowInBRT, end: returnDT })
+  }
+
   return calculateAvailableSlots({
     date,
     serviceDurationMinutes: duration,
     slotIntervalMinutes: slotInterval,
-    isPaused,
+    isPaused: false, // handled above (early return) or via extraBreaks (partial pause)
     workingHours: typedWH,
     specialSchedule: typedSpecial,
     existingAppointments: normalizedExistingAppointments,
+    extraBreaks: extraBreaks.length > 0 ? extraBreaks : undefined,
     now: nowInBRT,
   })
 }
@@ -369,7 +394,8 @@ export async function createAppointment(data: {
   }
 
   // Verifica disponibilidade do slot (dupla checagem no servidor)
-  const { slots } = await getAvailableSlots(data.date, data.serviceId)
+  // Passa o barberId para que apenas os agendamentos DESTE barbeiro sejam considerados.
+  const { slots } = await getAvailableSlots(data.date, data.serviceId, data.barberId)
   const requested = data.startTime.slice(0, 5)
   const createAppointmentStateError = getCreateAppointmentStateError({
     serviceIsActive: serviceSnapshot.is_active,

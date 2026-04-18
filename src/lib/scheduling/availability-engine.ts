@@ -17,6 +17,10 @@ export interface AvailabilityEngineInput {
   specialSchedule: SpecialSchedule | null
   existingAppointments?: ExistingAppointmentWindow[]
   now?: Date
+  // Bloqueios extras de tempo (ex: pausa dinâmica com horário de retorno, feriados parciais).
+  // Cada item representa um intervalo [start, end) que o motor trata como indisponível,
+  // exatamente igual ao horário de almoço fixo.
+  extraBreaks?: ReadonlyArray<{ start: Date; end: Date }>
 }
 
 export interface AvailabilityEngineResult {
@@ -54,6 +58,7 @@ export function calculateAvailableSlots({
   specialSchedule,
   existingAppointments = [],
   now = new Date(),
+  extraBreaks = [],
 }: AvailabilityEngineInput): AvailabilityEngineResult {
   if (!Number.isFinite(serviceDurationMinutes) || serviceDurationMinutes <= 0) {
     return { slots: [], error: 'Servico com duracao invalida.' }
@@ -102,8 +107,10 @@ export function calculateAvailableSlots({
       continue
     }
 
-    const crossesLunch = !!lunchStart && !!lunchEnd && hasOverlap(current, slotEnd, lunchStart, lunchEnd)
-    if (crossesLunch) {
+    const crossesBreak =
+      (!!lunchStart && !!lunchEnd && hasOverlap(current, slotEnd, lunchStart, lunchEnd)) ||
+      extraBreaks.some((b) => hasOverlap(current, slotEnd, b.start, b.end))
+    if (crossesBreak) {
       current = addMinutes(current, slotInterval)
       continue
     }

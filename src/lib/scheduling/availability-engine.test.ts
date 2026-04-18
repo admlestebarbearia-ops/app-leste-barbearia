@@ -235,4 +235,83 @@ describe('calculateAvailableSlots', () => {
     // 10:00 deve aparecer: [10:00, 10:30) não conflita com [09:00, 09:40)
     assert.ok(result.slots.includes('10:00'), 'slot 10:00 deve estar disponível')
   })
+
+  // ─── Testes RN06: fronteira exata do almoço ───────────────────────────────
+
+  it('serviço de 40min iniciado 30min antes do almoço é bloqueado (RN06)', () => {
+    // Grade: open 08:00, close 17:00, almoço 12:00-13:30, slotInterval 30, serviço 40min
+    // Slot 11:30: end=12:10 → cruza almoço (12:10 > 12:00) → BLOQUEADO
+    const result = calculateAvailableSlots({
+      date: '2026-04-06',
+      serviceDurationMinutes: 40,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ close_time: '17:00:00', lunch_start: '12:00:00', lunch_end: '13:30:00' }),
+      specialSchedule: null,
+      now: new Date('2026-04-01T10:00:00'),
+    })
+    assert.ok(!result.slots.includes('11:30'), 'slot 11:30 deve ser bloqueado: 11:30+40=12:10 invade almoço')
+  })
+
+  it('serviço de 30min iniciado 30min antes do almoço é liberado (RN06)', () => {
+    // Slot 11:30: end=12:00 → não cruza almoço (12:00 não é > 12:00) → DISPONÍVEL
+    const result = calculateAvailableSlots({
+      date: '2026-04-06',
+      serviceDurationMinutes: 30,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ close_time: '17:00:00', lunch_start: '12:00:00', lunch_end: '13:30:00' }),
+      specialSchedule: null,
+      now: new Date('2026-04-01T10:00:00'),
+    })
+    assert.ok(result.slots.includes('11:30'), 'slot 11:30 deve ser liberado: 11:30+30=12:00 termina exatamente no início do almoço')
+  })
+
+  it('slot exatamente no meio do almoço é bloqueado (RN06)', () => {
+    const result = calculateAvailableSlots({
+      date: '2026-04-06',
+      serviceDurationMinutes: 30,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ close_time: '17:00:00', lunch_start: '12:00:00', lunch_end: '13:30:00' }),
+      specialSchedule: null,
+      now: new Date('2026-04-01T10:00:00'),
+    })
+    assert.ok(!result.slots.includes('12:30'), 'slot 12:30 (metade do almoço) deve ser bloqueado')
+    assert.ok(!result.slots.includes('12:00'), 'slot 12:00 (início do almoço) deve ser bloqueado')
+  })
+
+  // ─── Testes CA04: pausa dinâmica via extraBreaks ──────────────────────────
+
+  it('extraBreaks: slots durante pausa dinâmica são bloqueados, slots após retorno são liberados (CA04)', () => {
+    // Pausa: 13:30–14:30. Slots nessa janela bloqueados; 14:30 e além liberados.
+    const breakStart = new Date('2026-04-06T13:30:00')
+    const breakEnd   = new Date('2026-04-06T14:30:00')
+    const result = calculateAvailableSlots({
+      date: '2026-04-06',
+      serviceDurationMinutes: 30,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ open_time: '13:00:00', close_time: '16:00:00' }),
+      specialSchedule: null,
+      extraBreaks: [{ start: breakStart, end: breakEnd }],
+      now: new Date('2026-04-01T10:00:00'),
+    })
+    assert.ok(!result.slots.includes('13:30'), 'slot 13:30 deve ser bloqueado pela pausa dinâmica')
+    assert.ok(!result.slots.includes('14:00'), 'slot 14:00 deve ser bloqueado: 14:00+30=14:30 invade a pausa')
+    assert.ok(result.slots.includes('14:30'), 'slot 14:30 deve estar disponível: pausa termina às 14:30')
+  })
+
+  it('extraBreaks: serviço que invade o início da pausa dinâmica é bloqueado (CA04)', () => {
+    // Pausa às 13:00. Serviço de 40min às 12:30: end=13:10 > 13:00 → BLOQUEADO
+    const breakStart = new Date('2026-04-06T13:00:00')
+    const breakEnd   = new Date('2026-04-06T14:30:00')
+    const result = calculateAvailableSlots({
+      date: '2026-04-06',
+      serviceDurationMinutes: 40,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ open_time: '12:00:00', close_time: '17:00:00' }),
+      specialSchedule: null,
+      extraBreaks: [{ start: breakStart, end: breakEnd }],
+      now: new Date('2026-04-01T10:00:00'),
+    })
+    assert.ok(!result.slots.includes('12:30'), 'slot 12:30 deve ser bloqueado: 12:30+40=13:10 invade a pausa das 13:00')
+    assert.ok(result.slots.includes('14:30'), 'slot 14:30 deve estar disponível após o retorno da pausa')
+  })
 })
