@@ -125,6 +125,94 @@ export async function GET(request: Request) {
       }
     }
 
+    // ─── Lembretes WhatsApp (Meta Cloud API — RN22 / RN23) ──────────────────
+    let waSent = 0
+    try {
+      const metaPhoneId    = process.env.META_PHONE_ID
+      const metaToken      = process.env.META_ACCESS_TOKEN
+
+      if (metaPhoneId && metaToken) {
+        // Kill-switch financeiro (RN23): somente dentro da janela de 24h da Meta
+        // (a Meta começa a cobrar por template após 24h de inatividade).
+        // Usamos 23h para ter margem de segurança.
+        const windowStart = new Date(now.getTime() - 23 * 60 * 60 * 1000).toISOString()
+
+        const { data: waAppts } = await adminSupabase
+          .from('appointments')
+          .select(`
+            id, client_name, client_phone, service_name_snapshot, start_time,
+            profiles(phone),
+            barbers(name, nickname)
+          `)
+          .eq('date', todayStr)
+          .eq('status', 'confirmado')
+          .eq('wa_opt_in', true)
+          .eq('wa_reminder_sent', false)
+          .gte('last_wa_interaction', windowStart)
+
+        if (waAppts && waAppts.length > 0) {
+          const metaUrl = `https://graph.facebook.com/v19.0/${metaPhoneId}/messages`
+
+          for (const waAppt of waAppts) {
+            // Resolve telefone: appointment > profile vinculado
+            const rawPhone =
+              (waAppt.client_phone as string | null) ??
+              ((waAppt.profiles as { phone?: string | null } | null)?.phone ?? null)
+
+            if (!rawPhone) continue
+
+            // Normaliza: remove não-dígitos e garante DDI 55 para BR
+            let phone = rawPhone.replace(/\D/g, '')
+            if (phone.length <= 11) phone = `55${phone}`
+
+            const barberWa  = (waAppt.barbers as unknown) as { name: string; nickname: string | null } | null
+            const clientName = (waAppt.client_name as string | null)?.split(' ')[0] ?? 'Cliente'
+            const barberNameWa = barberWa?.nickname ?? barberWa?.name ?? 'barbeiro'
+            const timeWa    = (waAppt.start_time as string).slice(0, 5)
+            const serviceWa = (waAppt.service_name_snapshot as string | null) ?? 'serviço'
+
+            // CA11.2 — Texto livre dentro da janela de 24h (sem template pago)
+            const messageBody =
+              `Olá, *${clientName}*! 👋 Lembrando do seu agendamento hoje às *${timeWa}* — *${serviceWa}* com ${barberNameWa}. ` +
+              `Se precisar cancelar, avise com antecedência. Barbearia Leste ✂️`
+
+            try {
+              const res = await fetch(metaUrl, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${metaToken}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  messaging_product: 'whatsapp',
+                  recipient_type: 'individual',
+                  to: phone,
+                  type: 'text',
+                  text: { preview_url: false, body: messageBody },
+                }),
+                signal: AbortSignal.timeout(8000),
+              })
+
+              if (res.ok) {
+                await adminSupabase
+                  .from('appointments')
+                  .update({ wa_reminder_sent: true })
+                  .eq('id', waAppt.id)
+                waSent++
+              } else {
+                const errBody = await res.text()
+                console.error('[cron/push-reminders] Meta WA error', waAppt.id, res.status, errBody)
+              }
+            } catch (metaErr) {
+              console.error('[cron/push-reminders] Meta WA failed', waAppt.id, metaErr)
+            }
+          }
+        }
+      }
+    } catch (waErr) {
+      console.error('[cron/push-reminders] WA block error', waErr)
+    }
+
     return NextResponse.json({
       date: todayStr,
       nowBrasilia: toTimeStr(nowMinutes),
@@ -132,6 +220,7 @@ export async function GET(request: Request) {
       sent: sentCounts,
       failed,
       expiredIntents: expiredIntents?.length ?? 0,
+      waSent,
     })
   } catch (e) {
     console.error('[cron/push-reminders]', e)

@@ -58,6 +58,7 @@ export interface BusinessConfig {
   payment_expiry_minutes: number            // minutos para expirar payment_intent (padrão 5, máximo 5)
   show_tolerance_modal: boolean             // exibe modal de aviso de 10 min de tolerância no agendamento
   updated_at: string
+
 }
 
 export interface Barber {
@@ -118,6 +119,14 @@ export interface Appointment {
   created_at: string
   expected_payment_date?: string | null
   cancellation_reason?: string | null
+  // ─── Epic 1: Grade admin ──────────────────────────────────────────────────
+  checkout_payment_method?: 'dinheiro' | 'pix' | 'credito' | 'fiado' | null
+  is_admin_block?: boolean
+  // ─── Epic 2: WhatsApp opt-in ──────────────────────────────────────────────
+  wa_opt_in?: boolean
+  wa_hash?: string | null
+  last_wa_interaction?: string | null
+  wa_reminder_sent?: boolean
   services?: Pick<Service, 'name' | 'price' | 'duration_minutes'>
   profiles?: Pick<Profile, 'is_blocked'> & { display_name?: string; email?: string | null; phone?: string | null }
   client_ratings?: Pick<ClientRating, 'score' | 'note'> | null
