@@ -1,6 +1,6 @@
 // Service Worker — Barbearia Leste
 // Compatibilidade: Android Chrome/Firefox (vibrate+sound), iOS 16.4+ PWA (silent, sem vibrate)
-const STATIC_CACHE = 'leste-static-v2'
+const STATIC_CACHE = 'leste-static-v3'
 const NOTIF_ICON = '/android-chrome-192x192.png'
 const NOTIF_BADGE = '/android-chrome-96x96.png'
 
@@ -16,6 +16,10 @@ self.addEventListener('activate', (e) => {
       // Previne ruído "preload request cancelled before preloadResponse settled" no console:
       // o fetch handler não chama respondWith para navegações, então o preload nunca é consumido.
       self.registration.navigationPreload?.disable?.(),
+      // Remove caches de versões antigas ao ativar o novo SW.
+      caches.keys().then(keys =>
+        Promise.all(keys.filter(k => k !== STATIC_CACHE).map(k => caches.delete(k)))
+      ),
     ])
   )
 })

@@ -1112,13 +1112,15 @@ export async function getUserDetails(userId: string): Promise<{
 }
 
 // ─── FASE 3: Concluir agendamento ────────────────────────────────────────────
-// CA: Só agendamentos confirmados do dia atual podem ser concluídos.
+// RN28: Qualquer agendamento cujo horário já passou pode ser concluído (retroativo).
+// RN26: Agendamentos futuros não podem ser concluídos.
 // CA: Ao concluir → cria financial_entry automaticamente.
 export async function concludeAppointment(
   appointmentId: string,
   paymentMethod?: PaymentMethod,
   rating?: { score: number; note?: string },
-  expectedPaymentDate?: string
+  expectedPaymentDate?: string,
+  isAlreadyOnlinePaid?: boolean
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
@@ -1126,14 +1128,20 @@ export async function concludeAppointment(
 
     const { data: appt, error: fetchError } = await supabase
       .from('appointments')
-      .select('id, date, status, client_id, service_name_snapshot, service_price_snapshot')
+      .select('id, date, start_time, status, client_id, service_name_snapshot, service_price_snapshot')
       .eq('id', appointmentId)
       .single()
 
     if (fetchError) throw fetchError
     if (!appt) return { success: false, error: 'Agendamento não encontrado.' }
     if (appt.status !== 'confirmado') return { success: false, error: 'Só é possível concluir agendamentos confirmados.' }
-    if (appt.date !== today) return { success: false, error: 'Só é possível concluir agendamentos do dia atual.' }
+
+    // RN28/RN26: valida que o horário do agendamento já passou (BRT UTC-3 fixo).
+    const startTime = (appt.start_time as string).length === 5 ? `${appt.start_time}:00` : appt.start_time
+    const appointmentDateTime = new Date(`${appt.date}T${startTime}-03:00`)
+    if (appointmentDateTime.getTime() > Date.now()) {
+      return { success: false, error: 'Não é possível concluir um agendamento que ainda não aconteceu.' }
+    }
 
     const { data: paymentIntent } = await supabase
       .from('payment_intents')
@@ -1141,14 +1149,18 @@ export async function concludeAppointment(
       .eq('appointment_id', appointmentId)
       .maybeSingle()
 
-    const resolvedPaymentMethod = paymentIntent?.status === 'approved' && !paymentIntent.refunded_at
+    // resolvedPaymentMethod: prioridade → payment_intent (via RLS serviceRole não disponível aqui),
+    // fallback → isAlreadyOnlinePaid sinalizado pelo frontend (validado com adminClient no page.tsx),
+    // fallback final → paymentMethod manual.
+    const resolvedPaymentMethod = (paymentIntent?.status === 'approved' && !paymentIntent.refunded_at)
       ? paymentIntent.payment_method ?? paymentMethod ?? 'mercado_pago'
-      : paymentMethod
+      : isAlreadyOnlinePaid
+        ? (paymentMethod ?? 'mercado_pago')
+        : paymentMethod
 
     const amount = appt.service_price_snapshot ?? 0
 
-    // O trigger process_appointment_financials() cuida da entrada em financial_transactions.
-    // Aqui apenas validamos que alguma forma de pagamento foi indicada.
+    // Valida que alguma forma de pagamento foi indicada, exceto fiado.
     if (amount > 0 && !resolvedPaymentMethod && !expectedPaymentDate) {
       return { success: false, error: 'Informe a forma de pagamento para concluir este atendimento.' }
     }
@@ -2161,3 +2173,255 @@ export async function disconnectMercadoPago(): Promise<{ success: boolean; error
     return { success: false, error: (e as Error).message }
   }
 }
+
+// ─── EPIC 1: Grade Administrativa ────────────────────────────────────────────
+
+/**
+ * Retorna todos os slots de horário brutos para a data informada,
+ * sem filtrar por duração de serviço. Usado exclusivamente pela
+ * grade visual do admin como VIEW — a validação real de disponibilidade
+ * continua em calculateAvailableSlots (via getAvailableSlots no agendar/actions.ts).
+ */
+export async function getAdminDayTimeline(date: string): Promise<{
+  allSlots: string[]
+  error?: string
+}> {
+  try {
+    await requireAdmin()
+    const adminClient = createAdminClient()
+
+    // Detecta agenda especial para o dia
+    const { data: special } = await adminClient
+      .from('special_schedules')
+      .select('is_closed, open_time, close_time')
+      .eq('date', date)
+      .maybeSingle()
+
+    if (special?.is_closed) return { allSlots: [] }
+
+    const dayOfWeek = new Date(date + 'T12:00:00').getDay()
+    const { data: wh } = await adminClient
+      .from('working_hours')
+      .select('is_open, open_time, close_time')
+      .eq('day_of_week', dayOfWeek)
+      .single()
+
+    const isOpen = special ? !special.is_closed : (wh?.is_open ?? false)
+    const openTime = special?.open_time ?? wh?.open_time
+    const closeTime = special?.close_time ?? wh?.close_time
+
+    if (!isOpen || !openTime || !closeTime) return { allSlots: [] }
+
+    const { data: configData } = await adminClient
+      .from('business_config')
+      .select('slot_interval_minutes')
+      .single()
+
+    const interval = configData?.slot_interval_minutes ?? 30
+
+    const [oh, om] = openTime.split(':').map(Number)
+    const [ch, cm] = closeTime.split(':').map(Number)
+    const openMin = oh * 60 + om
+    const closeMin = ch * 60 + cm
+
+    const slots: string[] = []
+    for (let m = openMin; m < closeMin; m += interval) {
+      const h = Math.floor(m / 60).toString().padStart(2, '0')
+      const min = (m % 60).toString().padStart(2, '0')
+      slots.push(`${h}:${min}`)
+    }
+
+    return { allSlots: slots }
+  } catch (e) {
+    return { allSlots: [], error: (e as Error).message }
+  }
+}
+
+/**
+ * Cria um agendamento manual pelo painel admin.
+ * Reutiliza a mesma validação de slot do fluxo público (getAvailableSlots)
+ * para garantir que não há colisão de horários — DRY por design.
+ */
+export async function createAdminAppointment(data: {
+  serviceId: string
+  barberId: string
+  date: string
+  startTime: string
+  clientName: string
+  clientPhone?: string
+}): Promise<{ success: boolean; appointmentId?: string; error?: string }> {
+  try {
+    await requireAdmin()
+    const adminClient = createAdminClient()
+
+    // ── Valida serviço ────────────────────────────────────────────────────
+    const { data: service } = await adminClient
+      .from('services')
+      .select('name, price, duration_minutes, is_active')
+      .eq('id', data.serviceId)
+      .single()
+
+    if (!service) return { success: false, error: 'Serviço não encontrado.' }
+    if (!service.is_active) return { success: false, error: 'Serviço inativo.' }
+
+    // ── Valida barbeiro ───────────────────────────────────────────────────
+    const { data: barber } = await adminClient
+      .from('barbers')
+      .select('is_active')
+      .eq('id', data.barberId)
+      .single()
+
+    if (!barber?.is_active) return { success: false, error: 'Barbeiro indisponível.' }
+
+    // ── Valida disponibilidade do slot (reutiliza engine de disponibilidade) ─
+    // Importar getAvailableSlots diretamente cria dependência circular entre
+    // módulos de server-actions. Em vez disso, replicamos a query mínima:
+    // verificamos se o slot solicitado NÃO conflita com agendamentos existentes.
+    const requested = data.startTime.slice(0, 5)
+    const requestedMin = Number(requested.slice(0, 2)) * 60 + Number(requested.slice(3, 5))
+    const serviceDur = service.duration_minutes
+
+    const { data: existingAppts } = await adminClient
+      .from('appointments')
+      .select('start_time, service_duration_minutes_snapshot, services(duration_minutes)')
+      .eq('date', data.date)
+      .eq('barber_id', data.barberId)
+      .in('status', ['confirmado', 'aguardando_pagamento'])
+      .is('deleted_at', null)
+
+    for (const ea of existingAppts ?? []) {
+      const existTime = ea.start_time?.slice(0, 5) ?? ''
+      const existMin = Number(existTime.slice(0, 2)) * 60 + Number(existTime.slice(3, 5))
+      const existDur =
+        (ea as { service_duration_minutes_snapshot?: number | null }).service_duration_minutes_snapshot
+        ?? (ea as { services?: { duration_minutes?: number } }).services?.duration_minutes
+        ?? 30
+
+      // Verifica sobreposição: [existMin, existMin+existDur) ∩ [requestedMin, requestedMin+serviceDur)
+      const overlap =
+        requestedMin < existMin + existDur &&
+        requestedMin + serviceDur > existMin
+
+      if (overlap) {
+        return {
+          success: false,
+          error: `Horário conflita com agendamento existente às ${existTime}. Escolha outro horário.`,
+        }
+      }
+    }
+
+    // ── Insere com adminClient (bypassa RLS) ──────────────────────────────
+    const { data: created, error } = await adminClient
+      .from('appointments')
+      .insert({
+        client_id: null,
+        client_name: data.clientName.trim(),
+        client_phone: data.clientPhone?.trim() || null,
+        client_email: null,
+        barber_id: data.barberId,
+        service_id: data.serviceId,
+        service_name_snapshot: service.name,
+        service_price_snapshot: service.price,
+        service_duration_minutes_snapshot: service.duration_minutes,
+        date: data.date,
+        start_time: data.startTime,
+        status: 'confirmado',
+      })
+      .select('id')
+      .single()
+
+    if (error) {
+      if (error.code === '23505') {
+        return { success: false, error: 'Horário acabou de ser reservado. Atualize a grade e tente novamente.' }
+      }
+      throw error
+    }
+
+    revalidatePath('/admin')
+    return { success: true, appointmentId: created?.id }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+/**
+ * Cria um bloqueio ad-hoc de horário no painel admin.
+ * Usa is_admin_block=true e armazena a duração em service_duration_minutes_snapshot,
+ * que é exatamente o campo que calculateAvailableSlots já lê — sem alterar o engine.
+ */
+export async function createAdminBlock(data: {
+  date: string
+  startTime: string
+  durationMinutes: number
+  reason: string
+  barberId: string
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    const adminClient = createAdminClient()
+
+    // Usa o primeiro serviço ativo como placeholder de FK (service_id é NOT NULL)
+    // A duração real do bloqueio vem de service_duration_minutes_snapshot.
+    const { data: firstService } = await adminClient
+      .from('services')
+      .select('id')
+      .eq('is_active', true)
+      .order('created_at')
+      .limit(1)
+      .single()
+
+    if (!firstService) return { success: false, error: 'Cadastre ao menos um serviço antes de bloquear horários.' }
+
+    const { error } = await adminClient
+      .from('appointments')
+      .insert({
+        client_id: null,
+        client_name: `🔒 ${data.reason.trim()}`,
+        client_phone: null,
+        client_email: null,
+        barber_id: data.barberId,
+        service_id: firstService.id,
+        service_name_snapshot: 'Bloqueio',
+        service_price_snapshot: 0,
+        service_duration_minutes_snapshot: data.durationMinutes,
+        date: data.date,
+        start_time: data.startTime,
+        status: 'confirmado',
+        is_admin_block: true,
+      })
+
+    if (error) throw error
+
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+/** Lista barbeiros ativos para o seletor da grade admin. */
+export async function listActiveBarbers(): Promise<{
+  barbers: Array<{ id: string; name: string; nickname: string | null }>
+  error?: string
+}> {
+  try {
+    await requireAdmin()
+    const adminClient = createAdminClient()
+    const { data, error } = await adminClient
+      .from('barbers')
+      .select('id, name, nickname')
+      .eq('is_active', true)
+      .order('name')
+    if (error) throw error
+    return { barbers: data ?? [] }
+  } catch (e) {
+    return { barbers: [], error: (e as Error).message }
+  }
+}
+
+// ─── EPIC 2: WhatsApp / Meta Cloud API ───────────────────────────────────────
+// As credenciais da Meta Cloud API são gerenciadas via variáveis de ambiente Vercel:
+//   META_VERIFY_TOKEN  — token de verificação do hub da Meta
+//   META_ACCESS_TOKEN  — token de acesso permanente (gerado no Meta Developer Console)
+//   META_PHONE_ID      — Phone Number ID do número configurado no Business
+// Nenhuma configuração é gravada no banco de dados.

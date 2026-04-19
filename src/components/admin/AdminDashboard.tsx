@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useSyncExternalStore } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
@@ -21,6 +21,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { DomainModal } from '@/components/admin/DomainModal'
+import { DailyAdminGrid } from '@/components/admin/DailyAdminGrid'
+import { isAppointmentPast } from '@/lib/booking/appointment-visibility'
 import {
   updateAppointmentStatus,
   deleteAppointment,
@@ -86,6 +88,12 @@ import type {
 } from '@/lib/supabase/types'
 
 const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab']
+
+// useSyncExternalStore: retorna false no servidor (SSR/hydration) e true no
+// cliente após hidratação. Único hook React proof-against HMR state preservation.
+const _subNoop = (_: () => void) => () => {}
+const _getTrue = () => true
+const _getFalse = () => false
 
 type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'barbeiros' | 'admins' | 'galeria' | 'produtos' | 'financeiro' | 'clientes'
 
@@ -460,6 +468,7 @@ export function AdminDashboard({
         {tab === 'hoje' && (
           <TabHoje
             appointments={appointments}
+            services={services}
             displayPref={config.display_name_preference}
             config={config}
             onRefresh={() => router.refresh()}
@@ -596,6 +605,7 @@ export function AdminDashboard({
 // ------------------------------------------------------------------
 function TabHoje({
   appointments,
+  services,
   displayPref,
   config,
   onRefresh,
@@ -608,6 +618,7 @@ function TabHoje({
   onStandaloneUpdated,
 }: {
   appointments: Appointment[]
+  services: Service[]
   displayPref: string
   config: BusinessConfig
   onRefresh: () => void
@@ -622,6 +633,11 @@ function TabHoje({
   const todayStr = new Date().toISOString().split('T')[0]
   const [loading, setLoading] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  // isMounted: false no SSR/hydration (getServerSnapshot), true no cliente após hidratação.
+  // useSyncExternalStore é imune à preservação de estado do React Fast Refresh (HMR).
+  const isMounted = useSyncExternalStore(_subNoop, _getTrue, _getFalse)
+  // Grade interativa (Epic 1)
+  const [viewMode, setViewMode] = useState<'lista' | 'grade'>('lista')
   // Modal Concluir Agendamento
   const [concludeAppt, setConcludeAppt] = useState<Appointment | null>(null)
   const [concludeLoading, setConcludeLoading] = useState(false)
@@ -965,17 +981,19 @@ function TabHoje({
   }
 
   const handleConclude = async () => {
-    if (!concludeAppt || (!concludeHasExistingRevenue && !concludePayment && !concludeIsPending)) return
+    // concludeCanSkipManualPayment = true quando pago online (MP aprovado) OU já tem receita registrada
+    if (!concludeAppt || (!concludeCanSkipManualPayment && !concludePayment && !concludeIsPending)) return
     setConcludeLoading(true)
     const rating = ratingScore > 0 ? { score: ratingScore, note: ratingNote.trim() || undefined } : undefined
-    const concludePaymentMethod = (concludeHasExistingRevenue || !concludePayment || concludeIsPending)
+    const concludePaymentMethod = (concludeCanSkipManualPayment || !concludePayment || concludeIsPending)
       ? undefined
       : concludePayment
     const result = await concludeAppointment(
       concludeAppt.id,
       concludePaymentMethod,
       rating,
-      concludeIsPending ? (concludePendingDate || undefined) : undefined
+      concludeIsPending ? (concludePendingDate || undefined) : undefined,
+      concludeHasApprovedOnlinePayment
     )
     setConcludeLoading(false)
     if (result.success) {
@@ -1128,7 +1146,8 @@ function TabHoje({
             if (!dayNum) return <div key={i} />
             const dateStr = `${calMonth}-${String(dayNum).padStart(2, '0')}`
             const appts = apptByDate[dateStr] ?? []
-            const hasAppts = appts.length > 0
+            const pendingCount = appts.filter(a => a.status === 'confirmado' || a.status === 'aguardando_pagamento').length
+            const hasAppts = pendingCount > 0
             const isToday = dateStr === todayStr
             const isSelected = dateStr === selectedDay
 
@@ -1156,7 +1175,7 @@ function TabHoje({
                       'absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-black',
                       isSelected ? 'bg-white text-blue-600' : 'bg-red-600 text-white',
                     ].join(' ')}>
-                      {appts.length}
+                      {pendingCount}
                     </span>
                   )}
                 </button>
@@ -1166,19 +1185,63 @@ function TabHoje({
         </div>
       </div>
 
-      {/* ── LISTA DO DIA ── */}
+      {/* ── LISTA / GRADE DO DIA ── */}
       {selectedDay && (
         <div className="flex flex-col gap-3">
-          {/* Título dinâmico */}
-          <p className="text-[10px] font-black tracking-[0.15em] text-zinc-500 uppercase">
-            Agendamentos — {formatSelectedDay(selectedDay)}
-          </p>
+          {/* Cabeçalho com toggle Lista ↔ Grade */}
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-black tracking-[0.15em] text-zinc-500 uppercase">
+              Agendamentos — {formatSelectedDay(selectedDay)}
+            </p>
+            <div className="flex gap-1 bg-white/5 p-0.5 rounded-lg">
+              {(['lista', 'grade'] as const).map(mode => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  className={[
+                    'px-2.5 py-1 rounded-md text-[10px] font-bold transition-all',
+                    viewMode === mode
+                      ? 'bg-white text-black'
+                      : 'text-zinc-500 hover:text-zinc-300',
+                  ].join(' ')}
+                >
+                  {mode === 'lista' ? '☰ Lista' : '▦ Grade'}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {dayAppts.length === 0 ? (
+          {/* Modo GRADE */}
+          {viewMode === 'grade' && (
+            <DailyAdminGrid
+              selectedDay={selectedDay}
+              dayAppts={dayAppts}
+              services={services}
+              config={config}
+              onRefresh={onRefresh}
+              onConclude={(appt) => {
+                setConcludeAppt(appt)
+                setConcludeIsPending(false)
+                setConcludePendingDate('')
+                setRatingScore(0)
+                setRatingNote('')
+              }}
+              onCancel={(appt) => {
+                const canRefund = !refundedApptIds.has(appt.id) && (Boolean(paymentMethodByApptId[appt.id]) || onlineMpApptIds.has(appt.id))
+                setCancelAppt(appt)
+                setCancelReason('')
+                setCancelWithRefund(false)
+                setCancelCanRefund(canRefund)
+              }}
+            />
+          )}
+
+          {/* Modo LISTA (original inalterado) */}
+          {viewMode === 'lista' && dayAppts.length === 0 ? (
             <div className="text-center py-10 bg-neutral-900 rounded-2xl border border-white/5">
               <p className="text-zinc-600 text-sm">Nenhum agendamento neste dia.</p>
             </div>
-          ) : (
+          ) : viewMode === 'lista' ? (
             <div className="flex flex-col gap-3">
               {dayAppts.map((appt) => {
                 const canRefund = !refundedApptIds.has(appt.id) && (Boolean(paymentMethodByApptId[appt.id]) || onlineMpApptIds.has(appt.id))
@@ -1321,15 +1384,16 @@ function TabHoje({
                             WhatsApp
                           </a>
                         )}
-                        {appt.date === todayStr && (
-                          <button
-                            disabled={!!loading}
-                            onClick={() => { setConcludeAppt(appt); setConcludeIsPending(false); setConcludePendingDate(''); setRatingScore(0); setRatingNote('') }}
-                            className="text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
-                          >
-                            ✓ Concluir
-                          </button>
-                        )}
+                        {/* Concluir: sempre no DOM; visibilidade via CSS evita mismatch estrutural SSR↔CSR.
+                            suppressHydrationWarning: tolera diff de className se isMounted diferir. */}
+                        <button
+                          suppressHydrationWarning
+                          disabled={!!loading}
+                          onClick={() => { setConcludeAppt(appt); setConcludeIsPending(false); setConcludePendingDate(''); setRatingScore(0); setRatingNote('') }}
+                          className={`text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40${isMounted && isAppointmentPast(appt.date, appt.start_time) ? '' : ' hidden'}`}
+                        >
+                          ✓ Concluir
+                        </button>
                         <button
                           disabled={!!loading}
                           onClick={() => handleStatus(appt.id, 'faltou')}
@@ -1428,7 +1492,7 @@ function TabHoje({
                 )
               })}
             </div>
-          )}
+          ) : null}
         </div>
       )}
 
