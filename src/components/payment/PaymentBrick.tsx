@@ -249,7 +249,20 @@ export function PaymentBrick({
 
   const handleSubmit = useCallback(async (param: OnSubmitParam) => {
     const { formData } = param
+
+    // Correção Cirúrgica 1 + 2: validar payload ANTES de bloquear o botão.
+    // formData nulo/vazio indica falha de inicialização do SDK — não chamar a API.
+    if (!formData || typeof formData !== 'object') {
+      onErrorRef.current?.('Erro no formulário de pagamento. Recarregue a página e tente novamente.')
+      return
+    }
+
     setSubmitting(true)
+    // `succeeded` controla o finally: quando um pagamento PIX/pendente é criado com
+    // sucesso, NÃO resetamos submitting para false — o componente troca para StatusScreen
+    // antes da próxima renderização, então re-habilitar o botão causaria um flash.
+    // Só resetamos em caso de erro real ou pagamento recusado.
+    let succeeded = false
 
     try {
       const response = await fetch(checkoutKind === 'appointment' ? '/api/mp/payment' : '/api/mp/product-payment', {
@@ -275,6 +288,7 @@ export function PaymentBrick({
       const isAwaitingConfirmation =
         result.status === 'pending' || result.status === 'approved' || result.status === 'in_process'
       if (result.paymentId && isAwaitingConfirmation) {
+        succeeded = true
         setPaymentId(String(result.paymentId))
         return
       }
@@ -291,7 +305,9 @@ export function PaymentBrick({
       onErrorRef.current?.(message)
       throw err // brick detecta rejeição e exibe erro inline
     } finally {
-      setSubmitting(false)
+      // Só libera o botão em caso de ERRO REAL ou pagamento recusado.
+      // Quando succeeded=true, o componente já está renderizando StatusScreen.
+      if (!succeeded) setSubmitting(false)
     }
   }, [checkoutId, checkoutKind])
 

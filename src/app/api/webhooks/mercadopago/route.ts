@@ -127,11 +127,22 @@ export async function POST(request: NextRequest) {
             .eq('id', appointmentId)
             .single()
 
+          // Correção Cirúrgica 3: mapeamento estrito de transições de status.
+          // 'confirmado' (webhook approved) → só aceita origem 'aguardando_pagamento'.
+          //   Impede que um webhook duplicado ou tardio "reabra" um agendamento concluído/cancelado.
+          //   IMPEDE o falso positivo de PIX: front-end não pode forçar confirmação diretamente.
+          // 'cancelado' (webhook rejected/refunded) → aceita de 'aguardando_pagamento' ou 'confirmado'.
+          //   'aguardando_pagamento': pagamento recusado antes de confirmar.
+          //   'confirmado': estorno de um pagamento já aprovado.
+          const allowedFromStatus: string[] = status === 'confirmado'
+            ? ['aguardando_pagamento']
+            : ['aguardando_pagamento', 'confirmado']
+
           const { error } = await adminClient
             .from('appointments')
             .update({ status })
             .eq('id', appointmentId)
-            .in('status', ['aguardando_pagamento', 'confirmado'])
+            .in('status', allowedFromStatus)
 
           if (error) throw error
 
