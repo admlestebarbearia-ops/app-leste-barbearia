@@ -54,10 +54,10 @@ export function buildAdminTimeline(
   rawSlots: string[],
   bookedAppointments: Appointment[],
 ): TimelineSlot[] {
-  // Monta mapa de horários ocupados (apenas confirmados / aguardando pagamento)
+  // Monta mapa de horários ocupados (inclui confirmado, aguardando_pagamento, concluido e faltou)
   const bookedMap = new Map<string, Appointment>()
   for (const appt of bookedAppointments) {
-    if (appt.status !== 'confirmado' && appt.status !== 'aguardando_pagamento') continue
+    if (appt.status === 'cancelado') continue
     const t = appt.start_time?.slice(0, 5)
     if (t) bookedMap.set(t, appt)
   }
@@ -97,6 +97,8 @@ interface DailyAdminGridProps {
   onConclude: (appt: Appointment) => void
   /** Abre o modal de cancelamento já existente no pai */
   onCancel: (appt: Appointment) => void
+  /** Abre o modal de exclusão permanente no pai */
+  onHardDelete?: (appt: Appointment) => void
 }
 
 // ── Componente principal ───────────────────────────────────────────────────────
@@ -109,6 +111,7 @@ export function DailyAdminGrid({
   onRefresh,
   onConclude,
   onCancel,
+  onHardDelete,
 }: DailyAdminGridProps) {
   // ── Dados da grade ──────────────────────────────────────────────────────────
   const [rawSlots, setRawSlots] = useState<string[]>([])
@@ -262,8 +265,13 @@ export function DailyAdminGrid({
 
   if (slotsLoading) {
     return (
-      <div className="flex items-center justify-center py-14">
-        <span className="text-zinc-500 text-sm animate-pulse">Carregando grade…</span>
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        {Array.from({ length: 12 }).map((_, i) => (
+          <div key={i} className="flex flex-col items-center justify-center gap-0.5 bg-neutral-800/60 border border-white/5 rounded-xl px-2 py-3 animate-pulse">
+            <div className="h-4 w-10 rounded bg-neutral-700" />
+            <div className="h-2 w-8 rounded bg-neutral-700/70 mt-0.5" />
+          </div>
+        ))}
       </div>
     )
   }
@@ -301,28 +309,48 @@ export function DailyAdminGrid({
             appt.profiles?.display_name ?? appt.client_name ?? '?'
           ).split(' ')[0].slice(0, 8)
 
+          const slotBg = isBlock
+            ? 'bg-zinc-800/60 border-zinc-600/40 hover:bg-zinc-700/60'
+            : appt.status === 'concluido'
+            ? 'bg-blue-700/25 border-blue-500/30 hover:bg-blue-700/35'
+            : appt.status === 'faltou'
+            ? 'bg-amber-700/20 border-amber-500/25 hover:bg-amber-700/30'
+            : appt.status === 'aguardando_pagamento'
+            ? 'bg-yellow-700/25 border-yellow-500/30 hover:bg-yellow-700/35'
+            : 'bg-emerald-700/25 border-emerald-500/30 hover:bg-emerald-700/35'
+
+          const timeColor = isBlock ? 'text-zinc-400'
+            : appt.status === 'concluido' ? 'text-blue-300'
+            : appt.status === 'faltou' ? 'text-amber-300'
+            : appt.status === 'aguardando_pagamento' ? 'text-yellow-300'
+            : 'text-emerald-300'
+
+          const subColor = isBlock ? 'text-zinc-500'
+            : appt.status === 'concluido' ? 'text-blue-400'
+            : appt.status === 'faltou' ? 'text-amber-400'
+            : appt.status === 'aguardando_pagamento' ? 'text-yellow-400'
+            : 'text-emerald-400'
+
+          const slotLabel = isBlock ? '🔒'
+            : appt.status === 'concluido' ? `✓ ${firstName}`
+            : appt.status === 'faltou' ? `✗ ${firstName}`
+            : appt.status === 'aguardando_pagamento' ? `⏳ ${firstName}`
+            : firstName
+
           return (
             <button
               key={`${slot.time}-${appt.id}`}
               onClick={() => setSelectedAppt(appt)}
               className={[
                 'flex flex-col items-center justify-center gap-0.5 border rounded-xl px-2 py-3 transition-all',
-                isBlock
-                  ? 'bg-zinc-800/60 border-zinc-600/40 hover:bg-zinc-700/60'
-                  : 'bg-emerald-700/25 border-emerald-500/30 hover:bg-emerald-700/35',
+                slotBg,
               ].join(' ')}
             >
-              <span className={[
-                'text-sm font-bold tabular-nums',
-                isBlock ? 'text-zinc-400' : 'text-emerald-300',
-              ].join(' ')}>
+              <span className={`text-sm font-bold tabular-nums ${timeColor}`}>
                 {appt.start_time?.slice(0, 5)}
               </span>
-              <span className={[
-                'text-[9px] font-semibold leading-tight text-center w-full truncate px-0.5',
-                isBlock ? 'text-zinc-500' : 'text-emerald-400',
-              ].join(' ')}>
-                {isBlock ? '🔒' : firstName}
+              <span className={`text-[9px] font-semibold leading-tight text-center w-full truncate px-0.5 ${subColor}`}>
+                {slotLabel}
               </span>
             </button>
           )
@@ -506,7 +534,30 @@ export function DailyAdminGrid({
                         hour: '2-digit', minute: '2-digit',
                       })}
                     />
-                    <InfoRow label="Pagamento" value="Pagar no local" />
+                    <InfoRow
+                      label="Pagamento"
+                      value={
+                        selectedAppt.status === 'aguardando_pagamento'
+                          ? 'Mercado Pago (Pendente)'
+                          : selectedAppt.status === 'cancelado_falta_pagamento'
+                          ? 'Cancelado (Tempo Expirado)'
+                          : 'Pagar no local'
+                      }
+                      valueClass={
+                        selectedAppt.status === 'aguardando_pagamento'
+                          ? 'text-yellow-400 font-semibold'
+                          : selectedAppt.status === 'cancelado_falta_pagamento'
+                          ? 'text-red-400 font-semibold'
+                          : undefined
+                      }
+                    />
+                    {(selectedAppt.status === 'concluido' || selectedAppt.status === 'faltou') && (
+                      <InfoRow
+                        label="Status"
+                        value={selectedAppt.status === 'concluido' ? '✓ Concluído' : '✗ Faltou'}
+                        valueClass={selectedAppt.status === 'concluido' ? 'text-blue-400 font-semibold' : 'text-amber-400 font-semibold'}
+                      />
+                    )}
                     <div className="border-t border-white/8 my-0.5" />
                     <InfoRow
                       label="Cliente"
@@ -605,6 +656,20 @@ export function DailyAdminGrid({
                   className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 transition-colors disabled:opacity-40"
                 >
                   {actionLoading === 'rmblock' + selectedAppt.id ? 'Removendo…' : '🗑 Remover Bloqueio'}
+                </button>
+              )}
+
+              {/* Ações: concluído / faltou → apagar registro permanentemente */}
+              {!selectedAppt.is_admin_block && (selectedAppt.status === 'concluido' || selectedAppt.status === 'faltou' || selectedAppt.status === 'cancelado') && onHardDelete && (
+                <button
+                  onClick={() => {
+                    const appt = selectedAppt
+                    setSelectedAppt(null)
+                    requestAnimationFrame(() => onHardDelete(appt))
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 transition-colors"
+                >
+                  🗑 Apagar Registro Permanentemente
                 </button>
               )}
             </div>

@@ -1200,7 +1200,7 @@ export async function concludeAppointment(
             amount,
             type: 'IN',
             status: 'PAID',
-            due_date: today,
+            due_date: appt.date, // usa a data do agendamento (não UTC de hoje)
             source_id: appointmentId,
             source_type: 'APPOINTMENT',
             description: `${appt.service_name_snapshot ?? 'Serviço'} (${resolvedPaymentMethod})`,
@@ -1955,7 +1955,7 @@ export async function getClientDirectoryDetails(clientKey: string): Promise<{
       client_phone: string | null
       date: string
       start_time: string
-      status: 'confirmado' | 'concluido' | 'cancelado' | 'faltou' | 'aguardando_pagamento'
+      status: 'confirmado' | 'concluido' | 'cancelado' | 'cancelado_falta_pagamento' | 'faltou' | 'aguardando_pagamento'
       service_name_snapshot: string | null
       service_price_snapshot: number | null
     }> = []
@@ -2416,6 +2416,159 @@ export async function listActiveBarbers(): Promise<{
     return { barbers: data ?? [] }
   } catch (e) {
     return { barbers: [], error: (e as Error).message }
+  }
+}
+
+// ─── Hard Delete de Agendamento ───────────────────────────────────────────────
+// RN-HD01: Apenas admin pode executar.
+// RN-HD02: Apenas status terminais (concluido, cancelado, faltou) podem ser
+//          excluídos permanentemente. Agendamentos futuros/ativos são bloqueados.
+// RN-HD03: Remove em cascata: client_ratings, financial_transactions vinculadas.
+// US-HD01: Admin quer apagar registros de teste sem rastro no banco.
+// CA-HD01: Confirma que o ID existe. CA-HD02: Verifica status. CA-HD03: Deleta cascata.
+export async function hardDeleteAppointment(
+  appointmentId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    const adminSb = createAdminClient()
+
+    const { data: appt } = await adminSb
+      .from('appointments')
+      .select('id, status')
+      .eq('id', appointmentId)
+      .maybeSingle()
+
+    if (!appt) return { success: false, error: 'Agendamento não encontrado.' }
+
+    const terminalStatuses = ['concluido', 'cancelado', 'faltou']
+    if (!terminalStatuses.includes(appt.status)) {
+      return { success: false, error: 'Apenas agendamentos concluídos, cancelados ou com falta podem ser excluídos permanentemente.' }
+    }
+
+    await adminSb.from('client_ratings').delete().eq('appointment_id', appointmentId)
+    await adminSb.from('financial_transactions').delete().eq('source_id', appointmentId)
+
+    const { error } = await adminSb.from('appointments').delete().eq('id', appointmentId)
+    if (error) throw error
+
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+// ─── Listar clientes com dívidas (financial_transactions PENDING) ─────────────
+// RN-DV01: Dívida = financial_transaction type=IN, status=PENDING, source=APPOINTMENT.
+// RN-DV02: Agrupado por cliente (client_id ou phone para visitantes).
+// RN-DV03: Ordenado por total_debt decrescente.
+// US-DV01: Admin quer ver quem deve, quanto deve, e tomar ação (WA / bloquear / excluir).
+export async function listClientsWithDebt(): Promise<{
+  clients: Array<{
+    client_key: string
+    client_id: string | null
+    client_name: string
+    client_phone: string | null
+    total_debt: number
+    transactions: Array<{ id: string; amount: number; description: string; due_date: string }>
+  }>
+  error?: string
+}> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    const { data: txData, error: txError } = await supabase
+      .from('financial_transactions')
+      .select('id, amount, description, due_date, source_id')
+      .eq('type', 'IN')
+      .eq('status', 'PENDING')
+      .eq('source_type', 'APPOINTMENT')
+      .order('due_date', { ascending: true })
+
+    if (txError) throw txError
+    if (!txData || txData.length === 0) return { clients: [] }
+
+    const apptIds = txData.map(t => t.source_id).filter(Boolean) as string[]
+    const { data: apptData } = await supabase
+      .from('appointments')
+      .select('id, client_id, client_name, client_phone')
+      .in('id', apptIds)
+
+    const apptMap = new Map((apptData ?? []).map(a => [a.id, a]))
+
+    type DebtClient = {
+      client_key: string
+      client_id: string | null
+      client_name: string
+      client_phone: string | null
+      total_debt: number
+      transactions: Array<{ id: string; amount: number; description: string; due_date: string }>
+    }
+    const byClient = new Map<string, DebtClient>()
+
+    for (const tx of txData) {
+      const appt = apptMap.get(tx.source_id)
+      const name = appt?.client_name ?? 'Cliente desconhecido'
+      const phone = appt?.client_phone ?? null
+      const clientId = appt?.client_id ?? null
+      const key = clientId ? `user:${clientId}` : `visitor:${phone ?? tx.source_id}`
+
+      if (!byClient.has(key)) {
+        byClient.set(key, { client_key: key, client_id: clientId, client_name: name, client_phone: phone, total_debt: 0, transactions: [] })
+      }
+      const entry = byClient.get(key)!
+      entry.total_debt += tx.amount
+      entry.transactions.push({ id: tx.id, amount: tx.amount, description: tx.description ?? '', due_date: tx.due_date })
+    }
+
+    return { clients: Array.from(byClient.values()).sort((a, b) => b.total_debt - a.total_debt) }
+  } catch (e) {
+    return { clients: [], error: (e as Error).message }
+  }
+}
+
+// ─── Receita prevista (agendamentos futuros confirmados / pago online) ─────────
+// RN-RP01: Status filtrado: confirmado, aguardando_pagamento.
+// RN-RP02: Apenas agendamentos com service_price_snapshot > 0.
+// RN-RP03: Inclui o dia de hoje (agendamentos de hoje que ainda não foram concluídos).
+// US-RP01: Admin quer ver a previsão de caixa da semana/mês com diferenciação pago vs. a receber.
+export async function listUpcomingRevenue(dateFrom: string, dateTo: string): Promise<{
+  appointments: Array<{
+    id: string
+    date: string
+    start_time: string
+    service_name_snapshot: string | null
+    service_price_snapshot: number | null
+    status: string
+    client_name: string | null
+    is_online_paid: boolean
+  }>
+  error?: string
+}> {
+  try {
+    const { supabase } = await requireAdmin()
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('id, date, start_time, service_name_snapshot, service_price_snapshot, status, client_name')
+      .in('status', ['confirmado', 'aguardando_pagamento'])
+      .gte('date', dateFrom)
+      .lte('date', dateTo)
+      .gt('service_price_snapshot', 0)
+      .order('date', { ascending: true })
+      .order('start_time', { ascending: true })
+
+    if (error) throw error
+
+    return {
+      appointments: (data ?? []).map(a => ({
+        ...a,
+        client_name: a.client_name ?? null,
+        is_online_paid: a.status === 'aguardando_pagamento',
+      })),
+    }
+  } catch (e) {
+    return { appointments: [], error: (e as Error).message }
   }
 }
 

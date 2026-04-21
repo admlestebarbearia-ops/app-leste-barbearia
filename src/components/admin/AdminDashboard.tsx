@@ -70,6 +70,9 @@ import {
   disconnectMercadoPago,
   getPendingPaymentsCount,
   adminConfirmFiadoPayment,
+  hardDeleteAppointment,
+  listClientsWithDebt,
+  listUpcomingRevenue,
 } from '@/app/admin/actions'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
 import type { PaymentMethod } from '@/lib/supabase/types'
@@ -656,6 +659,12 @@ function TabHoje({
   // Estorno
   const [estornoLoading, setEstornoLoading] = useState<string | null>(null)
   const [newBadge, setNewBadge] = useState(0)
+  // Hard delete (exclusão permanente de registros de teste)
+  const [hardDeleteAppt, setHardDeleteAppt] = useState<Appointment | null>(null)
+  const [hardDeleteText, setHardDeleteText] = useState('')
+  const [hardDeleteLoading, setHardDeleteLoading] = useState(false)
+  // Resumo do dia
+  const [showDayReport, setShowDayReport] = useState(false)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   const [notifLoading, setNotifLoading] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
@@ -980,6 +989,22 @@ function TabHoje({
     setLoading(null)
   }
 
+  const handleHardDelete = async () => {
+    if (!hardDeleteAppt || hardDeleteText.toLowerCase() !== 'excluir') return
+    setHardDeleteLoading(true)
+    const result = await hardDeleteAppointment(hardDeleteAppt.id)
+    setHardDeleteLoading(false)
+    if (result.success) {
+      toast.success('Registro excluído permanentemente.')
+      setHardDeleteAppt(null)
+      setHardDeleteText('')
+      setDeletedIds(prev => new Set(prev).add(hardDeleteAppt.id))
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao excluir.')
+    }
+  }
+
   const handleConclude = async () => {
     // concludeCanSkipManualPayment = true quando pago online (MP aprovado) OU já tem receita registrada
     if (!concludeAppt || (!concludeCanSkipManualPayment && !concludePayment && !concludeIsPending)) return
@@ -1124,7 +1149,7 @@ function TabHoje({
             onClick={prevMonth}
             className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white transition-all text-lg"
           >‹</button>
-          <span className="text-sm font-bold text-white capitalize">{calMonthLabel}</span>
+          <span suppressHydrationWarning className="text-sm font-bold text-white capitalize">{calMonthLabel}</span>
           <button
             onClick={nextMonth}
             className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white transition-all text-lg"
@@ -1190,24 +1215,34 @@ function TabHoje({
         <div className="flex flex-col gap-3">
           {/* Cabeçalho com toggle Lista ↔ Grade */}
           <div className="flex items-center justify-between">
-            <p className="text-[10px] font-black tracking-[0.15em] text-zinc-500 uppercase">
+            <p suppressHydrationWarning className="text-[10px] font-black tracking-[0.15em] text-zinc-500 uppercase">
               Agendamentos — {formatSelectedDay(selectedDay)}
             </p>
-            <div className="flex gap-1 bg-white/5 p-0.5 rounded-lg">
-              {(['lista', 'grade'] as const).map(mode => (
-                <button
-                  key={mode}
-                  onClick={() => setViewMode(mode)}
-                  className={[
-                    'px-2.5 py-1 rounded-md text-[10px] font-bold transition-all',
-                    viewMode === mode
-                      ? 'bg-white text-black'
-                      : 'text-zinc-500 hover:text-zinc-300',
-                  ].join(' ')}
-                >
-                  {mode === 'lista' ? '☰ Lista' : '▦ Grade'}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              {/* Botão Resumo do Dia */}
+              <button
+                onClick={() => setShowDayReport(true)}
+                className="px-2.5 py-1 rounded-lg border border-white/10 bg-white/5 text-[10px] font-semibold text-zinc-400 hover:text-white hover:border-white/20 transition-all"
+                title="Resumo do dia"
+              >
+                📊 Resumo
+              </button>
+              <div className="flex gap-1 bg-white/5 p-0.5 rounded-lg">
+                {(['lista', 'grade'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    className={[
+                      'px-2.5 py-1 rounded-md text-[10px] font-bold transition-all',
+                      viewMode === mode
+                        ? 'bg-white text-black'
+                        : 'text-zinc-500 hover:text-zinc-300',
+                    ].join(' ')}
+                  >
+                    {mode === 'lista' ? '☰ Lista' : '▦ Grade'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1233,6 +1268,7 @@ function TabHoje({
                 setCancelWithRefund(false)
                 setCancelCanRefund(canRefund)
               }}
+              onHardDelete={(appt) => { setHardDeleteAppt(appt); setHardDeleteText('') }}
             />
           )}
 
@@ -1251,7 +1287,7 @@ function TabHoje({
                   key={appt.id}
                   className={[
                     'bg-neutral-900 rounded-xl p-4 flex flex-col gap-3 transition-all',
-                    appt.status === 'cancelado' ? 'opacity-60' : '',
+                    (appt.status === 'cancelado' || appt.status === 'cancelado_falta_pagamento') ? 'opacity-60' : '',
                     appt.status === 'faltou' ? 'opacity-60' : '',
                   ].join(' ')}
                 >
@@ -1430,19 +1466,27 @@ function TabHoje({
                     )}
 
                     {appt.status === 'concluido' && (
-                      canRefund ? (
+                      <>
+                        {canRefund ? (
+                          <button
+                            disabled={estornoLoading === appt.id}
+                            onClick={() => handleEstorno(appt.id)}
+                            className="text-[10px] font-bold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                          >
+                            {estornoLoading === appt.id ? '...' : 'Estornar'}
+                          </button>
+                        ) : refundedApptIds.has(appt.id) ? (
+                          <span className="text-[10px] font-bold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg">
+                            Estornado
+                          </span>
+                        ) : null}
                         <button
-                          disabled={estornoLoading === appt.id}
-                          onClick={() => handleEstorno(appt.id)}
-                          className="text-[10px] font-bold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                          onClick={() => { setHardDeleteAppt(appt); setHardDeleteText('') }}
+                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
                         >
-                          {estornoLoading === appt.id ? '...' : 'Estornar'}
+                          🗑 Apagar
                         </button>
-                      ) : refundedApptIds.has(appt.id) ? (
-                        <span className="text-[10px] font-bold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg">
-                          Estornado
-                        </span>
-                      ) : null
+                      </>
                     )}
 
                     {(appt.status === 'cancelado' || appt.status === 'faltou') && (
@@ -1485,6 +1529,12 @@ function TabHoje({
                             Excluir
                           </button>
                         )}
+                        <button
+                          onClick={() => { setHardDeleteAppt(appt); setHardDeleteText('') }}
+                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
+                        >
+                          🗑 Apagar
+                        </button>
                       </>
                     )}
                   </div>
@@ -1552,6 +1602,10 @@ function TabHoje({
                   ? PAYMENT_LABEL[method] ?? method
                   : isOnline
                   ? 'Pago online'
+                  : selectedAppt.status === 'aguardando_pagamento'
+                  ? 'Mercado Pago (Pendente)'
+                  : selectedAppt.status === 'cancelado_falta_pagamento'
+                  ? 'Cancelado (Tempo Expirado)'
                   : selectedAppt.status === 'confirmado'
                   ? 'Pagar no local'
                   : selectedAppt.status === 'concluido' && selectedAppt.expected_payment_date && !isPaid
@@ -1562,6 +1616,10 @@ function TabHoje({
                 if (!label) return null
                 const badgeClass = isRefunded
                   ? 'bg-orange-500/20 text-orange-400 border border-orange-500/20'
+                  : selectedAppt.status === 'aguardando_pagamento'
+                  ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/20'
+                  : selectedAppt.status === 'cancelado_falta_pagamento'
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/20'
                   : isPaid
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20'
                   : 'bg-amber-500/20 text-amber-400 border border-amber-500/20'
@@ -1847,6 +1905,169 @@ function TabHoje({
             {cancelLoading ? 'Cancelando...' : 'Confirmar Cancelamento'}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* ── Modal: Resumo do Dia ── */}
+    {selectedDay && (() => {
+      const reportAppts = dayAppts.filter(a => !deletedIds.has(a.id))
+      const total       = reportAppts.length
+      const concluido   = reportAppts.filter(a => a.status === 'concluido')
+      const confirmado  = reportAppts.filter(a => a.status === 'confirmado')
+      const aguardando  = reportAppts.filter(a => a.status === 'aguardando_pagamento')
+      const cancelado   = reportAppts.filter(a => a.status === 'cancelado' || a.status === 'cancelado_falta_pagamento').length
+      const faltou      = reportAppts.filter(a => a.status === 'faltou').length
+      const receitaRealizada = concluido.reduce((s, a) => s + (a.service_price_snapshot ?? a.services?.price ?? 0), 0)
+      const receitaPrevista  = [...confirmado, ...aguardando].reduce((s, a) => s + (a.service_price_snapshot ?? a.services?.price ?? 0), 0)
+
+      // Contagem por serviço
+      const svcMap = new Map<string, number>()
+      for (const a of reportAppts) {
+        const nome = a.service_name_snapshot ?? a.services?.name ?? 'Serviço'
+        svcMap.set(nome, (svcMap.get(nome) ?? 0) + 1)
+      }
+      const topSvcs = Array.from(svcMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5)
+
+      const brlR = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+      return (
+        <Dialog open={showDayReport} onOpenChange={(open) => { if (!open) setShowDayReport(false) }}>
+          <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="text-white">📊 Resumo — {formatSelectedDay(selectedDay)}</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-4 py-1">
+              {/* Cards receita */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white/5 rounded-xl p-3 flex flex-col gap-1">
+                  <p className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold">Receita realizada</p>
+                  <p className="text-lg font-bold text-emerald-400 tabular-nums">{brlR(receitaRealizada)}</p>
+                  <p className="text-[10px] text-zinc-600">{concluido.length} concluído{concluido.length !== 1 ? 's' : ''}</p>
+                </div>
+                <div className="bg-white/5 rounded-xl p-3 flex flex-col gap-1">
+                  <p className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold">Prevista</p>
+                  <p className="text-lg font-bold text-sky-400 tabular-nums">{brlR(receitaPrevista)}</p>
+                  <p className="text-[10px] text-zinc-600">{confirmado.length + aguardando.length} agendado{confirmado.length + aguardando.length !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+
+              {/* Status breakdown */}
+              <div className="bg-white/5 rounded-xl p-3 flex flex-col gap-2">
+                <p className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold">Status ({total} total)</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  {confirmado.length > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-400">✅ Confirmado</span>
+                      <span className="text-[11px] font-bold text-white tabular-nums">{confirmado.length}</span>
+                    </div>
+                  )}
+                  {aguardando.length > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-400">⏳ Aguardando</span>
+                      <span className="text-[11px] font-bold text-white tabular-nums">{aguardando.length}</span>
+                    </div>
+                  )}
+                  {concluido.length > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-400">🏁 Concluído</span>
+                      <span className="text-[11px] font-bold text-emerald-400 tabular-nums">{concluido.length}</span>
+                    </div>
+                  )}
+                  {faltou > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-400">👻 Faltou</span>
+                      <span className="text-[11px] font-bold text-amber-400 tabular-nums">{faltou}</span>
+                    </div>
+                  )}
+                  {cancelado > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-400">❌ Cancelado</span>
+                      <span className="text-[11px] font-bold text-red-400 tabular-nums">{cancelado}</span>
+                    </div>
+                  )}
+                  {total === 0 && (
+                    <p className="col-span-2 text-xs text-zinc-600 text-center py-1">Nenhum agendamento neste dia.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Top serviços */}
+              {topSvcs.length > 0 && (
+                <div className="bg-white/5 rounded-xl p-3 flex flex-col gap-2">
+                  <p className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold">Serviços</p>
+                  <div className="flex flex-col gap-1.5">
+                    {topSvcs.map(([nome, qtd]) => (
+                      <div key={nome} className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-zinc-300 truncate">{nome}</span>
+                        <span className="text-[11px] font-bold text-zinc-400 tabular-nums shrink-0">{qtd}×</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )
+    })()}
+
+    {/* ── Modal: Excluir Permanentemente (Hard Delete) ── */}
+    <Dialog open={!!hardDeleteAppt} onOpenChange={(open) => { if (!open) { setHardDeleteAppt(null); setHardDeleteText('') } }}>
+      <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-red-400">⚠️ Excluir Permanentemente</DialogTitle>
+          <DialogDescription className="text-zinc-400">
+            Esta ação não pode ser desfeita. Todos os dados vinculados serão removidos.
+          </DialogDescription>
+        </DialogHeader>
+        {hardDeleteAppt && (
+          <div className="flex flex-col gap-4 py-1">
+            <div className="bg-white/5 rounded-xl px-4 py-3 flex flex-col gap-1.5">
+              <p className="text-xs text-zinc-500 uppercase tracking-wider font-bold">Agendamento</p>
+              <p className="text-sm text-white font-semibold">
+                {hardDeleteAppt.service_name_snapshot ?? hardDeleteAppt.services?.name ?? 'Serviço'}
+              </p>
+              <p className="text-xs text-zinc-400">
+                {hardDeleteAppt.date?.split('-').reverse().join('/')} às {hardDeleteAppt.start_time?.slice(0, 5)}
+                {' · '}
+                {hardDeleteAppt.client_name ?? hardDeleteAppt.profiles?.display_name ?? '—'}
+              </p>
+              <p className="text-xs text-zinc-500 mt-1">
+                Serão excluídos: agendamento, avaliações e lançamentos financeiros vinculados.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-zinc-500">
+                Digite <span className="text-white font-mono font-bold">excluir</span> para confirmar
+              </label>
+              <input
+                type="text"
+                value={hardDeleteText}
+                onChange={(e) => setHardDeleteText(e.target.value)}
+                placeholder="excluir"
+                className="w-full bg-white/5 border border-white/10 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-500/50 placeholder:text-zinc-700"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => { setHardDeleteAppt(null); setHardDeleteText('') }}
+                disabled={hardDeleteLoading}
+                className="text-zinc-400"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleHardDelete}
+                disabled={hardDeleteLoading || hardDeleteText.toLowerCase() !== 'excluir'}
+                className="bg-red-600 hover:bg-red-500 text-white disabled:opacity-40"
+              >
+                {hardDeleteLoading ? 'Excluindo…' : 'Excluir Permanentemente'}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
     </>
@@ -4225,7 +4446,7 @@ function TabFinanceiro({
   config: BusinessConfig
   onRefresh: () => void
 }) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' })
   const firstOfMonth = today.slice(0, 8) + '01'
 
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([])
@@ -4251,6 +4472,46 @@ function TabFinanceiro({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [baixaLoadingId, setBaixaLoadingId] = useState<string | null>(null)
 
+  // ── Novas seções ──────────────────────────────────────────────
+  const [txViewMode, setTxViewMode] = useState<'lancamentos' | 'por_dia'>('lancamentos')
+
+  // Seletor de período
+  type DatePreset = 'hoje' | 'semana' | 'mes' | 'mes_ant' | 'custom'
+  const [datePreset, setDatePreset] = useState<DatePreset>('mes')
+  const [showCustomDates, setShowCustomDates] = useState(false)
+
+  const applyPreset = (preset: DatePreset) => {
+    setDatePreset(preset)
+    if (preset === 'custom') { setShowCustomDates(true); return }
+    setShowCustomDates(false)
+    const d = new Date(today + 'T12:00:00')
+    if (preset === 'hoje') {
+      setDateFrom(today); setDateTo(today)
+    } else if (preset === 'semana') {
+      const start = new Date(d); start.setDate(d.getDate() - d.getDay())
+      setDateFrom(start.toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' })); setDateTo(today)
+    } else if (preset === 'mes') {
+      setDateFrom(firstOfMonth); setDateTo(today)
+    } else if (preset === 'mes_ant') {
+      const firstThisMonth = new Date(d.getFullYear(), d.getMonth(), 1)
+      const lastPrev = new Date(firstThisMonth); lastPrev.setDate(0)
+      const firstPrev = new Date(d.getFullYear(), d.getMonth() - 1, 1)
+      setDateFrom(firstPrev.toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))
+      setDateTo(lastPrev.toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' }))
+    }
+  }
+
+  type UpcomingAppt = Awaited<ReturnType<typeof listUpcomingRevenue>>['appointments'][number]
+  const [showUpcoming, setShowUpcoming] = useState(false)
+  const [upcomingLoading, setUpcomingLoading] = useState(false)
+  const [upcomingAppts, setUpcomingAppts] = useState<UpcomingAppt[]>([])
+
+  type DebtClient = Awaited<ReturnType<typeof listClientsWithDebt>>['clients'][number]
+  const [showDebt, setShowDebt] = useState(false)
+  const [debtLoading, setDebtLoading] = useState(false)
+  const [debtClients, setDebtClients] = useState<DebtClient[]>([])
+  const [debtBaixaLoading, setDebtBaixaLoading] = useState<string | null>(null)
+
   const loadEntries = async () => {
     setLoadingEntries(true)
     const result = await listFinancialTransactions({ dateFrom, dateTo })
@@ -4268,6 +4529,54 @@ function TabFinanceiro({
   const todayTransactions = transactions.filter(t => t.due_date === today)
   const todayEntradas = todayTransactions.filter(t => t.type === 'IN'  && t.status === 'PAID').reduce((s, t) => s + t.amount, 0)
   const todaySaidas   = todayTransactions.filter(t => t.type === 'OUT' && t.status === 'PAID').reduce((s, t) => s + t.amount, 0)
+
+  // Agrupamento por dia para o modo "Por Dia"
+  const byDay = useMemo(() => {
+    const map = new Map<string, { date: string; in_paid: number; out_paid: number; pending: number; count: number }>()
+    for (const tx of transactions) {
+      if (!map.has(tx.due_date)) map.set(tx.due_date, { date: tx.due_date, in_paid: 0, out_paid: 0, pending: 0, count: 0 })
+      const d = map.get(tx.due_date)!
+      if (tx.type === 'IN' && tx.status === 'PAID')    { d.in_paid  += tx.amount; d.count++ }
+      else if (tx.type === 'OUT' && tx.status === 'PAID') d.out_paid += tx.amount
+      else if (tx.type === 'IN' && tx.status === 'PENDING') d.pending += tx.amount
+    }
+    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date))
+  }, [transactions])
+
+  const handleLoadUpcoming = async () => {
+    if (showUpcoming) { setShowUpcoming(false); return }
+    setShowUpcoming(true)
+    setUpcomingLoading(true)
+    const endOfMonth = today.slice(0, 8) + String(new Date(parseInt(today.slice(0,4)), parseInt(today.slice(5,7)), 0).getDate()).padStart(2,'0')
+    const { appointments } = await listUpcomingRevenue(today, endOfMonth)
+    setUpcomingAppts(appointments)
+    setUpcomingLoading(false)
+  }
+
+  const handleLoadDebt = async () => {
+    if (showDebt) { setShowDebt(false); return }
+    setShowDebt(true)
+    setDebtLoading(true)
+    const { clients } = await listClientsWithDebt()
+    setDebtClients(clients)
+    setDebtLoading(false)
+  }
+
+  const handleDebtBaixa = async (txId: string) => {
+    setDebtBaixaLoading(txId)
+    const result = await markTransactionAsPaid(txId)
+    setDebtBaixaLoading(null)
+    if (result.success) {
+      toast.success('Baixa registrada.')
+      setDebtClients(prev => prev.map(c => ({
+        ...c,
+        transactions: c.transactions.filter(t => t.id !== txId),
+        total_debt: c.transactions.filter(t => t.id !== txId).reduce((s, t) => s + t.amount, 0),
+      })).filter(c => c.transactions.length > 0))
+    } else {
+      toast.error(result.error ?? 'Erro ao dar baixa.')
+    }
+  }
 
   const handleSaveMachine = async () => {
     setSavingMachine(true)
@@ -4342,27 +4651,59 @@ function TabFinanceiro({
     <div className="flex flex-col gap-6">
 
       {/* ── Cabeçalho ────────────────────────────────────────────── */}
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500 mb-1">Painel</h2>
-          <p className="text-xl font-semibold text-white leading-none">Financeiro</p>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500 mb-1">Painel</h2>
+            <p className="text-xl font-semibold text-white leading-none">Financeiro</p>
+          </div>
+          {/* Label do período ativo */}
+          <p className="text-[10px] text-zinc-600 tabular-nums">
+            {dateFrom.split('-').reverse().join('/')}
+            {dateFrom !== dateTo ? ` — ${dateTo.split('-').reverse().join('/')}` : ''}
+          </p>
         </div>
-        {/* Seletor período */}
-        <div className="flex items-center gap-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-3 py-2">
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="bg-transparent text-[11px] text-zinc-400 focus:outline-none focus:text-white cursor-pointer"
-          />
-          <span className="text-zinc-700 text-xs">—</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="bg-transparent text-[11px] text-zinc-400 focus:outline-none focus:text-white cursor-pointer"
-          />
+        {/* Chips de período */}
+        <div className="flex gap-1.5 flex-wrap">
+          {([
+            { id: 'hoje',    label: 'Hoje' },
+            { id: 'semana',  label: 'Esta semana' },
+            { id: 'mes',     label: 'Este mês' },
+            { id: 'mes_ant', label: 'Mês anterior' },
+            { id: 'custom',  label: '📅 Personalizado' },
+          ] as { id: DatePreset; label: string }[]).map(p => (
+            <button
+              key={p.id}
+              onClick={() => applyPreset(p.id)}
+              className={[
+                'px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all',
+                datePreset === p.id
+                  ? 'bg-white text-black border-white'
+                  : 'bg-transparent text-zinc-500 border-[#2a2a2a] hover:border-[#3a3a3a] hover:text-zinc-300',
+              ].join(' ')}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
+        {/* Inputs de data (só quando "Personalizado") */}
+        {showCustomDates && (
+          <div className="flex items-center gap-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-3 py-2.5">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="flex-1 bg-transparent text-sm text-zinc-300 focus:outline-none focus:text-white cursor-pointer"
+            />
+            <span className="text-zinc-600 text-xs shrink-0">até</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="flex-1 bg-transparent text-sm text-zinc-300 focus:outline-none focus:text-white cursor-pointer"
+            />
+          </div>
+        )}
       </div>
 
       {/* ── Card de Saldo (destaque) ──────────────────────────────── */}
@@ -4412,6 +4753,147 @@ function TabFinanceiro({
           <span className="text-[10px] text-amber-700">Dê Baixa nos lançamentos abaixo ↓</span>
         </div>
       )}
+
+      {/* ── Seção: Receita Prevista ──────────────────────────────── */}
+      <div className="bg-[#1a1a1a] border border-[#262626] rounded-xl overflow-hidden">
+        <button
+          onClick={handleLoadUpcoming}
+          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-1.5 h-1.5 rounded-full shrink-0 bg-sky-500" />
+            <span className="text-sm text-zinc-300">Receita Prevista do Mês</span>
+          </div>
+          <span className="text-[10px] text-zinc-600 uppercase tracking-wider">{showUpcoming ? 'Fechar' : 'Ver'}</span>
+        </button>
+        {showUpcoming && (
+          <div className="border-t border-[#262626]">
+            {upcomingLoading ? (
+              <div className="px-4 py-6 text-center text-xs text-zinc-600">Carregando…</div>
+            ) : upcomingAppts.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-zinc-600">Nenhum agendamento futuro com pagamento pendente.</div>
+            ) : (
+              <div className="flex flex-col">
+                {/* Resumo */}
+                <div className="px-4 py-3 grid grid-cols-2 gap-3 border-b border-[#262626]">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] uppercase tracking-wider text-sky-600 font-semibold">Pago Online (MP)</span>
+                    <span className="text-base font-semibold text-sky-400 tabular-nums">
+                      {brl(upcomingAppts.filter(a => a.is_online_paid).reduce((s, a) => s + (a.service_price_snapshot ?? 0), 0))}
+                    </span>
+                    <span className="text-[10px] text-zinc-600">{upcomingAppts.filter(a => a.is_online_paid).length} agend.</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[9px] uppercase tracking-wider text-amber-600 font-semibold">A Receber no Local</span>
+                    <span className="text-base font-semibold text-amber-400 tabular-nums">
+                      {brl(upcomingAppts.filter(a => !a.is_online_paid).reduce((s, a) => s + (a.service_price_snapshot ?? 0), 0))}
+                    </span>
+                    <span className="text-[10px] text-zinc-600">{upcomingAppts.filter(a => !a.is_online_paid).length} agend.</span>
+                  </div>
+                </div>
+                {/* Lista */}
+                {upcomingAppts.map(a => (
+                  <div key={a.id} className="flex items-center gap-3 px-4 py-3 border-b border-[#262626] last:border-0">
+                    <div className={`w-1 h-8 rounded-full shrink-0 ${a.is_online_paid ? 'bg-sky-500' : 'bg-amber-500'}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-zinc-200 truncate">{a.service_name_snapshot ?? '—'}</p>
+                      <p className="text-[10px] text-zinc-600">
+                        {a.date.split('-').reverse().join('/')} às {a.start_time.slice(0, 5)}
+                        {a.client_name ? ` · ${a.client_name}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-sm font-semibold tabular-nums text-zinc-300">
+                        {brl(a.service_price_snapshot ?? 0)}
+                      </span>
+                      <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                        a.is_online_paid ? 'text-sky-400 bg-sky-500/10' : 'text-amber-400 bg-amber-500/10'
+                      }`}>
+                        {a.is_online_paid ? 'Pago MP' : 'No local'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Seção: Clientes com Dívida ──────────────────────────── */}
+      <div className="bg-[#1a1a1a] border border-[#262626] rounded-xl overflow-hidden">
+        <button
+          onClick={handleLoadDebt}
+          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-1.5 h-1.5 rounded-full shrink-0 bg-amber-500" />
+            <span className="text-sm text-zinc-300">Clientes com Dívida</span>
+          </div>
+          <span className="text-[10px] text-zinc-600 uppercase tracking-wider">{showDebt ? 'Fechar' : 'Ver'}</span>
+        </button>
+        {showDebt && (
+          <div className="border-t border-[#262626]">
+            {debtLoading ? (
+              <div className="px-4 py-6 text-center text-xs text-zinc-600">Carregando…</div>
+            ) : debtClients.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-zinc-600">Nenhum cliente com pendências. 🎉</div>
+            ) : (
+              <div className="flex flex-col divide-y divide-[#262626]">
+                {debtClients.map(client => (
+                  <div key={client.client_key} className="px-4 py-4 flex flex-col gap-3">
+                    {/* Cabeçalho do cliente */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{client.client_name}</p>
+                        {client.client_phone && (
+                          <p className="text-[10px] text-zinc-600">{client.client_phone}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="text-sm font-bold text-amber-400 tabular-nums">{brl(client.total_debt)}</span>
+                        <span className="text-[9px] text-amber-700 uppercase tracking-wider">devendo</span>
+                      </div>
+                    </div>
+                    {/* Transações pendentes */}
+                    <div className="flex flex-col gap-1.5">
+                      {client.transactions.map(tx => (
+                        <div key={tx.id} className="flex items-center gap-2 bg-white/[0.03] rounded-lg px-3 py-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-zinc-300 truncate">{tx.description || '—'}</p>
+                            <p className="text-[10px] text-zinc-600">{tx.due_date.split('-').reverse().join('/')}</p>
+                          </div>
+                          <span className="text-xs font-semibold text-amber-400 tabular-nums shrink-0">{brl(tx.amount)}</span>
+                          <button
+                            onClick={() => handleDebtBaixa(tx.id)}
+                            disabled={debtBaixaLoading === tx.id}
+                            className="shrink-0 px-2 py-1 rounded-md text-[10px] font-semibold text-amber-900 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 transition-colors"
+                          >
+                            {debtBaixaLoading === tx.id ? '…' : 'Baixa'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Ações do cliente */}
+                    <div className="flex gap-2 flex-wrap">
+                      {client.client_phone && (
+                        <a
+                          href={`https://wa.me/55${client.client_phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${client.client_name}! Passando para avisar que você tem um valor pendente de ${brl(client.total_debt)} com a nossa barbearia. Podemos combinar o pagamento?`)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 text-[11px] font-semibold hover:bg-emerald-600/30 transition-colors"
+                        >
+                          💬 WhatsApp
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ── Configuração de maquininha ────────────────────────────── */}
       <div className="bg-[#1a1a1a] border border-[#262626] rounded-xl overflow-hidden">
@@ -4533,10 +5015,62 @@ function TabFinanceiro({
         {/* Cabeçalho da tabela */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[#262626]">
           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-600 flex-1">Lançamentos</span>
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-600 w-20 text-right">Valor</span>
+          {/* Toggle Lançamentos / Por Dia */}
+          <div className="flex items-center gap-1 bg-[#111] rounded-lg p-0.5">
+            <button
+              onClick={() => setTxViewMode('lancamentos')}
+              className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-colors ${txViewMode === 'lancamentos' ? 'bg-[#2a2a2a] text-white' : 'text-zinc-600 hover:text-zinc-400'}`}
+            >
+              Todos
+            </button>
+            <button
+              onClick={() => setTxViewMode('por_dia')}
+              className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-colors ${txViewMode === 'por_dia' ? 'bg-[#2a2a2a] text-white' : 'text-zinc-600 hover:text-zinc-400'}`}
+            >
+              Por Dia
+            </button>
+          </div>
         </div>
 
-        {loadingEntries ? (
+        {/* Modo: Por Dia */}
+        {txViewMode === 'por_dia' && !loadingEntries && (
+          byDay.length === 0 ? (
+            <div className="px-4 py-6 text-center text-xs text-zinc-600">Nenhum lançamento no período.</div>
+          ) : (
+            <div className="flex flex-col">
+              {byDay.map(d => (
+                <div key={d.date} className="flex items-center gap-4 px-4 py-3.5 border-b border-[#262626] last:border-0 hover:bg-[#1f1f1f]">
+                  <div className="w-14 shrink-0">
+                    <p className="text-xs font-semibold text-zinc-300 tabular-nums">{d.date.split('-').reverse().join('/')}</p>
+                    {d.count > 0 && <p className="text-[10px] text-zinc-700">{d.count} serv.</p>}
+                  </div>
+                  <div className="flex-1 grid grid-cols-3 gap-1 text-right">
+                    <div>
+                      <p className="text-[9px] text-zinc-600 uppercase tracking-wider">Entrou</p>
+                      <p className="text-xs font-semibold text-[#34a853] tabular-nums">{brl(d.in_paid)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-zinc-600 uppercase tracking-wider">Saiu</p>
+                      <p className="text-xs font-semibold text-[#e05c5c] tabular-nums">{brl(d.out_paid)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] text-zinc-600 uppercase tracking-wider">Pendente</p>
+                      <p className={`text-xs font-semibold tabular-nums ${d.pending > 0 ? 'text-amber-400' : 'text-zinc-700'}`}>{brl(d.pending)}</p>
+                    </div>
+                  </div>
+                  <div className="shrink-0 w-16 text-right">
+                    <p className="text-[9px] text-zinc-600 uppercase tracking-wider">Saldo</p>
+                    <p className={`text-xs font-semibold tabular-nums ${d.in_paid - d.out_paid >= 0 ? 'text-zinc-300' : 'text-red-400'}`}>
+                      {brl(d.in_paid - d.out_paid)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {txViewMode === 'lancamentos' && loadingEntries ? (
           /* Skeleton */
           <div className="flex flex-col">
             {[...Array(4)].map((_, i) => (
@@ -4550,7 +5084,7 @@ function TabFinanceiro({
               </div>
             ))}
           </div>
-        ) : transactions.length === 0 ? (
+        ) : txViewMode === 'lancamentos' && transactions.length === 0 ? (
           /* Empty state estruturado */
           <div className="flex flex-col">
             {[0, 1, 2].map(i => (
@@ -4568,7 +5102,7 @@ function TabFinanceiro({
               <p className="text-[10px] text-zinc-700 mt-0.5">Use o botão acima para registrar</p>
             </div>
           </div>
-        ) : (
+        ) : txViewMode === 'lancamentos' ? (
           transactions.map((tx) => {
             const isIN      = tx.type === 'IN'
             const isPending = tx.status === 'PENDING'
@@ -4640,7 +5174,7 @@ function TabFinanceiro({
               </div>
             )
           })
-        )}
+        ) : null}
       </div>
     </div>
   )

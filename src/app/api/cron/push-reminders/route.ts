@@ -60,7 +60,7 @@ export async function GET(request: Request) {
 
       await adminSupabase
         .from('appointments')
-        .update({ status: 'cancelado' })
+        .update({ status: 'cancelado_falta_pagamento' })
         .in('id', expiredApptIds)
         .eq('status', 'aguardando_pagamento')
 

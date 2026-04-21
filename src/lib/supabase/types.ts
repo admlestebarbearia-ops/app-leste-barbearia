@@ -1,4 +1,4 @@
-export type AppointmentStatus = 'confirmado' | 'cancelado' | 'faltou' | 'concluido' | 'aguardando_pagamento'
+export type AppointmentStatus = 'confirmado' | 'cancelado' | 'faltou' | 'concluido' | 'aguardando_pagamento' | 'cancelado_falta_pagamento'
 export type PaymentMode = 'presencial' | 'online_obrigatorio'
 export type PaymentIntentStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'expired'
 export type DisplayNamePreference = 'name' | 'nickname'

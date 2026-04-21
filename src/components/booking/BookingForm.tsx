@@ -1080,15 +1080,15 @@ const handleConfirm = async () => {
   return (
     <div className="flex flex-col gap-0 pb-32 min-h-screen">
       {/* Header Premium */}
-      <header className="flex flex-col items-center justify-center pt-10 pb-6 px-4">
-        <div className="relative mb-6 flex w-full items-center justify-center">
-          <div className="absolute h-32 w-32 rounded-full bg-primary/15 blur-3xl" />
+      <header className="flex flex-col items-center justify-center pt-5 pb-3 px-4">
+        <div className="relative mb-3 flex w-full items-center justify-center">
+          <div className="absolute h-24 w-24 rounded-full bg-primary/15 blur-3xl" />
           <Image
             src={config?.logo_url ?? '/logo-barbearialeste.png'}
             alt="Leste Barbearia"
             width={180}
             height={180}
-            className="relative h-auto w-36 object-contain animate-logo-glow drop-shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+            className="relative h-auto w-28 object-contain animate-logo-glow drop-shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
           />
         </div>
         <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">
@@ -1128,7 +1128,8 @@ const handleConfirm = async () => {
                   {service.name}
                 </span>
               </button>
-            )})}</div>
+            )})}
+          </div>
         </section>
 
         {/* Secao 2: Barbeiro */}

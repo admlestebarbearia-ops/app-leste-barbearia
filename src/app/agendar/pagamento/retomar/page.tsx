@@ -36,6 +36,7 @@ export default async function RetomarPagamentoPage({ searchParams }: Props) {
         subtitle: `${format(parseISO(appointment.serviceDate), "dd 'de' MMMM", { locale: ptBR })} às ${appointment.serviceTime}`,
         preferenceId: appointment.preferenceId,
         existingPaymentId: appointment.existingPaymentId,
+        expiresAt: appointment.expiresAt ?? undefined,
       }}
       publicKey={mpPublicKey}
       backHref={`/reservas?notice=pending-payment&appt_id=${appointment.id}`}

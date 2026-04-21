@@ -51,7 +51,7 @@ async function expirePendingAppointmentPayment(adminClient: ReturnType<typeof cr
 
   await adminClient
     .from('appointments')
-    .update({ status: 'cancelado' })
+    .update({ status: 'cancelado_falta_pagamento' })
     .eq('id', appointmentId)
     .eq('status', 'aguardando_pagamento')
 }
@@ -718,6 +718,7 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
     serviceTime: string
     preferenceId?: string
     existingPaymentId?: string
+    expiresAt?: string | null
   }
   error?: string
 }> {
@@ -776,6 +777,7 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
       serviceTime: appt.start_time.slice(0, 5),
       preferenceId,
       existingPaymentId,
+      expiresAt: paymentIntent.expires_at ?? null,
     },
   }
 }
@@ -784,6 +786,7 @@ export async function getPendingPaymentStatus(appointmentId: string): Promise<{
   appointmentStatus?: string
   paymentIntentStatus?: string | null
   paymentId?: string | null
+  expiresAt?: string | null
   error?: string
 }> {
   const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
@@ -812,7 +815,7 @@ export async function getPendingPaymentStatus(appointmentId: string): Promise<{
     .single()
 
   if (!paymentIntent) {
-    return { appointmentStatus: appt.status, paymentIntentStatus: null, paymentId: null }
+    return { appointmentStatus: appt.status, paymentIntentStatus: null, paymentId: null, expiresAt: null }
   }
 
   let resolvedPaymentIntentStatus = paymentIntent.status
@@ -828,6 +831,7 @@ export async function getPendingPaymentStatus(appointmentId: string): Promise<{
     appointmentStatus: appt.status,
     paymentIntentStatus: resolvedPaymentIntentStatus,
     paymentId: paymentIntent.mp_payment_id,
+    expiresAt: paymentIntent.expires_at ?? null,
   }
 }
 
@@ -1198,7 +1202,7 @@ export async function dismissCancelledAppointment(
     .from('appointments')
     .select('id, status')
     .eq('id', appointmentId)
-    .eq('status', 'cancelado')
+    .in('status', ['cancelado', 'cancelado_falta_pagamento'])
     .or(ownershipFilter)
     .single()
 
