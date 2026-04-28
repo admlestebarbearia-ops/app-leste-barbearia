@@ -17,6 +17,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   themeColor: '#161616',
+  viewportFit: 'cover',
 }
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
@@ -29,6 +30,15 @@ export const metadata: Metadata = {
   title: "Leste Barbearia - Agende seu horário",
   description: "Agende seu corte, barba e tratamentos de forma rápida e prática.",
   manifest: "/site.webmanifest",
+  applicationName: "Leste Barbearia",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Leste Barbearia',
+  },
+  formatDetection: {
+    telephone: false,
+  },
   openGraph: {
     title: "Leste Barbearia - Agende seu horário",
     description: "Agende seu corte, barba e tratamentos de forma rápida e prática.",

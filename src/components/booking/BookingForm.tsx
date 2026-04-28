@@ -78,7 +78,6 @@ export function BookingForm({
   const barberSectionRef = useRef<HTMLElement>(null)
   const calendarSectionRef = useRef<HTMLElement>(null)
   const slotsSectionRef = useRef<HTMLElement>(null)
-
   const scrollToRef = (ref: React.RefObject<HTMLElement | null>) => {
     setTimeout(() => {
       ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -1110,6 +1109,7 @@ const handleConfirm = async () => {
               return (
               <button
                 key={service.id}
+                type="button"
                 onClick={() => handleServiceSelect(service)}
                 className={[
                   'w-full h-[110px] flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all duration-200',
@@ -1693,7 +1693,12 @@ const handleConfirm = async () => {
       {/* ── MODAL iOS: instrução "Adicionar à tela inicial" ── */}
       {showIOSTip && (
         <div className="fixed inset-0 z-[70] flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-pointer" onClick={() => setShowIOSTip(false)} />
+          <button
+            type="button"
+            aria-label="Fechar instruções de instalação no iPhone"
+            className="style-reset absolute inset-0 bg-black/60 backdrop-blur-sm cursor-pointer"
+            onClick={() => setShowIOSTip(false)}
+          />
           <div className="relative bg-[#111] border-t border-white/8 rounded-t-3xl px-5 pb-safe pt-5 flex flex-col gap-4">
             <div className="w-10 h-1 bg-white/20 rounded-full mx-auto" />
             <button
