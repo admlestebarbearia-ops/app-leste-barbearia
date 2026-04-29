@@ -211,6 +211,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                   <button
                     key={product.id}
                     onClick={() => openModal(product)}
+                    onTouchStart={() => {}}
                     disabled={!inStock && !isReserved}
                     style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
                     className="flex flex-col rounded-2xl border border-white/6 bg-zinc-900 overflow-hidden text-left disabled:opacity-60"

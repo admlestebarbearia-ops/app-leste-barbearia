@@ -103,6 +103,14 @@ body {
   touch-action: manipulation; /* Evita zoom em double-tap */
 }
 
+/* Fix definitivo para o React Event Delegation no iOS WebKit legado:
+   o Safari antigo só borbulha cliques se o elemento (ou um ancestral) tiver cursor:pointer.
+   Aplicar no root garante que TODOS os onClick do React funcionam. */
+html, body, #__next {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Compatibilidade de toque para WebKit legado sem alterar layout existente */
 div, section, span, img {
   -webkit-tap-highlight-color: transparent;

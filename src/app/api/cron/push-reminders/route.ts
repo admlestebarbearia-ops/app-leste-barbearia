@@ -41,6 +41,7 @@ export async function GET(request: Request) {
       { label: '15min', minutes: 15, flag: 'reminder_15min_sent', title: '🔔 15 minutos!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Saia já!` },
       { label: '20min', minutes: 20, flag: 'reminder_20min_sent', title: '⏰ 20 minutos!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Vai chegando!` },
       { label: '10min', minutes: 10, flag: 'reminder_10min_sent', title: '🔔 10 minutos!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Estamos te esperando!` },
+      { label: '5min',  minutes:  5, flag: 'reminder_5min_sent',  title: '🔴 5 minutos!',     bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. SAIA AGORA!` },
     ] as const
 
     // ─── Expirar payment_intents vencidos ────────────────────────────────────
@@ -78,6 +79,7 @@ export async function GET(request: Request) {
         reminder_1h_sent, reminder_45min_sent,
         reminder_30min_sent, reminder_15min_sent,
         reminder_20min_sent, reminder_10min_sent,
+        reminder_5min_sent,
         barbers(name, nickname)
       `)
       .eq('date', todayStr)

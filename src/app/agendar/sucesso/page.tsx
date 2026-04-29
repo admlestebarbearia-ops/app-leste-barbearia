@@ -8,6 +8,7 @@ import { ProductVitrine } from './ProductVitrine'
 import { getActiveProducts } from '@/app/agendar/actions'
 import { GUEST_BOOKING_PHONE_COOKIE, normalizePhoneLookup } from '@/lib/auth/session-state'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
+import { PushNotificationModal } from './PushNotificationModal'
 import type { BusinessConfig } from '@/lib/supabase/types'
 
 interface Props {
@@ -63,6 +64,8 @@ export default async function SucessoPage({ searchParams }: Props) {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-background">
+      {/* Modal agressivo de opt-in push — exibe automaticamente se permissão ainda não decidida */}
+      <PushNotificationModal />
       <div className="w-full max-w-sm flex flex-col items-center gap-8">
 
         <Image

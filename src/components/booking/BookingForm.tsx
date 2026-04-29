@@ -1111,6 +1111,7 @@ const handleConfirm = async () => {
                 key={service.id}
                 type="button"
                 onClick={() => handleServiceSelect(service)}
+                onTouchStart={() => {}}
                 style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
                 className={[
                   'w-full h-[110px] flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all duration-200',
