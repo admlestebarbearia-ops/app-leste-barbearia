@@ -39,6 +39,8 @@ export async function GET(request: Request) {
       { label: '45min', minutes: 45, flag: 'reminder_45min_sent', title: '⏰ Daqui 45 min!',  bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Vai chegando!` },
       { label: '30min', minutes: 30, flag: 'reminder_30min_sent', title: '⏰ 30 minutos!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Estamos te esperando!` },
       { label: '15min', minutes: 15, flag: 'reminder_15min_sent', title: '🔔 15 minutos!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Saia já!` },
+      { label: '20min', minutes: 20, flag: 'reminder_20min_sent', title: '⏰ 20 minutos!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Vai chegando!` },
+      { label: '10min', minutes: 10, flag: 'reminder_10min_sent', title: '🔔 10 minutos!',    bodyFn: (s: string, t: string, b: string) => `${s} às ${t} com ${b}. Estamos te esperando!` },
     ] as const
 
     // ─── Expirar payment_intents vencidos ────────────────────────────────────
@@ -75,6 +77,7 @@ export async function GET(request: Request) {
         reminder_90min_sent, reminder_75min_sent,
         reminder_1h_sent, reminder_45min_sent,
         reminder_30min_sent, reminder_15min_sent,
+        reminder_20min_sent, reminder_10min_sent,
         barbers(name, nickname)
       `)
       .eq('date', todayStr)
@@ -213,6 +216,33 @@ export async function GET(request: Request) {
       console.error('[cron/push-reminders] WA block error', waErr)
     }
 
+    // ─── Auto-cancelar agendamentos em atraso (cliente não apareceu após +10min) ─
+    // Busca confirmados de hoje sem filtro de client_id (inclui agendamentos manuais)
+    const { data: allTodayAppts } = await adminSupabase
+      .from('appointments')
+      .select('id, start_time')
+      .eq('date', todayStr)
+      .eq('status', 'confirmado')
+
+    let canceledByDelay = 0
+    for (const appt of allTodayAppts ?? []) {
+      if (!appt.start_time) continue
+      const [ah, am] = (appt.start_time as string).split(':').map(Number)
+      const apptMins = ah * 60 + am
+      // Só cancela se o horário do agendamento + 10min já passou
+      if (apptMins + 10 <= nowMinutes) {
+        const { error: cancelErr } = await adminSupabase
+          .from('appointments')
+          .update({ status: 'cancelado_por_atraso' })
+          .eq('id', appt.id)
+          .eq('status', 'confirmado') // guard: evita race condition
+        if (!cancelErr) {
+          canceledByDelay++
+          console.log(`[cron] Agendamento ${appt.id as string} cancelado por atraso (${appt.start_time as string}).`)
+        }
+      }
+    }
+
     return NextResponse.json({
       date: todayStr,
       nowBrasilia: toTimeStr(nowMinutes),
@@ -221,6 +251,7 @@ export async function GET(request: Request) {
       failed,
       expiredIntents: expiredIntents?.length ?? 0,
       waSent,
+      canceledByDelay,
     })
   } catch (e) {
     console.error('[cron/push-reminders]', e)

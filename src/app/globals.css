@@ -108,6 +108,11 @@ div, section, span, img {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Força propagação do clique no iOS antigo: filhos do button não devem capturar eventos */
+button * {
+  pointer-events: none;
+}
+
 .item-clicavel, .button, [role="button"], [onclick] {
   cursor: pointer !important;
   touch-action: manipulation;

@@ -212,6 +212,7 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                     key={product.id}
                     onClick={() => openModal(product)}
                     disabled={!inStock && !isReserved}
+                    style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
                     className="flex flex-col rounded-2xl border border-white/6 bg-zinc-900 overflow-hidden text-left disabled:opacity-60"
                   >
                     <div className="w-full aspect-square bg-white/5 overflow-hidden relative">
