@@ -77,8 +77,9 @@ export default async function ReservasPage({ searchParams }: Props) {
 
   if (!ownershipFilter) redirect('/?next=/reservas')
 
-  const today = new Date().toISOString().split('T')[0]
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  // BRT = UTC-3: garante que agendamentos de hoje não somem após 21h UTC
+  const today = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0]
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000 - 3 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   // Usa adminClient para buscar reservas de produtos (evita complexidade de RLS com visitantes)
   const adminClient = createAdminClient()

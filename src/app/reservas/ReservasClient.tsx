@@ -217,6 +217,7 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
       setAppointments((prev) => prev.filter((a) => a.id !== id))
       toast.success('Reserva cancelada.')
       setConfirmId(null)
+      router.refresh()
     } else {
       toast.error(result.error ?? 'Erro ao cancelar.')
     }
@@ -625,6 +626,35 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                             >
                               {fiadoLoadingId === appt.id ? 'Aguarde...' : '💳 Pagar dívida (Mercado Pago)'}
                             </button>
+                          )}
+                          {appt.status === 'confirmado' && (
+                            confirmId === appt.id ? (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => { void handleCancel(appt.id) }}
+                                  disabled={cancelling === appt.id}
+                                  onTouchStart={() => {}}
+                                  className="flex-1 text-[11px] font-black uppercase tracking-widest text-white bg-red-600/20 border border-red-500/30 py-2 rounded-lg hover:bg-red-600/30 transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  {cancelling === appt.id ? 'Cancelando...' : 'Confirmar cancelamento'}
+                                </button>
+                                <button
+                                  onClick={() => setConfirmId(null)}
+                                  onTouchStart={() => {}}
+                                  className="text-[11px] text-zinc-400 border border-white/10 px-3 py-2 rounded-lg hover:text-white transition-colors cursor-pointer"
+                                >
+                                  Voltar
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmId(appt.id)}
+                                onTouchStart={() => {}}
+                                className="w-full text-[11px] font-bold uppercase tracking-widest text-zinc-400 border border-white/10 py-2 rounded-lg hover:text-red-400 hover:border-red-500/30 transition-colors cursor-pointer"
+                              >
+                                Cancelar reserva
+                              </button>
+                            )
                           )}
                         </div>
                       ))}
