@@ -9,6 +9,7 @@ export function LoginButton({ nextPath = '/agendar' }: { nextPath?: string }) {
   const [isRedirecting, setIsRedirecting] = useState(false)
 
   const handleLogin = async () => {
+    if (isRedirecting) return
     setIsRedirecting(true)
     try {
       await signInWithGoogle(nextPath)
@@ -19,7 +20,8 @@ export function LoginButton({ nextPath = '/agendar' }: { nextPath?: string }) {
 
   return (
     <Button
-      onClick={handleLogin}
+      type="button"
+      onClick={() => void handleLogin()}
       variant="outline"
       disabled={isRedirecting}
       className="w-full h-11 flex items-center justify-center gap-3 border-border text-sm font-medium disabled:opacity-80"

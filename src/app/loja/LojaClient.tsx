@@ -211,7 +211,9 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
                   <button
                     key={product.id}
                     onClick={() => openModal(product)}
+                    onTouchStart={() => {}}
                     disabled={!inStock && !isReserved}
+                    style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
                     className="flex flex-col rounded-2xl border border-white/6 bg-zinc-900 overflow-hidden text-left disabled:opacity-60"
                   >
                     <div className="w-full aspect-square bg-white/5 overflow-hidden relative">
@@ -278,7 +280,12 @@ export function LojaClient({ products, myReservations: serverReservations, isLog
       {/* Modal de produto (bottom sheet) */}
       {modalProduct && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer" onClick={closeModal} />
+          <button
+            type="button"
+            aria-label="Fechar modal do produto"
+            className="style-reset absolute inset-0 bg-black/70 backdrop-blur-sm cursor-pointer"
+            onClick={closeModal}
+          />
           <div className="relative bg-zinc-950 border-t border-white/10 rounded-t-3xl max-h-[90dvh] overflow-y-auto flex flex-col">
             {/* Imagem */}
             {modalProduct.cover_image_url && (
