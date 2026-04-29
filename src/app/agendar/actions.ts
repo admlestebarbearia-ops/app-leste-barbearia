@@ -691,7 +691,8 @@ export async function getMyAppointments() {
 
   if (!ownershipFilter) return { appointments: [] }
 
-  const today = format(new Date(), 'yyyy-MM-dd')
+  // BRT = UTC-3: garante que agendamentos de hoje não somem após 21h UTC
+  const today = format(new Date(Date.now() - 3 * 60 * 60 * 1000), 'yyyy-MM-dd')
 
   const { data } = await supabase
     .from('appointments')
