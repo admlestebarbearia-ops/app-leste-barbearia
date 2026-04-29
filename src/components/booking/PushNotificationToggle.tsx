@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Bell, BellOff, X, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { savePushSubscription, removePushSubscription } from '@/app/api/push/actions'
+import { ensurePushBrowserSession } from '@/lib/push/browser-session'
 
 // Chave pública VAPID (exposta ao cliente, sem risco)
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
@@ -106,6 +107,11 @@ export function PushNotificationToggle({ compact = false }: { compact?: boolean 
           return
         }
 
+        const pushSession = await ensurePushBrowserSession()
+        if (pushSession.created) {
+          console.info('[push/toggle] anonymous session created for push', { sessionKind: pushSession.sessionKind })
+        }
+
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY).buffer as ArrayBuffer,
@@ -127,6 +133,12 @@ export function PushNotificationToggle({ compact = false }: { compact?: boolean 
           // Injeta VAPID key para o SW poder renovar automaticamente
           await injectVapidKeyToSw(reg)
           setSubscribed(true)
+          if (result.linkedAppointments && result.linkedAppointments > 0) {
+            console.info('[push/toggle] guest appointments linked to push session', {
+              linkedAppointments: result.linkedAppointments,
+              sessionKind: result.sessionKind ?? null,
+            })
+          }
           toast.success('Lembretes ativados! Você receberá avisos antes do seu agendamento.')
         }
       }
@@ -210,7 +222,7 @@ export function PushNotificationToggle({ compact = false }: { compact?: boolean 
               <ol className="space-y-2">
                 {steps.map((step, i) => (
                   <li key={i} className="flex items-start gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
+                    <span className="shrink-0 w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5">
                       {i + 1}
                     </span>
                     <span className="text-sm text-foreground leading-snug">{step}</span>

@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { savePushSubscription } from '@/app/api/push/actions'
+import { ensurePushBrowserSession } from '@/lib/push/browser-session'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
 
@@ -25,44 +27,97 @@ function isStandalone() {
   )
 }
 
+async function injectVapidKeyToSw(reg: ServiceWorkerRegistration) {
+  const sw = reg.active ?? reg.waiting ?? reg.installing
+  if (!sw || !VAPID_PUBLIC_KEY) return
+  sw.postMessage({ type: 'SET_VAPID_KEY', vapidKey: VAPID_PUBLIC_KEY })
+}
+
 export function PushNotificationModal() {
   const [visible, setVisible] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     // iOS fora do PWA: push não é suportado — não exibir
-    if (isIos() && !isStandalone()) return
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
-    if (typeof Notification === 'undefined') return
+    if (isIos() && !isStandalone()) {
+      console.info('[push/modal] hidden: ios requires installed PWA')
+      return
+    }
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.info('[push/modal] hidden: push unsupported in browser')
+      return
+    }
+    if (typeof Notification === 'undefined') {
+      console.info('[push/modal] hidden: Notification API unavailable')
+      return
+    }
     // Só exibe se ainda não decidiram (nem granted nem denied)
-    if (Notification.permission !== 'default') return
+    if (Notification.permission !== 'default') {
+      console.info('[push/modal] hidden: permission already decided', { permission: Notification.permission })
+      return
+    }
 
     const timer = setTimeout(() => setVisible(true), 1200)
     return () => clearTimeout(timer)
   }, [])
 
   async function handleActivate() {
-    if (!VAPID_PUBLIC_KEY || loading) return
+    if (!VAPID_PUBLIC_KEY || loading) {
+      console.warn('[push/modal] activation blocked: missing VAPID public key or already loading')
+      if (!VAPID_PUBLIC_KEY) {
+        toast.error('Avisos indisponíveis neste momento. Tente novamente mais tarde.')
+      }
+      return
+    }
+
     setLoading(true)
     try {
       const permission = await Notification.requestPermission()
       if (permission === 'granted') {
+        const pushSession = await ensurePushBrowserSession()
+        if (pushSession.created) {
+          console.info('[push/modal] anonymous session created for push', { sessionKind: pushSession.sessionKind })
+        }
+
         const reg = await navigator.serviceWorker.ready
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY).buffer as ArrayBuffer,
         })
         const subJson = sub.toJSON()
-        await savePushSubscription({
+        const result = await savePushSubscription({
           endpoint: sub.endpoint,
           keys: {
             p256dh: subJson.keys?.p256dh ?? '',
             auth: subJson.keys?.auth ?? '',
           },
         })
+
+        if (!result.success) {
+          console.warn('[push/modal] subscription save failed', { error: result.error ?? 'unknown' })
+          toast.error('Permissão concedida, mas este aparelho não foi vinculado aos avisos.')
+          await sub.unsubscribe().catch(() => {})
+          return
+        }
+
+        if (result.linkedAppointments && result.linkedAppointments > 0) {
+          console.info('[push/modal] guest appointments linked to push session', {
+            linkedAppointments: result.linkedAppointments,
+            sessionKind: result.sessionKind ?? null,
+          })
+        }
+
+        await injectVapidKeyToSw(reg)
+        toast.success('Avisos ativados neste aparelho.')
+      } else if (permission === 'denied') {
+        console.info('[push/modal] permission denied by user')
+        toast.error('Notificações bloqueadas. Libere nas configurações do navegador para receber avisos.')
+      } else {
+        console.info('[push/modal] permission dismissed by user')
       }
     } catch (e) {
       console.error('[PushModal]', e)
+      toast.error('Falha ao ativar os avisos neste aparelho.')
     } finally {
       setLoading(false)
       setVisible(false)

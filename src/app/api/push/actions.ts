@@ -2,7 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isAuthenticatedUser } from '@/lib/auth/session-state'
+import { cookies } from 'next/headers'
+import { GUEST_BOOKING_PHONE_COOKIE, normalizePhoneLookup } from '@/lib/auth/session-state'
 import webpush from 'web-push'
 
 // ─── Configurar VAPID ────────────────────────────────────────────────────
@@ -27,29 +28,97 @@ export interface PushPayload {
   data?: Record<string, unknown>
 }
 
+type PushSkipReason = 'missing-vapid' | 'no-subscriptions' | 'no-admin-profiles' | null
+
+interface PushDeliveryResult {
+  sent: number
+  failed: number
+  subscriptions: number
+  expiredRemoved: number
+  skippedReason: PushSkipReason
+}
+
+type PushSessionKind = 'authenticated' | 'anonymous'
+
+function resolvePushSessionOwner(user: { id?: string; is_anonymous?: boolean } | null | undefined) {
+  if (!user?.id) return null
+
+  return {
+    userId: user.id,
+    sessionKind: user.is_anonymous ? 'anonymous' as const : 'authenticated' as const,
+  }
+}
+
+async function linkGuestAppointmentsToPushOwner(userId: string) {
+  const cookieStore = await cookies()
+  const guestPhone = normalizePhoneLookup(cookieStore.get(GUEST_BOOKING_PHONE_COOKIE)?.value)
+
+  if (!guestPhone) return 0
+
+  const adminSupabase = createAdminClient()
+  const { data, error } = await adminSupabase
+    .from('appointments')
+    .update({ client_id: userId })
+    .is('client_id', null)
+    .eq('client_phone', guestPhone)
+    .in('status', ['confirmado', 'aguardando_pagamento'])
+    .select('id')
+
+  if (error) throw error
+  return data?.length ?? 0
+}
+
+function logPushDelivery(scope: 'user' | 'admins', target: string, payload: PushPayload, result: PushDeliveryResult) {
+  if (result.sent > 0 && result.failed === 0 && result.expiredRemoved === 0) return
+
+  console.warn(`[push/${scope}] delivery summary`, {
+    target,
+    tag: payload.tag ?? null,
+    url: payload.url ?? null,
+    sent: result.sent,
+    failed: result.failed,
+    subscriptions: result.subscriptions,
+    expiredRemoved: result.expiredRemoved,
+    skippedReason: result.skippedReason,
+  })
+}
+
 // ─── Salvar subscription push do usuário ────────────────────────────────
 export async function savePushSubscription(subscription: {
   endpoint: string
   keys: { p256dh: string; auth: string }
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; error?: string; sessionKind?: PushSessionKind; linkedAppointments?: number }> {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!isAuthenticatedUser(user)) {
+    const owner = resolvePushSessionOwner(user)
+
+    if (!owner) {
       return { success: false, error: 'Usuário não autenticado.' }
     }
 
     const { error } = await supabase
       .from('push_subscriptions')
       .upsert({
-        user_id: user.id,
+        user_id: owner.userId,
         endpoint: subscription.endpoint,
         p256dh: subscription.keys.p256dh,
         auth_key: subscription.keys.auth,
       }, { onConflict: 'user_id,endpoint' })
 
     if (error) throw error
-    return { success: true }
+
+    let linkedAppointments = 0
+    try {
+      linkedAppointments = await linkGuestAppointmentsToPushOwner(owner.userId)
+    } catch (linkError) {
+      console.warn('[push/save] failed to link guest appointments', {
+        target: owner.userId.slice(0, 8),
+        error: linkError instanceof Error ? linkError.message : String(linkError),
+      })
+    }
+
+    return { success: true, sessionKind: owner.sessionKind, linkedAppointments }
   } catch (e) {
     return { success: false, error: (e as Error).message }
   }
@@ -60,14 +129,16 @@ export async function removePushSubscription(endpoint: string): Promise<{ succes
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!isAuthenticatedUser(user)) {
+    const owner = resolvePushSessionOwner(user)
+
+    if (!owner) {
       return { success: false, error: 'Usuário não autenticado.' }
     }
 
     const { error } = await supabase
       .from('push_subscriptions')
       .delete()
-      .eq('user_id', user.id)
+      .eq('user_id', owner.userId)
       .eq('endpoint', endpoint)
 
     if (error) throw error
@@ -81,9 +152,11 @@ export async function removePushSubscription(endpoint: string): Promise<{ succes
 export async function sendPushToUser(
   userId: string,
   payload: PushPayload
-): Promise<{ sent: number; failed: number }> {
+) : Promise<PushDeliveryResult> {
   const vapid = getVapidConfig()
-  if (!vapid) return { sent: 0, failed: 0 }
+  if (!vapid) {
+    return { sent: 0, failed: 0, subscriptions: 0, expiredRemoved: 0, skippedReason: 'missing-vapid' }
+  }
 
   webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey)
 
@@ -93,7 +166,9 @@ export async function sendPushToUser(
     .select('id, endpoint, p256dh, auth_key')
     .eq('user_id', userId)
 
-  if (!subs || subs.length === 0) return { sent: 0, failed: 0 }
+  if (!subs || subs.length === 0) {
+    return { sent: 0, failed: 0, subscriptions: 0, expiredRemoved: 0, skippedReason: 'no-subscriptions' }
+  }
 
   let sent = 0
   let failed = 0
@@ -127,7 +202,13 @@ export async function sendPushToUser(
       .in('endpoint', expiredEndpoints)
   }
 
-  return { sent, failed }
+  return {
+    sent,
+    failed,
+    subscriptions: subs.length,
+    expiredRemoved: expiredEndpoints.length,
+    skippedReason: null,
+  }
 }
 
 // ─── Enviar push para todos os admins ────────────────────────────────────
@@ -135,9 +216,11 @@ export async function sendPushToUser(
 // Fire-and-forget: não levanta exception - usá-la como `void sendPushToAdmins(...)`
 export async function sendPushToAdmins(
   payload: PushPayload
-): Promise<{ sent: number; failed: number }> {
+) : Promise<PushDeliveryResult> {
   const vapid = getVapidConfig()
-  if (!vapid) return { sent: 0, failed: 0 }
+  if (!vapid) {
+    return { sent: 0, failed: 0, subscriptions: 0, expiredRemoved: 0, skippedReason: 'missing-vapid' }
+  }
 
   const adminSupabase = createAdminClient()
 
@@ -147,7 +230,9 @@ export async function sendPushToAdmins(
     .select('id')
     .eq('is_admin', true)
 
-  if (!adminProfiles || adminProfiles.length === 0) return { sent: 0, failed: 0 }
+  if (!adminProfiles || adminProfiles.length === 0) {
+    return { sent: 0, failed: 0, subscriptions: 0, expiredRemoved: 0, skippedReason: 'no-admin-profiles' }
+  }
 
   const adminIds = adminProfiles.map((p) => p.id)
 
@@ -156,7 +241,9 @@ export async function sendPushToAdmins(
     .select('endpoint, p256dh, auth_key, user_id')
     .in('user_id', adminIds)
 
-  if (!subs || subs.length === 0) return { sent: 0, failed: 0 }
+  if (!subs || subs.length === 0) {
+    return { sent: 0, failed: 0, subscriptions: 0, expiredRemoved: 0, skippedReason: 'no-subscriptions' }
+  }
 
   webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey)
 
@@ -189,7 +276,13 @@ export async function sendPushToAdmins(
       .in('endpoint', expiredEndpoints)
   }
 
-  return { sent, failed }
+  return {
+    sent,
+    failed,
+    subscriptions: subs.length,
+    expiredRemoved: expiredEndpoints.length,
+    skippedReason: null,
+  }
 }
 
 // ─── Helper: disparo silencioso (não propaga exceção) ────────────────────
@@ -200,16 +293,30 @@ export async function firePushToUser(
 ): Promise<void> {
   if (!userId) return
   try {
-    await sendPushToUser(userId, payload)
-  } catch {
+    const result = await sendPushToUser(userId, payload)
+    logPushDelivery('user', userId.slice(0, 8), payload, result)
+  } catch (error) {
+    console.error('[push/user] unexpected failure', {
+      target: userId.slice(0, 8),
+      tag: payload.tag ?? null,
+      url: payload.url ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    })
     // Notificações não devem quebrar o fluxo principal
   }
 }
 
 export async function firePushToAdmins(payload: PushPayload): Promise<void> {
   try {
-    await sendPushToAdmins(payload)
-  } catch {
+    const result = await sendPushToAdmins(payload)
+    logPushDelivery('admins', 'all-admins', payload, result)
+  } catch (error) {
+    console.error('[push/admins] unexpected failure', {
+      target: 'all-admins',
+      tag: payload.tag ?? null,
+      url: payload.url ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    })
     // Notificações não devem quebrar o fluxo principal
   }
 }

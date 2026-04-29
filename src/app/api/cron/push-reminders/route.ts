@@ -92,6 +92,7 @@ export async function GET(request: Request) {
     }
 
     const sentCounts: Record<string, number> = {}
+    const skippedCounts: Record<string, number> = {}
     let failed = 0
 
     for (const appt of appointments) {
@@ -123,10 +124,22 @@ export async function GET(request: Request) {
         sentCounts[reminder.label] = (sentCounts[reminder.label] ?? 0) + result.sent
         failed += result.failed
 
-        await adminSupabase
-          .from('appointments')
-          .update({ [reminder.flag]: true })
-          .eq('id', appt.id)
+        if (result.sent > 0) {
+          await adminSupabase
+            .from('appointments')
+            .update({ [reminder.flag]: true })
+            .eq('id', appt.id)
+        } else {
+          const reasonKey = result.skippedReason ?? 'delivery-failed'
+          skippedCounts[reasonKey] = (skippedCounts[reasonKey] ?? 0) + 1
+          console.warn('[cron/push-reminders] push not delivered; reminder flag preserved', {
+            appointmentId: appt.id,
+            reminder: reminder.label,
+            reason: reasonKey,
+            subscriptions: result.subscriptions,
+            failed: result.failed,
+          })
+        }
       }
     }
 
@@ -250,6 +263,7 @@ export async function GET(request: Request) {
       nowBrasilia: toTimeStr(nowMinutes),
       appointments: appointments.length,
       sent: sentCounts,
+      skipped: skippedCounts,
       failed,
       expiredIntents: expiredIntents?.length ?? 0,
       waSent,

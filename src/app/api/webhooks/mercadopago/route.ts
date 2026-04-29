@@ -169,8 +169,8 @@ export async function POST(request: NextRequest) {
               console.error('[Fiado] Exceção ao dar baixa automática:', ftEx)
             }
 
-            // Notifica admin: fiado quitado via MP
-            void firePushToAdmins({
+            // Notificação crítica: aguarda o envio para não perder o push ao encerrar a execução serverless.
+            await firePushToAdmins({
               title: '💰 Fiado quitado via Mercado Pago',
               body: `${(appt as Record<string, unknown>)?.client_name ?? 'Cliente'} pagou o agendamento de ${String((appt as Record<string, unknown>)?.date ?? '').split('-').reverse().join('/')} às ${String((appt as Record<string, unknown>)?.start_time ?? '').slice(0, 5)}`,
               url: '/admin',
@@ -181,20 +181,22 @@ export async function POST(request: NextRequest) {
 
           // Pagamento normal aprovado → notifica cliente e admins
           if (status === 'confirmado') {
-            if (appt?.client_id) {
-              void firePushToUser(appt.client_id, {
-                title: '💳 Pagamento confirmado!',
-                body: `${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)} está confirmado.`,
-                url: '/reservas',
-                tag: `pagamento-confirmado-${appointmentId}`,
-              })
-            }
-            void firePushToAdmins({
-              title: '💳 Pagamento recebido',
-              body: `${appt?.client_name ?? 'Cliente'} — ${appt?.service_name_snapshot ?? 'Serviço'} em ${appt?.date?.split('-').reverse().join('/') ?? '?'} às ${appt?.start_time?.slice(0, 5) ?? '?'}`,
-              url: '/admin',
-              tag: `admin-pagamento-${appointmentId}`,
-            })
+            await Promise.allSettled([
+              appt?.client_id
+                ? firePushToUser(appt.client_id, {
+                    title: '💳 Pagamento confirmado!',
+                    body: `${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)} está confirmado.`,
+                    url: '/reservas',
+                    tag: `pagamento-confirmado-${appointmentId}`,
+                  })
+                : Promise.resolve(),
+              firePushToAdmins({
+                title: '💳 Pagamento recebido',
+                body: `${appt?.client_name ?? 'Cliente'} — ${appt?.service_name_snapshot ?? 'Serviço'} em ${appt?.date?.split('-').reverse().join('/') ?? '?'} às ${appt?.start_time?.slice(0, 5) ?? '?'}`,
+                url: '/admin',
+                tag: `admin-pagamento-${appointmentId}`,
+              }),
+            ])
           }
         },
         updateProductReservationStatus: async (reservationId, status) => {
