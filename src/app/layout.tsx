@@ -3,6 +3,8 @@ import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import PwaPrompt from "@/components/ui/pwa-prompt";
+import { GlobalPushModal } from "@/components/ui/global-push-modal";
+import IosTouchFix from "@/components/IosTouchFix";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -94,6 +96,13 @@ export default function RootLayout({
             __html: `window.__pwaPrompt=null;window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__pwaPrompt=e;});`,
           }}
         />
+        {process.env.NODE_ENV === 'production' && (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `window.addEventListener('load',function(){if('serviceWorker'in navigator){navigator.serviceWorker.register('/sw.js').then(function(){console.info('[sw/layout] registered early')}).catch(function(err){console.warn('[sw/layout] register failed',err)})}});`,
+            }}
+          />
+        )}
       </head>
       <body className="min-h-full flex flex-col antialiased overflow-x-hidden" suppressHydrationWarning>
         <ThemeProvider
@@ -101,9 +110,11 @@ export default function RootLayout({
           forcedTheme="dark"
           disableTransitionOnChange
         >
+          <IosTouchFix />
           {children}
           <Toaster richColors theme="dark" />
           <PwaPrompt />
+          <GlobalPushModal />
         </ThemeProvider>
       </body>
     </html>

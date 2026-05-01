@@ -7,8 +7,7 @@ import { ptBR } from 'date-fns/locale'
 import { ProductVitrine } from './ProductVitrine'
 import { getActiveProducts } from '@/app/agendar/actions'
 import { GUEST_BOOKING_PHONE_COOKIE, normalizePhoneLookup } from '@/lib/auth/session-state'
-import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
-import { PushNotificationModal } from './PushNotificationModal'
+import { PushGateButton } from './PushGateButton'
 import type { BusinessConfig } from '@/lib/supabase/types'
 
 interface Props {
@@ -64,8 +63,7 @@ export default async function SucessoPage({ searchParams }: Props) {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-background">
-      {/* Modal agressivo de opt-in push — exibe automaticamente se permissão ainda não decidida */}
-      <PushNotificationModal />
+
       <div className="w-full max-w-sm flex flex-col items-center gap-8">
 
         <Image
@@ -135,18 +133,11 @@ export default async function SucessoPage({ searchParams }: Props) {
           </div>
         </div>
 
-        <a
+        <PushGateButton
           href="/reservas"
+          label="Ver minhas reservas"
           className="w-full h-12 flex items-center justify-center rounded-xl bg-primary text-primary-foreground text-sm font-bold tracking-wide hover:bg-primary/90 transition-colors"
-        >
-          Ver minhas reservas
-        </a>
-
-        {/* Prompt para ativar lembretes push */}
-        <div className="w-full flex flex-col items-center gap-1.5">
-          <p className="text-xs text-muted-foreground text-center">Receba lembretes antes do seu horário:</p>
-          <PushNotificationToggle />
-        </div>
+        />
 
         {products.length > 0 && (
           <ProductVitrine

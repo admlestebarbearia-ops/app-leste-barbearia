@@ -1,8 +1,10 @@
-name: Push reminders
+name: Push reminders (backup manual)
+
+# CRON PRINCIPAL: cron-job.org → https://lestebarbearia.agenciajn.com.br/api/cron/push-reminders
+# Este workflow é SOMENTE backup manual (workflow_dispatch) ou caso cron-job.org fique fora.
+# O GitHub Actions free tier tem atraso de até 30 min em schedule — não usar como primário.
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 concurrency:
