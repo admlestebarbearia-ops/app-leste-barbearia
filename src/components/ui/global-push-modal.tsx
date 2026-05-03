@@ -15,14 +15,14 @@
 
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { Bell, Download, X } from 'lucide-react'
+import { Bell, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { savePushSubscription } from '@/app/api/push/actions'
 import { ensurePushBrowserSession } from '@/lib/push/browser-session'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
 const DISMISSED_KEY = 'push_prompt_dismissed_v1'
-const DISMISS_DAYS = 15
+const DISMISS_DAYS = 3
 
 // Rotas que já têm seu próprio modal de push — evitar duplicata
 const SKIP_PATHS = ['/agendar/sucesso']
@@ -108,8 +108,8 @@ export function GlobalPushModal() {
     }
     window.addEventListener('beforeinstallprompt', beforeInstallHandler)
 
-    // Espera 5 s antes de exibir para não interromper a navegação inicial
-    const timer = setTimeout(() => setVisible(true), 5000)
+    // Espera 2 s antes de exibir para não interromper a navegação inicial
+    const timer = setTimeout(() => setVisible(true), 2000)
 
     return () => {
       clearTimeout(timer)
@@ -195,23 +195,15 @@ export function GlobalPushModal() {
             <Bell className="size-5 text-primary" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-foreground leading-tight">Não perca seu horário!</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Ative os avisos para receber lembretes antes do corte.</p>
+            <p className="text-sm font-bold text-foreground leading-tight">Ative os lembretes do seu corte!</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Aviso no celular antes de chegar sua hora.</p>
           </div>
-          <button
-            onClick={handleDismiss}
-            aria-label="Fechar"
-            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors p-1"
-          >
-            <X className="size-4" />
-          </button>
         </div>
 
         {/* Body */}
         <div className="px-5 py-4 flex flex-col gap-3">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            O sistema avisa automaticamente <strong className="text-foreground">20, 10 e 5 minutos</strong> antes
-            do seu corte — diretamente no aparelho, sem precisar abrir o app.
+            Receba avisos <strong className="text-foreground">20, 10 e 5 minutos</strong> antes do seu corte — direto no celular, sem precisar abrir o app.
           </p>
 
           {/* Botão principal: ativar push */}
@@ -236,13 +228,13 @@ export function GlobalPushModal() {
             </button>
           )}
 
-          {/* Recusa com ciência */}
+          {/* Recusa */}
           <button
             type="button"
             onClick={handleDismiss}
             className="text-xs text-muted-foreground/60 underline underline-offset-2 text-center w-full"
           >
-            Não quero receber lembretes (dispensar por {DISMISS_DAYS} dias)
+            Agora não
           </button>
         </div>
       </div>
