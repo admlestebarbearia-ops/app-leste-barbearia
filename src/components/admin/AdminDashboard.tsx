@@ -135,6 +135,26 @@ export function AdminDashboard({
 }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('hoje')
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const requestRefresh = React.useCallback(() => {
+    if (refreshTimerRef.current) return
+
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null
+      React.startTransition(() => {
+        router.refresh()
+      })
+    }, 120)
+  }, [router])
+
+  useEffect(() => {
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current)
+      }
+    }
+  }, [])
 
   // Melhoria 2: lê ?tab= da URL na montagem para preservar aba após refresh
   useEffect(() => {
@@ -438,6 +458,14 @@ export function AdminDashboard({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Voltar ao site do cliente */}
+            <a
+              href="/"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 border border-white/10 bg-white/[0.03] hover:text-white hover:border-white/20 transition-all"
+            >
+              ← Site
+            </a>
+
             {/* Notificações push para o admin */}
             <PushNotificationToggle compact />
 
@@ -474,7 +502,7 @@ export function AdminDashboard({
             services={services}
             displayPref={config.display_name_preference}
             config={config}
-            onRefresh={() => router.refresh()}
+            onRefresh={requestRefresh}
             queryError={appointmentsError}
             productReservationsByAppt={productReservationsByAppt}
             standaloneReservations={standaloneReservations}
@@ -497,11 +525,11 @@ export function AdminDashboard({
             config={config}
             workingHours={workingHours}
             specialSchedules={specialSchedules}
-            onRefresh={() => router.refresh()}
+            onRefresh={requestRefresh}
           />
         )}
         {tab === 'servicos' && (
-          <TabServicos services={services} onRefresh={() => router.refresh()} />
+          <TabServicos services={services} onRefresh={requestRefresh} />
         )}
         {tab === 'barbeiros' && (
           <TabBarbeiros />
@@ -516,11 +544,11 @@ export function AdminDashboard({
           <TabProdutos
             config={config}
             products={products}
-            onRefresh={() => router.refresh()}
+            onRefresh={requestRefresh}
           />
         )}
         {tab === 'financeiro' && (
-          <TabFinanceiro config={config} onRefresh={() => router.refresh()} />
+          <TabFinanceiro config={config} onRefresh={requestRefresh} />
         )}
         {tab === 'clientes' && (
           <TabClientes />
@@ -685,13 +713,15 @@ function TabHoje({
   const concludeCanSkipManualPayment = concludeHasApprovedOnlinePayment || concludeHasExistingRevenue
 
   useEffect(() => {
+    const isDev = process.env.NODE_ENV !== 'production'
+
     if (typeof window !== 'undefined') {
       if ('Notification' in window) setNotifPermission(Notification.permission)
       setIsStandalone(
         window.matchMedia('(display-mode: standalone)').matches ||
         (navigator as unknown as { standalone?: boolean }).standalone === true
       )
-      if ('serviceWorker' in navigator) {
+      if (!isDev && 'serviceWorker' in navigator) {
         navigator.serviceWorker.register('/sw.js').then((reg) => {
           swRef.current = reg
         }).catch(() => {})
@@ -732,16 +762,31 @@ function TabHoje({
 
     setNotifLoading(true)
     try {
+      if ('serviceWorker' in navigator && !swRef.current) {
+        swRef.current = await navigator.serviceWorker.register('/sw.js').catch((err) => {
+          console.warn('[admin/push] sw register failed before permission', err)
+          return null
+        })
+      }
+
       const result = await Notification.requestPermission()
       setNotifPermission(result)
       if (result === 'granted') {
         if ('serviceWorker' in navigator && !swRef.current) {
           swRef.current = await navigator.serviceWorker.register('/sw.js').catch(() => null)
         }
+        console.info('[admin/push] permission granted')
+        alert('Notificações ativadas com sucesso!')
         toast.success('Notificações ativadas! Você receberá alertas mesmo com a tela bloqueada.')
       } else if (result === 'denied') {
+        console.info('[admin/push] permission denied')
+        alert('Permissão negada. Por favor, desbloqueia as notificações no ícone do cadeado ao lado do URL.')
         toast.error('Permissão negada. Para ativar, clique no cadeado 🔒 na barra de endereço e permita notificações.')
       }
+    } catch (error) {
+      console.error('[admin/push] request permission failed', error)
+      alert('Ocorreu um erro técnico ao pedir permissão.')
+      toast.error('Não foi possível ativar notificações agora. Tente novamente.')
     } finally {
       setNotifLoading(false)
     }
@@ -879,7 +924,11 @@ function TabHoje({
             const d = updated.date ?? ''
             const t = updated.start_time?.slice(0, 5) ?? ''
             const name = updated.client_name ?? 'Cliente'
-            toast.error(`${name} cancelou — ${d ? d.split('-').reverse().join('/') : ''} às ${t}`, { duration: 8000, icon: '❌' })
+            const cancelledByAdmin = updated.cancelled_by_admin === true
+            toast.error(
+              `${cancelledByAdmin ? 'Cancelado pela barbearia' : `${name} cancelou`} — ${d ? d.split('-').reverse().join('/') : ''} às ${t}`,
+              { duration: 8000, icon: '❌' }
+            )
             try { navigator.vibrate?.([200, 100, 200]) } catch {}
             try {
               const ctx = new AudioContext()
@@ -2698,11 +2747,20 @@ function TabConfiguracoes({
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs text-muted-foreground">Prazo mínimo para cancelamento</Label>
-                <p className="text-[11px] text-muted-foreground/70">Ex: 60 = cliente pode cancelar até 1h antes. 0 = a qualquer momento.</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <Input type="number" min="0" value={cancelWindow} onChange={(e) => setCancelWindow(e.target.value)} className="h-9 w-24" />
-                  <span className="text-xs text-muted-foreground">minutos antes</span>
-                </div>
+                <p className="text-[11px] text-muted-foreground/70">Tempo mínimo de antecedência para o cliente conseguir cancelar sozinho pelo app.</p>
+                <select
+                  value={cancelWindow}
+                  onChange={(e) => setCancelWindow(e.target.value)}
+                  className="h-9 w-52 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                >
+                  {!['0', '60', '120', '1440'].includes(cancelWindow) && (
+                    <option value={cancelWindow} disabled>Personalizado ({cancelWindow} min)</option>
+                  )}
+                  <option value="0">A qualquer momento (livre)</option>
+                  <option value="60">1 hora antes</option>
+                  <option value="120">2 horas antes</option>
+                  <option value="1440">24 horas antes</option>
+                </select>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs text-muted-foreground">Intervalo entre horários disponíveis</Label>
