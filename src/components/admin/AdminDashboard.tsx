@@ -2369,6 +2369,8 @@ function TabConfiguracoes({
   useEffect(() => { setMpConnected(!!config.mp_access_token) }, [config.mp_access_token])
   const [paymentMode, setPaymentMode] = useState<'presencial' | 'online_obrigatorio'>(config.payment_mode ?? 'presencial')
   const [aceitaDinheiro, setAceitaDinheiro] = useState<boolean>(config.aceita_dinheiro ?? true)
+  const [requireAdvancePayment, setRequireAdvancePayment] = useState<boolean>(config.require_advance_payment_distant_bookings ?? false)
+  const [distantBookingDays, setDistantBookingDays] = useState<string>(String(config.distant_booking_threshold_days ?? 7))
   const [mpExpiryMinutes, setMpExpiryMinutes] = useState(String(normalizePaymentExpiryMinutes(config.payment_expiry_minutes)))
   const [savingMp, setSavingMp] = useState(false)
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false)
@@ -2533,10 +2535,14 @@ function TabConfiguracoes({
       return
     }
     setSavingMp(true)
+    const thresholdParsed = parseInt(distantBookingDays, 10)
+    const safeThreshold = isNaN(thresholdParsed) || thresholdParsed < 1 ? 7 : thresholdParsed
     const result = await saveMercadoPagoConfig({
       payment_mode: paymentMode,
       payment_expiry_minutes: expiryParsed,
       aceita_dinheiro: aceitaDinheiro,
+      require_advance_payment_distant_bookings: requireAdvancePayment,
+      distant_booking_threshold_days: safeThreshold,
     })
     setSavingMp(false)
     if (result.success) {
@@ -3124,6 +3130,33 @@ function TabConfiguracoes({
                 <span className="text-[11px] text-zinc-500">Cliente pode optar por pagar em dinheiro ao chegar</span>
               </div>
               <Switch checked={aceitaDinheiro} onCheckedChange={setAceitaDinheiro} className="shrink-0" />
+            </div>
+          )}
+
+          {/* Toggle: bloquear pagar na barbearia para datas distantes */}
+          {aceitaDinheiro && (
+            <div className="flex flex-col gap-2 px-3 py-2.5 rounded-xl border border-border">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-0">
+                  <span className="text-xs font-medium text-foreground">Exigir pagamento antecipado para datas distantes</span>
+                  <span className="text-[11px] text-zinc-500">Bloqueia &quot;Pagar na Barbearia&quot; para agendamentos além da janela</span>
+                </div>
+                <Switch checked={requireAdvancePayment} onCheckedChange={setRequireAdvancePayment} className="shrink-0" />
+              </div>
+              {requireAdvancePayment && (
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-[11px] text-zinc-500">A partir de</span>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="365"
+                    value={distantBookingDays}
+                    onChange={(e) => setDistantBookingDays(e.target.value)}
+                    className="h-8 w-16 text-center text-xs"
+                  />
+                  <span className="text-[11px] text-zinc-500">dias de antecedência</span>
+                </div>
+              )}
             </div>
           )}
 

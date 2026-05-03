@@ -284,6 +284,14 @@ export function BookingForm({
     if (options?.clearService) setSelectedService(null)
   }, [])
 
+  // RN-AG-04: o backend (getAvailableSlots) é a fonte de verdade absoluta para
+  // horários passados e restrições de tempo. Filtros extras no frontend podem
+  // ocultar slots válidos indevidamente (ex: o bug do +30 min que escondia 04:30
+  // quando o relógio marcava 04:13). Mantemos a assinatura para não quebrar chamadas.
+  const filterFutureSlotsForSelectedDate = useCallback((slots: string[], _dataSelecionada?: Date) => {
+    return slots
+  }, [])
+
   const refetchCurrentSlots = useCallback(async () => {
     if (!selectedDate || !selectedService) return
     const dateStr = format(selectedDate, 'yyyy-MM-dd')
@@ -293,10 +301,11 @@ export function BookingForm({
       setSelectedTime(null)
       return
     }
-    setAvailableSlots(slots)
+    const filteredSlots = filterFutureSlotsForSelectedDate(slots, selectedDate)
+    setAvailableSlots(filteredSlots)
     // Preserva o horário selecionado se ainda estiver disponível — evita instabilidade do botão "Avançar"
-    setSelectedTime(prev => (prev && slots.includes(prev)) ? prev : null)
-  }, [selectedDate, selectedService])
+    setSelectedTime(prev => (prev && filteredSlots.includes(prev)) ? prev : null)
+  }, [selectedDate, selectedService, filterFutureSlotsForSelectedDate])
 
   // Mantém ref sempre atualizada com a última versão do callback
   useEffect(() => { refetchRef.current = refetchCurrentSlots }, [refetchCurrentSlots])
@@ -486,9 +495,10 @@ export function BookingForm({
         toast.error(error)
         return
       }
-      setAvailableSlots(slots)
+      const filteredSlots = filterFutureSlotsForSelectedDate(slots, date)
+      setAvailableSlots(filteredSlots)
     },
-    [selectedService]
+    [selectedService, filterFutureSlotsForSelectedDate]
   )
 
 const handleConfirm = async () => {
@@ -736,6 +746,12 @@ const handleConfirm = async () => {
 
   const needsPaymentStep = config?.payment_mode === 'online_obrigatorio'
   const aceitaDinheiro = config?.aceita_dinheiro ?? false
+  const requireAdvancePayment = config?.require_advance_payment_distant_bookings ?? false
+  const advancePaymentThresholdDays = config?.distant_booking_threshold_days ?? 7
+  const diffDaysFromNow = selectedDate
+    ? Math.floor((selectedDate.setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000)
+    : 0
+  const cashBlocked = requireAdvancePayment && diffDaysFromNow >= advancePaymentThresholdDays
   const paymentHoldMinutes = normalizePaymentExpiryMinutes(config?.payment_expiry_minutes)
 
   // Modal de aviso de tolerância (RN08–RN10)
@@ -885,30 +901,40 @@ const handleConfirm = async () => {
 
             {/* Dinheiro (se barbearia aceita) */}
             {aceitaDinheiro && (
-              <button
-                onClick={() => { setPaymentChoice('cash'); setSelectedMpMethod(null) }}
-                className={[
-                  'flex items-center gap-4 rounded-2xl border p-4 transition-all duration-200 text-left',
-                  paymentChoice === 'cash'
-                    ? 'border-amber-500/50 bg-amber-500/10 ring-2 ring-amber-500/20 scale-[1.01]'
-                    : 'border-white/[0.06] bg-[#1a1a1a] hover:border-white/20 active:scale-[0.98]',
-                ].join(' ')}
-              >
-                <div className={['w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors', paymentChoice === 'cash' ? 'bg-amber-500/20' : 'bg-white/5'].join(' ')}>
-                  <Banknote size={22} className={paymentChoice === 'cash' ? 'text-amber-400' : 'text-white/40'} />
-                </div>
-                <div className="flex flex-col gap-0.5 flex-1">
-                  <span className={['text-xs font-extrabold uppercase tracking-wider', paymentChoice === 'cash' ? 'text-amber-400' : 'text-white/60'].join(' ')}>
-                    Pagar na Barbearia
-                  </span>
-                  <span className="text-[10px] text-white/30 font-medium">Você acerta presencialmente no atendimento</span>
-                </div>
-                {paymentChoice === 'cash' && (
-                  <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
-                    <Check size={11} className="text-black" strokeWidth={3} />
-                  </div>
+              <div className="flex flex-col gap-2">
+                {cashBlocked && (
+                  <p className="text-[11px] text-amber-400/70 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 leading-relaxed">
+                    ⚠️ Agendamentos com mais de {advancePaymentThresholdDays} dias de antecedência requerem pagamento online.
+                  </p>
                 )}
-              </button>
+                <button
+                  onClick={() => { if (!cashBlocked) { setPaymentChoice('cash'); setSelectedMpMethod(null) } }}
+                  disabled={cashBlocked}
+                  className={[
+                    'flex items-center gap-4 rounded-2xl border p-4 transition-all duration-200 text-left',
+                    cashBlocked
+                      ? 'border-white/[0.04] bg-[#151515] opacity-40 cursor-not-allowed'
+                      : paymentChoice === 'cash'
+                      ? 'border-amber-500/50 bg-amber-500/10 ring-2 ring-amber-500/20 scale-[1.01]'
+                      : 'border-white/[0.06] bg-[#1a1a1a] hover:border-white/20 active:scale-[0.98]',
+                  ].join(' ')}
+                >
+                  <div className={['w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors', paymentChoice === 'cash' && !cashBlocked ? 'bg-amber-500/20' : 'bg-white/5'].join(' ')}>
+                    <Banknote size={22} className={paymentChoice === 'cash' && !cashBlocked ? 'text-amber-400' : 'text-white/40'} />
+                  </div>
+                  <div className="flex flex-col gap-0.5 flex-1">
+                    <span className={['text-xs font-extrabold uppercase tracking-wider', paymentChoice === 'cash' && !cashBlocked ? 'text-amber-400' : 'text-white/60'].join(' ')}>
+                      Pagar na Barbearia
+                    </span>
+                    <span className="text-[10px] text-white/30 font-medium">Você acerta presencialmente no atendimento</span>
+                  </div>
+                  {paymentChoice === 'cash' && !cashBlocked && (
+                    <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                      <Check size={11} className="text-black" strokeWidth={3} />
+                    </div>
+                  )}
+                </button>
+              </div>
             )}
           </div>
 

@@ -205,24 +205,36 @@ export async function deleteAppointment(
   try {
     const { supabase } = await requireAdmin()
 
-    // Busca detalhes antes de atualizar (para push notification)
+    // Busca detalhes antes de atualizar para decidir se isso é um cancelamento novo
+    // ou apenas ocultação/limpeza de um registro já cancelado.
     const { data: appt } = await supabase
       .from('appointments')
-      .select('client_id, client_name, service_name_snapshot, date, start_time')
+      .select('client_id, client_name, service_name_snapshot, date, start_time, status, cancelled_by_admin, admin_hidden_at')
       .eq('id', appointmentId)
       .single()
+
+    if (!appt) {
+      return { success: false, error: 'Agendamento não encontrado.' }
+    }
+
+    const alreadyCancelled = appt.status === 'cancelado'
 
     // admin_hidden_at oculta apenas do painel do admin.
     // O status fica 'cancelado' para o cliente saber que foi cancelado,
     // mas o agendamento NÃO desaparece do painel do cliente (deleted_at não é tocado).
     const { error } = await supabase
       .from('appointments')
-      .update({ status: 'cancelado', admin_hidden_at: new Date().toISOString() })
+      .update({
+        status: 'cancelado',
+        cancelled_by_admin: true,
+        admin_hidden_at: new Date().toISOString(),
+      })
       .eq('id', appointmentId)
     if (error) throw error
 
-    // Notifica cliente: agendamento cancelado (mesmo fluxo do updateAppointmentStatus)
-    if (appt?.client_id) {
+    // Só notifica quando a ação efetivamente mudou o status para cancelado.
+    // Se o registro já estava cancelado, esta operação é apenas limpeza do painel admin.
+    if (!alreadyCancelled && appt.client_id) {
       await firePushToUser(appt.client_id, {
         title: '❌ Seu agendamento foi cancelado',
         body: `${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)} foi cancelado pela barbearia.`,
@@ -2115,6 +2127,8 @@ export async function saveMercadoPagoConfig(data: {
   payment_mode: 'presencial' | 'online_obrigatorio'
   payment_expiry_minutes: number
   aceita_dinheiro: boolean
+  require_advance_payment_distant_bookings: boolean
+  distant_booking_threshold_days: number
 }): Promise<{ success: boolean; error?: string }> {
   try {
     await requireAdmin()
@@ -2132,6 +2146,8 @@ export async function saveMercadoPagoConfig(data: {
         payment_mode: data.payment_mode,
         payment_expiry_minutes: normalizedExpiry,
         aceita_dinheiro: data.aceita_dinheiro,
+        require_advance_payment_distant_bookings: data.require_advance_payment_distant_bookings,
+        distant_booking_threshold_days: Math.max(1, data.distant_booking_threshold_days),
       })
       .eq('id', 1)
 
