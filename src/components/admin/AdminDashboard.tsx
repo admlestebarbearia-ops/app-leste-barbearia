@@ -924,9 +924,8 @@ function TabHoje({
             const d = updated.date ?? ''
             const t = updated.start_time?.slice(0, 5) ?? ''
             const name = updated.client_name ?? 'Cliente'
-            const cancelledByAdmin = updated.cancelled_by_admin === true
             toast.error(
-              `${cancelledByAdmin ? 'Cancelado pela barbearia' : `${name} cancelou`} — ${d ? d.split('-').reverse().join('/') : ''} às ${t}`,
+              `${name} cancelou — ${d ? d.split('-').reverse().join('/') : ''} às ${t}`,
               { duration: 8000, icon: '❌' }
             )
             try { navigator.vibrate?.([200, 100, 200]) } catch {}
