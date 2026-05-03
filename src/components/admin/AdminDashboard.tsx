@@ -2399,6 +2399,12 @@ function TabConfiguracoes({
   const [folgaMotivo, setFolgaMotivo] = useState('')
   const [addingFolga, setAddingFolga] = useState(false)
 
+  // Horário Especial (Override por data)
+  const [excecaoDate, setExcecaoDate] = useState('')
+  const [excecaoOpen, setExcecaoOpen] = useState('09:00')
+  const [excecaoClose, setExcecaoClose] = useState('18:00')
+  const [addingExcecao, setAddingExcecao] = useState(false)
+
   // Accordion
   const [openSection, setOpenSection] = useState<string>('')
   const toggleSection = (id: string) => setOpenSection(prev => prev === id ? '' : id)
@@ -2658,7 +2664,30 @@ function TabConfiguracoes({
   const handleRemoveFolga = async (id: string) => {
     const result = await removeSpecialSchedule(id)
     if (result.success) { toast.success('Removido.'); onRefresh() }
-    else toast.error(result.error ?? 'Erro.')
+  }
+
+  const handleAddExcecao = async () => {
+    if (!excecaoDate) { toast.error('Selecione uma data.'); return }
+    if (!excecaoOpen || !excecaoClose) { toast.error('Informe abertura e fechamento.'); return }
+    if (excecaoOpen >= excecaoClose) { toast.error('O horário de fechamento precisa ser maior que o de abertura.'); return }
+    setAddingExcecao(true)
+    const result = await addSpecialSchedule({
+      date: excecaoDate,
+      is_closed: false,
+      open_time: excecaoOpen,
+      close_time: excecaoClose,
+      reason: null,
+    })
+    setAddingExcecao(false)
+    if (result.success) {
+      toast.success('Horário especial salvo.')
+      setExcecaoDate('')
+      setExcecaoOpen('09:00')
+      setExcecaoClose('18:00')
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro.')
+    }
   }
 
   return (
@@ -2921,15 +2950,59 @@ function TabConfiguracoes({
                   {addingFolga ? 'Adicionando...' : 'Adicionar folga'}
                 </Button>
               </div>
-              {specialSchedules.length > 0 && (
+              {specialSchedules.filter(ss => ss.is_closed).length > 0 && (
                 <div className="flex flex-col gap-2">
-                  {specialSchedules.map((ss) => (
+                  {specialSchedules.filter(ss => ss.is_closed).map((ss) => (
                     <div key={ss.id} className="flex items-center justify-between bg-card/50 border border-border/50 rounded-xl px-4 py-3">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-sm text-foreground">
                           {new Date(ss.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
                         </span>
                         {ss.reason && <span className="text-xs text-muted-foreground">{ss.reason}</span>}
+                      </div>
+                      <button onClick={() => handleRemoveFolga(ss.id)} className="text-xs text-muted-foreground hover:text-destructive transition-colors">
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Horários Especiais (Exceções por Data) */}
+            <section className="flex flex-col gap-3">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Horários Especiais</h3>
+              <p className="text-[11px] text-muted-foreground/70 -mt-1">Override de horário para uma data única. Substitui o horário semanal padrão apenas naquele dia.</p>
+              <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
+                  <Label className="text-xs text-muted-foreground">Data</Label>
+                  <input type="date" value={excecaoDate} onChange={(e) => setExcecaoDate(e.target.value)} className="h-9 rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-xs text-muted-foreground">Abertura</Label>
+                    <input type="time" value={excecaoOpen} onChange={(e) => setExcecaoOpen(e.target.value)} className="h-9 rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring" />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-xs text-muted-foreground">Fechamento</Label>
+                    <input type="time" value={excecaoClose} onChange={(e) => setExcecaoClose(e.target.value)} className="h-9 rounded-lg border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-ring" />
+                  </div>
+                </div>
+                <Button size="sm" onClick={handleAddExcecao} disabled={addingExcecao}>
+                  {addingExcecao ? 'Salvando...' : 'Salvar horário especial'}
+                </Button>
+              </div>
+              {specialSchedules.filter(ss => !ss.is_closed).length > 0 && (
+                <div className="flex flex-col gap-2">
+                  {specialSchedules.filter(ss => !ss.is_closed).map((ss) => (
+                    <div key={ss.id} className="flex items-center justify-between bg-card/50 border border-border/50 rounded-xl px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm text-foreground">
+                          {new Date(ss.date + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {ss.open_time?.slice(0, 5)} – {ss.close_time?.slice(0, 5)}
+                        </span>
                       </div>
                       <button onClick={() => handleRemoveFolga(ss.id)} className="text-xs text-muted-foreground hover:text-destructive transition-colors">
                         Remover
