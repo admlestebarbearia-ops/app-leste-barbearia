@@ -2972,7 +2972,7 @@ function TabConfiguracoes({
             {/* Horários Especiais (Exceções por Data) */}
             <section className="flex flex-col gap-3">
               <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Horários Especiais</h3>
-              <p className="text-[11px] text-muted-foreground/70 -mt-1">Override de horário para uma data única. Substitui o horário semanal padrão apenas naquele dia.</p>
+              <p className="text-[11px] text-muted-foreground/70 -mt-1">Use quando precisar abrir mais cedo, fechar mais cedo ou ter um horário diferente em um dia específico — sem afetar os outros dias da semana.</p>
               <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3">
                 <div className="flex flex-col gap-2">
                   <Label className="text-xs text-muted-foreground">Data</Label>
