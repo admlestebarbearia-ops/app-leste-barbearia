@@ -231,33 +231,6 @@ export async function GET(request: Request) {
       console.error('[cron/push-reminders] WA block error', waErr)
     }
 
-    // ─── Auto-cancelar agendamentos em atraso (cliente não apareceu após +10min) ─
-    // Busca confirmados de hoje sem filtro de client_id (inclui agendamentos manuais)
-    const { data: allTodayAppts } = await adminSupabase
-      .from('appointments')
-      .select('id, start_time')
-      .eq('date', todayStr)
-      .eq('status', 'confirmado')
-
-    let canceledByDelay = 0
-    for (const appt of allTodayAppts ?? []) {
-      if (!appt.start_time) continue
-      const [ah, am] = (appt.start_time as string).split(':').map(Number)
-      const apptMins = ah * 60 + am
-      // Só cancela se o horário do agendamento + 10min já passou
-      if (apptMins + 10 <= nowMinutes) {
-        const { error: cancelErr } = await adminSupabase
-          .from('appointments')
-          .update({ status: 'cancelado_por_atraso' })
-          .eq('id', appt.id)
-          .eq('status', 'confirmado') // guard: evita race condition
-        if (!cancelErr) {
-          canceledByDelay++
-          console.log(`[cron] Agendamento ${appt.id as string} cancelado por atraso (${appt.start_time as string}).`)
-        }
-      }
-    }
-
     return NextResponse.json({
       date: todayStr,
       nowBrasilia: toTimeStr(nowMinutes),
@@ -267,7 +240,6 @@ export async function GET(request: Request) {
       failed,
       expiredIntents: expiredIntents?.length ?? 0,
       waSent,
-      canceledByDelay,
     })
   } catch (e) {
     console.error('[cron/push-reminders]', e)
