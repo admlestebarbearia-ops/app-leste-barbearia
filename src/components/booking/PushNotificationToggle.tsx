@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { Bell, BellOff, X, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { savePushSubscription, removePushSubscription } from '@/app/api/push/actions'
@@ -38,6 +39,7 @@ async function injectVapidKeyToSw(reg: ServiceWorkerRegistration) {
 }
 
 export function PushNotificationToggle({ compact = false }: { compact?: boolean }) {
+  const pathname = usePathname()
   const [supported, setSupported] = useState(false)
   const [iosPwaRequired, setIosPwaRequired] = useState(false)
   const [permissionDenied, setPermissionDenied] = useState(false)
@@ -45,8 +47,80 @@ export function PushNotificationToggle({ compact = false }: { compact?: boolean 
   const [subscribed, setSubscribed] = useState(false)
   const [loading, setLoading] = useState(false)
 
+  async function ensureServiceWorkerRegistration() {
+    if (!('serviceWorker' in navigator)) return null
+
+    const existing = await navigator.serviceWorker.getRegistration()
+    if (existing) return existing
+
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      console.info('[push/toggle] service worker registered on demand', { pathname })
+      return reg
+    } catch (error) {
+      console.warn('[push/toggle] service worker registration failed', error)
+      return null
+    }
+  }
+
+  async function syncExistingSubscription(reg: ServiceWorkerRegistration) {
+    const existingSubscription = await reg.pushManager.getSubscription()
+    if (existingSubscription) {
+      // Re-salva no banco silenciosamente caso a subscription tenha sido removida do DB
+      // (ex: limpeza de 410, troca de dispositivo, etc.) — upsert é idempotente
+      const subJson = existingSubscription.toJSON()
+      void savePushSubscription({
+        endpoint: existingSubscription.endpoint,
+        keys: {
+          p256dh: subJson.keys?.p256dh ?? '',
+          auth: subJson.keys?.auth ?? '',
+        },
+      })
+      setSubscribed(true)
+      void injectVapidKeyToSw(reg)
+      return
+    }
+
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+      setSubscribed(false)
+      return
+    }
+
+    const pushSession = await ensurePushBrowserSession()
+    if (pushSession.created) {
+      console.info('[push/toggle] anonymous session created while restoring push state', {
+        sessionKind: pushSession.sessionKind,
+      })
+    }
+
+    const recoveredSubscription = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY).buffer as ArrayBuffer,
+    })
+    const subJson = recoveredSubscription.toJSON()
+    const result = await savePushSubscription({
+      endpoint: recoveredSubscription.endpoint,
+      keys: {
+        p256dh: subJson.keys?.p256dh ?? '',
+        auth: subJson.keys?.auth ?? '',
+      },
+    })
+
+    if (!result.success) {
+      console.warn('[push/toggle] failed to restore push subscription', { error: result.error ?? 'unknown' })
+      await recoveredSubscription.unsubscribe().catch(() => {})
+      setSubscribed(false)
+      return
+    }
+
+    void injectVapidKeyToSw(reg)
+    setSubscribed(true)
+  }
+
   useEffect(() => {
     if (!VAPID_PUBLIC_KEY) return
+    setIosPwaRequired(false)
+    setPermissionDenied(false)
 
     // iOS fora do PWA: push não é suportado — exibe dica
     if (isIos() && !isStandalone()) {
@@ -64,14 +138,14 @@ export function PushNotificationToggle({ compact = false }: { compact?: boolean 
 
     setSupported(true)
 
-    // Verifica se já está subscrito e injeta VAPID key no SW
-    navigator.serviceWorker.ready.then((reg) => {
-      void injectVapidKeyToSw(reg)
-      reg.pushManager.getSubscription().then((sub) => {
-        setSubscribed(!!sub)
+    void ensureServiceWorkerRegistration().then((reg) => {
+      if (!reg) return
+      syncExistingSubscription(reg).catch((error) => {
+        console.warn('[push/toggle] failed to read existing subscription', error)
+        setSubscribed(false)
       })
     })
-  }, [])
+  }, [pathname])
 
   function showDeniedHelp() {
     setShowDeniedModal(true)
@@ -81,9 +155,14 @@ export function PushNotificationToggle({ compact = false }: { compact?: boolean 
     if (!supported || !VAPID_PUBLIC_KEY) return
     setLoading(true)
     try {
-      const reg = await navigator.serviceWorker.ready
-
       if (subscribed) {
+        const reg = await ensureServiceWorkerRegistration()
+        if (!reg) {
+          toast.error('Não foi possível acessar o service worker deste navegador.')
+          setLoading(false)
+          return
+        }
+
         // Desativar
         const sub = await reg.pushManager.getSubscription()
         if (sub) {
@@ -103,6 +182,13 @@ export function PushNotificationToggle({ compact = false }: { compact?: boolean 
           } else {
             toast.error('Permissão para notificações não concedida.')
           }
+          setLoading(false)
+          return
+        }
+
+        const reg = await ensureServiceWorkerRegistration()
+        if (!reg) {
+          toast.error('Permissão concedida, mas o service worker não registrou. Recarregue a página e tente novamente.')
           setLoading(false)
           return
         }
@@ -150,6 +236,8 @@ export function PushNotificationToggle({ compact = false }: { compact?: boolean 
 
   // iOS fora do PWA: mostra dica de instalação
   if (iosPwaRequired) {
+    if (compact || pathname.startsWith('/admin')) return null
+
     return (
       <p className="text-xs text-muted-foreground">
         Para receber lembretes, instale o app: toque em{' '}
