@@ -415,7 +415,14 @@ export function AdminDashboard({
         </nav>
 
         {/* Rodapé do Drawer */}
-        <div className="px-5 py-4 border-t border-white/10">
+        <div className="px-5 py-4 border-t border-white/10 flex flex-col gap-1">
+          <a
+            href="/"
+            className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-semibold text-zinc-400 hover:bg-white/5 hover:text-white transition-all duration-200"
+          >
+            <span className="text-base leading-none">←</span>
+            Ver site
+          </a>
           <a
             href="/api/auth/signout"
             className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-semibold text-zinc-500 hover:bg-red-500/10 hover:text-red-400 transition-all duration-200"
@@ -458,14 +465,6 @@ export function AdminDashboard({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Voltar ao site do cliente */}
-            <a
-              href="/"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 border border-white/10 bg-white/[0.03] hover:text-white hover:border-white/20 transition-all"
-            >
-              ← Site
-            </a>
-
             {/* Notificações push para o admin */}
             <PushNotificationToggle compact />
 
