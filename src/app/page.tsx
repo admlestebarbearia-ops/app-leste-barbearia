@@ -41,10 +41,19 @@ export default async function HomePage({ searchParams }: Props) {
   return (
     <main
       className="relative min-h-screen flex flex-col items-center justify-center px-6 overflow-hidden"
-      style={{ backgroundImage: "url('/fundo.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      {/* Overlay — gradiente para preservar a foto no topo e escurecer na base */}
-      <div className="absolute inset-0 bg-linear-to-b from-black/30 via-black/50 to-black/80" />
+      {/* Fundo com blur — div separada para não afetar o conteúdo */}
+      <div
+        className="absolute inset-0 scale-110"
+        style={{
+          backgroundImage: "url('/fundo.jpg')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: 'blur(4px)',
+        }}
+      />
+      {/* Overlay em gradiente */}
+      <div className="absolute inset-0 bg-linear-to-b from-black/45 via-black/55 to-black/80" />
 
       <div className="relative z-10 w-full max-w-sm flex flex-col items-center gap-6">
 
@@ -76,12 +85,19 @@ export default async function HomePage({ searchParams }: Props) {
           <LoginButton nextPath={nextPath} />
 
           {typedConfig?.require_google_login === false && (
-            <a
-              href="/agendar"
-              className="w-full h-11 flex items-center justify-center rounded-lg bg-white/4 border border-white/15 text-sm text-zinc-300 hover:bg-white/10 hover:text-white hover:border-white/30 transition-all"
-            >
-              Continuar sem login
-            </a>
+            <>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-white/10" />
+                <span className="text-xs text-zinc-500">ou</span>
+                <div className="flex-1 h-px bg-white/10" />
+              </div>
+              <a
+                href="/agendar"
+                className="w-full h-11 flex items-center justify-center rounded-lg bg-white/4 border border-white/15 text-sm text-zinc-300 hover:bg-white/10 hover:text-white hover:border-white/30 transition-all"
+              >
+                Agendar sem Login
+              </a>
+            </>
           )}
 
           {/* Diferenciais */}

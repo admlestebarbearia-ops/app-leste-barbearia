@@ -1528,6 +1528,7 @@ const handleConfirm = async () => {
                     width={34}
                     height={34}
                     className="object-contain animate-shine"
+                    style={{ width: '34px', height: '34px' }}
                  />
              </div>
          </button>
