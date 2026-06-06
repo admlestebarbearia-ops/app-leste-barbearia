@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processMercadoPagoWebhook } from '@/lib/mercadopago/webhook-route'
+import { notifyMercadoPagoAppointmentStatusChange } from '@/lib/mercadopago/webhook-notifications'
 import { firePushToUser, firePushToAdmins } from '@/app/api/push/actions'
 
 // ─── Fetch estado do pagamento na API do MP ───────────────────────────────────
@@ -108,6 +109,9 @@ export async function POST(request: NextRequest) {
             .from('payment_intents')
             .update(patch)
             .eq('appointment_id', appointmentId)
+            // Guarda de estado: impede que webhook tardio sobrescreva um intent
+            // já cancelado manualmente ou expirado há muito tempo.
+            .in('status', ['pending', 'expired'])
 
           if (error) throw error
         },
@@ -123,39 +127,70 @@ export async function POST(request: NextRequest) {
           // Busca detalhes ANTES de atualizar (push + detecção de fiado)
           const { data: appt } = await adminClient
             .from('appointments')
-            .select('client_id, client_name, service_name_snapshot, date, start_time, current_status:status, expected_payment_date')
+            .select('client_id, client_name, service_name_snapshot, date, start_time, barber_id, current_status:status, expected_payment_date')
             .eq('id', appointmentId)
             .single()
 
-          // Correção Cirúrgica 3: mapeamento estrito de transições de status.
-          // 'confirmado' (webhook approved) → só aceita origem 'aguardando_pagamento'.
-          //   Impede que um webhook duplicado ou tardio "reabra" um agendamento concluído/cancelado.
-          //   IMPEDE o falso positivo de PIX: front-end não pode forçar confirmação diretamente.
-          // 'cancelado' (webhook rejected/refunded) → aceita de 'aguardando_pagamento' ou 'confirmado'.
-          //   'aguardando_pagamento': pagamento recusado antes de confirmar.
-          //   'confirmado': estorno de um pagamento já aprovado.
+          // Ressurreição segura: PIX aprovado após o cron cancelar por falta de pagamento.
+          // Antes de restaurar, verifica se o horário ainda está livre (sem colisão).
+          if (status === 'confirmado' && appt?.current_status === 'cancelado_falta_pagamento') {
+            if (!appt.barber_id || !appt.date || !appt.start_time) {
+              throw new Error(
+                `[MP Webhook] Dados insuficientes para verificar conflito (appointmentId=${appointmentId})`
+              )
+            }
+
+            const { count: conflictCount } = await adminClient
+              .from('appointments')
+              .select('id', { count: 'exact', head: true })
+              .eq('barber_id', appt.barber_id)
+              .eq('date', appt.date)
+              .eq('start_time', appt.start_time)
+              .in('status', ['confirmado', 'aguardando_pagamento'])
+              .neq('id', appointmentId)
+              .is('deleted_at', null)
+
+            if (conflictCount !== null && conflictCount > 0) {
+              console.error('[MP Webhook] Conflito de agendamento detectado — ressurreição bloqueada', {
+                appointmentId,
+                barber_id: appt.barber_id,
+                date: appt.date,
+                start_time: appt.start_time,
+                conflictCount,
+              })
+              // Retorna 200 ao MP: o dinheiro foi recebido e o barbeiro
+              // tratará o caso manualmente via painel admin.
+              return
+            }
+          }
+
+          // Transições de status permitidas:
+          // 'confirmado' → 'aguardando_pagamento' (fluxo normal) ou
+          //                'cancelado_falta_pagamento' (ressurreição sem colisão).
+          // 'cancelado'  → 'aguardando_pagamento' (recusa) ou 'confirmado' (estorno).
           const allowedFromStatus: string[] = status === 'confirmado'
-            ? ['aguardando_pagamento']
+            ? ['aguardando_pagamento', 'cancelado_falta_pagamento']
             : ['aguardando_pagamento', 'confirmado']
 
-          const { error } = await adminClient
+          const { data: updatedRows, error } = await adminClient
             .from('appointments')
             .update({ status })
             .eq('id', appointmentId)
             .in('status', allowedFromStatus)
+            .select('id')
 
           if (error) throw error
+          if (!updatedRows || updatedRows.length === 0) {
+            throw new Error(
+              `[MP Webhook] UPDATE afetou 0 linhas — status incompatível (appointmentId=${appointmentId}, nextStatus=${status})`
+            )
+          }
 
-          // ── Baixa automática de fiado ──────────────────────────────────────
-          // Se o agendamento já estava `concluido` com promessa de pagamento
-          // e o MP aprovou → marcar transação financeira como PAID.
-          // O trigger de INSERT não é acionado aqui (é só UPDATE).
-          const isFiadoQuitacao =
+          if (
             status === 'confirmado' &&
-            (appt as Record<string, unknown>)?.current_status === 'concluido' &&
-            (appt as Record<string, unknown>)?.expected_payment_date != null
-
-          if (isFiadoQuitacao) {
+            appt?.current_status === 'concluido' &&
+            appt.expected_payment_date != null
+          ) {
             try {
               const { error: ftErr } = await adminClient
                 .from('financial_transactions')
@@ -168,36 +203,29 @@ export async function POST(request: NextRequest) {
             } catch (ftEx) {
               console.error('[Fiado] Exceção ao dar baixa automática:', ftEx)
             }
-
-            // Notificação crítica: aguarda o envio para não perder o push ao encerrar a execução serverless.
-            await firePushToAdmins({
-              title: '💰 Fiado quitado via Mercado Pago',
-              body: `${(appt as Record<string, unknown>)?.client_name ?? 'Cliente'} pagou o agendamento de ${String((appt as Record<string, unknown>)?.date ?? '').split('-').reverse().join('/')} às ${String((appt as Record<string, unknown>)?.start_time ?? '').slice(0, 5)}`,
-              url: '/admin',
-              tag: `admin-fiado-quitado-${appointmentId}`,
-            })
-            return // não processa push de "confirmação" normal para agendados concluídos
           }
 
-          // Pagamento normal aprovado → notifica cliente e admins
-          if (status === 'confirmado') {
-            await Promise.allSettled([
-              appt?.client_id
-                ? firePushToUser(appt.client_id, {
-                    title: '💳 Pagamento confirmado!',
-                    body: `${appt.service_name_snapshot ?? 'Serviço'} em ${appt.date.split('-').reverse().join('/')} às ${appt.start_time.slice(0, 5)} está confirmado.`,
-                    url: '/reservas',
-                    tag: `pagamento-confirmado-${appointmentId}`,
-                  })
-                : Promise.resolve(),
-              firePushToAdmins({
-                title: '💳 Pagamento recebido',
-                body: `${appt?.client_name ?? 'Cliente'} — ${appt?.service_name_snapshot ?? 'Serviço'} em ${appt?.date?.split('-').reverse().join('/') ?? '?'} às ${appt?.start_time?.slice(0, 5) ?? '?'}`,
-                url: '/admin',
-                tag: `admin-pagamento-${appointmentId}`,
-              }),
-            ])
-          }
+          await notifyMercadoPagoAppointmentStatusChange(
+            {
+              appointmentId,
+              nextStatus: status,
+              appointment: appt
+                ? {
+                    client_id: appt.client_id ?? null,
+                    client_name: appt.client_name ?? null,
+                    service_name_snapshot: appt.service_name_snapshot ?? null,
+                    date: appt.date ?? null,
+                    start_time: appt.start_time ?? null,
+                    current_status: appt.current_status ?? null,
+                    expected_payment_date: appt.expected_payment_date ?? null,
+                  }
+                : null,
+            },
+            {
+              notifyUser: firePushToUser,
+              notifyAdmins: firePushToAdmins,
+            }
+          )
         },
         updateProductReservationStatus: async (reservationId, status) => {
           await updateProductReservationStatus(adminClient, reservationId, status)

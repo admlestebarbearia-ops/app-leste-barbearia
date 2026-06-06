@@ -178,6 +178,11 @@ export async function processMercadoPagoPaymentRequest(
         statement_descriptor: 'BARBEARIA LESTE',
         external_reference: appointmentId,
         installments: 1,
+        // Sincroniza a expiração do QR PIX com o tempo de vida local do agendamento.
+        // Sem este campo, o banco emissor usa ~30 min (padrão BC), criando uma janela
+        // onde o cliente paga um agendamento já cancelado pelo nosso sistema.
+        date_of_expiration: paymentIntent.expires_at
+          ?? new Date(deps.getNow().getTime() + 5 * 60 * 1000).toISOString(),
         notification_url: buildMercadoPagoNotificationUrl(deps.getBaseUrl()),
         additional_info: {
           items: [

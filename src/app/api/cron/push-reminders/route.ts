@@ -50,7 +50,10 @@ export async function GET(request: Request) {
       .from('payment_intents')
       .select('id, appointment_id')
       .eq('status', 'pending')
-      .lt('expires_at', nowIso)
+      // Grace period de 2 min: só cancela pagamentos expirados há mais de 2 minutos.
+      // Cria uma zona de segurança para webhooks PIX levemente atrasados chegarem
+      // antes de liberar o horário para novos clientes.
+      .lt('expires_at', new Date(now.getTime() - 2 * 60 * 1000).toISOString())
 
     if (expiredIntents && expiredIntents.length > 0) {
       const expiredIds = expiredIntents.map((e) => e.id)
