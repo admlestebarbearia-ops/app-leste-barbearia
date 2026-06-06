@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, Download, Share } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { X, Download, Share, Smartphone } from 'lucide-react'
 
 const DISMISSED_KEY = 'pwa-prompt-dismissed-v2'
 
@@ -25,10 +26,37 @@ function isIos(): boolean {
 }
 
 export default function PwaPrompt() {
+  const pathname = usePathname()
   const [mode, setMode] = useState<Mode>(null)
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
+    const isDev = process.env.NODE_ENV !== 'production'
+    const isAdminRoute = pathname.startsWith('/admin')
+
+    if (isAdminRoute) {
+      setVisible(false)
+      if (isDev) {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations()
+            .then((regs) => Promise.all(regs.map((reg) => reg.unregister())))
+            .catch(() => {})
+        }
+
+        if ('caches' in window) {
+          caches.keys()
+            .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+            .catch(() => {})
+        }
+      }
+
+      return
+    }
+
+    if (isDev) {
+      return
+    }
+
     // Registra SW globalmente
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {})
@@ -70,7 +98,7 @@ export default function PwaPrompt() {
     }
     window.addEventListener('beforeinstallprompt', handler)
     return () => window.removeEventListener('beforeinstallprompt', handler)
-  }, [])
+  }, [pathname])
 
   const dismiss = () => {
     localStorage.setItem(DISMISSED_KEY, '1')
@@ -87,25 +115,20 @@ export default function PwaPrompt() {
   if (!visible) return null
 
   return (
-    <div className="fixed bottom-[72px] left-0 right-0 z-50 px-4 pb-4 pointer-events-none">
-      <div className="pointer-events-auto w-full max-w-sm mx-auto bg-card border border-border rounded-2xl shadow-2xl flex items-center gap-3 p-3">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/android-chrome-192x192.png"
-          alt="Leste Barbearia"
-          width={48}
-          height={48}
-          className="rounded-xl shrink-0 w-12 h-12 object-cover"
-        />
+    <div className="fixed bottom-18 left-0 right-0 z-50 px-4 pb-4 pointer-events-none">
+      <div className="pointer-events-auto w-full max-w-sm mx-auto bg-card/95 backdrop-blur-md border border-border/60 rounded-2xl shadow-2xl flex items-center gap-3 p-3">
+        <div className="shrink-0 w-10 h-10 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center">
+          <Smartphone className="size-5 text-primary" />
+        </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold leading-tight">Leste Barbearia</p>
+          <p className="text-sm font-semibold leading-tight">Instale o app</p>
           {mode === 'ios' && (
             <p className="text-xs text-muted-foreground mt-0.5">
               Toque em <Share className="inline size-3" /> e depois <strong>Adicionar à tela inicial</strong>
             </p>
           )}
           {mode === 'install' && (
-            <p className="text-xs text-muted-foreground mt-0.5">Instale o app para acesso rápido</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Acesso rápido com notificações</p>
           )}
           {mode === 'manual' && (
             <p className="text-xs text-muted-foreground mt-0.5">
