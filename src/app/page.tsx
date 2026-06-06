@@ -1,5 +1,6 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import { Clock, User, Star, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { LoginButton } from '@/components/auth/LoginButton'
@@ -38,62 +39,77 @@ export default async function HomePage({ searchParams }: Props) {
   const typedConfig = config as Pick<BusinessConfig, 'logo_url' | 'require_google_login'> | null
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-6 bg-background">
-      <div className="w-full max-w-sm flex flex-col items-center gap-8">
+    <main
+      className="relative min-h-screen flex flex-col items-center justify-center px-6 overflow-hidden"
+      style={{ backgroundImage: "url('/fundo.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
+    >
+      {/* Overlay escuro */}
+      <div className="absolute inset-0 bg-black/65" />
+
+      <div className="relative z-10 w-full max-w-sm flex flex-col items-center gap-6">
 
         {/* Logotipo */}
-        <div className="relative flex w-full items-center justify-center">
-          <div className="absolute h-36 w-36 rounded-full bg-primary/12 blur-3xl" />
-          <Image
-            src={typedConfig?.logo_url ?? '/logo-barbearialeste.png'}
-            alt="Leste Barbearia"
-            width={220}
-            height={220}
-            className="relative h-auto w-44 object-contain animate-logo-glow drop-shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
-            priority
-          />
-        </div>
+        <Image
+          src={typedConfig?.logo_url ?? '/logo-barbearialeste.png'}
+          alt="Leste Barbearia"
+          width={200}
+          height={200}
+          className="h-auto w-40 object-contain drop-shadow-2xl"
+          priority
+        />
 
-        {/* Apresentação pública do app — visível sem login */}
-        <div className="w-full flex flex-col items-center gap-3 text-center">
-          <h1 className="text-xl font-extrabold uppercase tracking-widest text-foreground">
+        {/* Título e tagline — visíveis sem login (requisito Google OAuth) */}
+        <div className="text-center flex flex-col gap-1">
+          <h1 className="text-2xl font-extrabold uppercase tracking-widest text-white">
             Leste Barbearia
           </h1>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Aplicativo oficial de agendamento online da Leste Barbearia.
-            Escolha o serviço, o profissional e o horário que preferir — tudo pelo celular, sem espera.
+          <p className="text-sm text-zinc-300 leading-relaxed italic">
+            Excelência em cada detalhe.<br />Estilo que fala por você.
           </p>
-          <ul className="mt-1 flex flex-col gap-1 text-xs text-zinc-500 text-left w-full px-2">
-            <li>✓ Corte, barba, sobrancelha e combos</li>
-            <li>✓ Agendamento disponível 24 horas</li>
-            <li>✓ Pagamento antecipado pelo app ou na hora</li>
-          </ul>
         </div>
 
-        {/* Ações de acesso */}
-        <div className="w-full flex flex-col gap-3">
+        {/* Card de acesso */}
+        <div className="w-full bg-black/50 backdrop-blur-sm rounded-2xl p-6 flex flex-col gap-4 border border-white/10">
           <LoginButton nextPath={nextPath} />
 
           {typedConfig?.require_google_login === false && (
             <a
               href="/agendar"
-              className="w-full h-10 flex items-center justify-center rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+              className="w-full h-11 flex items-center justify-center rounded-lg border border-white/20 text-sm text-zinc-300 hover:text-white hover:border-white/40 transition-colors"
             >
               Continuar sem login
             </a>
           )}
+
+          {/* Diferenciais */}
+          <div className="grid grid-cols-3 gap-2 pt-1">
+            <div className="flex flex-col items-center gap-1.5 text-center">
+              <Clock className="size-5 text-amber-400" />
+              <span className="text-xs text-zinc-400 leading-tight">Agendamento<br />em segundos</span>
+            </div>
+            <div className="flex flex-col items-center gap-1.5 text-center">
+              <User className="size-5 text-amber-400" />
+              <span className="text-xs text-zinc-400 leading-tight">Profissionais<br />especializados</span>
+            </div>
+            <div className="flex flex-col items-center gap-1.5 text-center">
+              <Star className="size-5 text-amber-400" />
+              <span className="text-xs text-zinc-400 leading-tight">Experiência<br />premium</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Rodapé de privacidade */}
+        <div className="flex flex-col items-center gap-1">
+          <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+            <ShieldCheck className="size-3.5" />
+            <span>Seus dados estão protegidos.</span>
+          </div>
+          <Link href="/privacidade" className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+            Política de Privacidade
+          </Link>
         </div>
 
       </div>
-
-      <footer className="pt-10 text-center text-sm text-zinc-500">
-        <p>
-          © 2026 Leste Barbearia. Todos os direitos reservados. |{' '}
-          <Link href="/privacidade" className="hover:text-zinc-300 transition-colors">
-            Política de Privacidade
-          </Link>
-        </p>
-      </footer>
     </main>
   )
 }
