@@ -61,6 +61,11 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </div>
 
+        {/* Categoria discreta */}
+        <span className="text-[10px] uppercase tracking-[0.22em] text-zinc-500 font-medium">
+          App de Agendamento e Pagamento
+        </span>
+
         {/* Tagline — visível sem login (requisito Google OAuth) */}
         <p className="text-sm text-zinc-200/80 leading-relaxed italic text-center drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
           Excelência em cada detalhe.<br />Estilo que fala por você.
