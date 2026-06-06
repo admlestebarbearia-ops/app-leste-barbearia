@@ -49,24 +49,22 @@ export default async function HomePage({ searchParams }: Props) {
       <div className="relative z-10 w-full max-w-sm flex flex-col items-center gap-6">
 
         {/* Logotipo */}
-        <Image
-          src={typedConfig?.logo_url ?? '/logo-barbearialeste.png'}
-          alt="Leste Barbearia"
-          width={200}
-          height={200}
-          className="h-auto w-40 object-contain drop-shadow-2xl"
-          priority
-        />
-
-        {/* Título e tagline — visíveis sem login (requisito Google OAuth) */}
-        <div className="text-center flex flex-col gap-1">
-          <h1 className="text-2xl font-extrabold uppercase tracking-widest text-white">
-            Leste Barbearia
-          </h1>
-          <p className="text-sm text-zinc-300 leading-relaxed italic">
-            Excelência em cada detalhe.<br />Estilo que fala por você.
-          </p>
+        <div className="relative flex w-full items-center justify-center">
+          <div className="absolute h-40 w-40 rounded-full bg-primary/15 blur-3xl" />
+          <Image
+            src={typedConfig?.logo_url ?? '/logo-barbearialeste.png'}
+            alt="Leste Barbearia"
+            width={200}
+            height={200}
+            className="relative h-auto w-40 object-contain animate-logo-glow drop-shadow-[0_18px_40px_rgba(0,0,0,0.5)]"
+            priority
+          />
         </div>
+
+        {/* Tagline — visível sem login (requisito Google OAuth) */}
+        <p className="text-sm text-zinc-300 leading-relaxed italic text-center">
+          Excelência em cada detalhe.<br />Estilo que fala por você.
+        </p>
 
         {/* Card de acesso */}
         <div className="w-full bg-black/50 backdrop-blur-sm rounded-2xl p-6 flex flex-col gap-4 border border-white/10">
