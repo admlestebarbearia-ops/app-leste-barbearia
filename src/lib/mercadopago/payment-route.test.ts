@@ -229,4 +229,54 @@ describe('mercadopago payment route logic', () => {
     // payer NAO deve estar em additional_info — email nao e campo valido la
     assert.equal('payer' in additionalInfo, false)
   })
+
+  it('omite date_of_expiration quando expires_at e menor que 30 min (janela tipica de 5 min)', async () => {
+    // Simula cenário real: expires_at = now + 5 min (abaixo do mínimo de 30 min do Banco Central)
+    const { deps, creations } = createDeps({
+      getPaymentIntent: async () => buildPaymentIntent({
+        expires_at: new Date(new Date('2026-04-13T14:00:00.000Z').getTime() + 5 * 60 * 1000).toISOString(),
+      }),
+    })
+
+    const result = await processMercadoPagoPaymentRequest(
+      {
+        appointmentId: '123e4567-e89b-12d3-a456-426614174000',
+        formData: {
+          payment_method_id: 'pix',
+          payment_type_id: 'bank_transfer',
+          payer: { email: 'maria@cliente.com' },
+        },
+      },
+      deps
+    )
+
+    assert.equal(result.status, 200)
+    assert.equal(creations.length, 1)
+    assert.equal('date_of_expiration' in (creations[0]?.body ?? {}), false,
+      'date_of_expiration nao deve ser enviado quando janela < 30 min (PIX exige mínimo 30 min)')
+  })
+
+  it('inclui date_of_expiration quando expires_at e maior ou igual a 30 min', async () => {
+    const expiresAt = new Date(new Date('2026-04-13T14:00:00.000Z').getTime() + 45 * 60 * 1000).toISOString()
+    const { deps, creations } = createDeps({
+      getPaymentIntent: async () => buildPaymentIntent({ expires_at: expiresAt }),
+    })
+
+    const result = await processMercadoPagoPaymentRequest(
+      {
+        appointmentId: '123e4567-e89b-12d3-a456-426614174000',
+        formData: {
+          payment_method_id: 'pix',
+          payment_type_id: 'bank_transfer',
+          payer: { email: 'maria@cliente.com' },
+        },
+      },
+      deps
+    )
+
+    assert.equal(result.status, 200)
+    assert.equal(creations.length, 1)
+    assert.equal(creations[0]?.body.date_of_expiration, expiresAt,
+      'date_of_expiration deve ser enviado quando janela >= 30 min')
+  })
 })

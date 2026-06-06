@@ -169,6 +169,18 @@ export async function processMercadoPagoPaymentRequest(
       }
     }
 
+    // O Banco Central do Brasil exige mínimo de 30 min para QR PIX.
+    // Se a janela de pagamento for menor que esse limite, omitimos date_of_expiration
+    // e deixamos o MP usar o padrão de 30 min. O cron de expiração do nosso sistema
+    // ainda cancela o agendamento na janela curta configurada; pagamentos PIX tardios
+    // são tratados pela lógica de ressurreição no webhook.
+    const PIX_MIN_EXPIRY_MS = 30 * 60 * 1000
+    const expiresAtMs = paymentIntent.expires_at ? new Date(paymentIntent.expires_at).getTime() : null
+    const dateOfExpiration =
+      expiresAtMs !== null && expiresAtMs - deps.getNow().getTime() >= PIX_MIN_EXPIRY_MS
+        ? paymentIntent.expires_at
+        : undefined
+
     const payment = await deps.createPayment({
       accessToken,
       body: {
@@ -178,11 +190,7 @@ export async function processMercadoPagoPaymentRequest(
         statement_descriptor: 'BARBEARIA LESTE',
         external_reference: appointmentId,
         installments: 1,
-        // Sincroniza a expiração do QR PIX com o tempo de vida local do agendamento.
-        // Sem este campo, o banco emissor usa ~30 min (padrão BC), criando uma janela
-        // onde o cliente paga um agendamento já cancelado pelo nosso sistema.
-        date_of_expiration: paymentIntent.expires_at
-          ?? new Date(deps.getNow().getTime() + 5 * 60 * 1000).toISOString(),
+        ...(dateOfExpiration ? { date_of_expiration: dateOfExpiration } : {}),
         notification_url: buildMercadoPagoNotificationUrl(deps.getBaseUrl()),
         additional_info: {
           items: [
