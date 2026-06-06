@@ -46,7 +46,7 @@ export default async function HomePage({ searchParams }: Props) {
       <div
         className="absolute inset-0 scale-110"
         style={{
-          backgroundImage: "url('/fundo.jpg')",
+          backgroundImage: "url('/fundo.jpg?v=2')",
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'blur(4px)',
