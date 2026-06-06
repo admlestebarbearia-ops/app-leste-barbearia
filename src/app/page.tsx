@@ -43,8 +43,8 @@ export default async function HomePage({ searchParams }: Props) {
       className="relative min-h-screen flex flex-col items-center justify-center px-6 overflow-hidden"
       style={{ backgroundImage: "url('/fundo.jpg')", backgroundSize: 'cover', backgroundPosition: 'center' }}
     >
-      {/* Overlay escuro */}
-      <div className="absolute inset-0 bg-black/65" />
+      {/* Overlay — gradiente para preservar a foto no topo e escurecer na base */}
+      <div className="absolute inset-0 bg-linear-to-b from-black/30 via-black/50 to-black/80" />
 
       <div className="relative z-10 w-full max-w-sm flex flex-col items-center gap-6">
 
@@ -62,25 +62,25 @@ export default async function HomePage({ searchParams }: Props) {
         </div>
 
         {/* Tagline — visível sem login (requisito Google OAuth) */}
-        <p className="text-sm text-zinc-300 leading-relaxed italic text-center">
+        <p className="text-sm text-zinc-200/80 leading-relaxed italic text-center drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
           Excelência em cada detalhe.<br />Estilo que fala por você.
         </p>
 
-        {/* Card de acesso */}
-        <div className="w-full bg-black/50 backdrop-blur-sm rounded-2xl p-6 flex flex-col gap-4 border border-white/10">
+        {/* Card de acesso — glassmorphism */}
+        <div className="w-full bg-white/6 backdrop-blur-2xl rounded-2xl p-6 flex flex-col gap-4 border border-white/15 shadow-[0_8px_40px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.08)]">
           <LoginButton nextPath={nextPath} />
 
           {typedConfig?.require_google_login === false && (
             <a
               href="/agendar"
-              className="w-full h-11 flex items-center justify-center rounded-lg border border-white/20 text-sm text-zinc-300 hover:text-white hover:border-white/40 transition-colors"
+              className="w-full h-11 flex items-center justify-center rounded-lg bg-white/4 border border-white/15 text-sm text-zinc-300 hover:bg-white/10 hover:text-white hover:border-white/30 transition-all"
             >
               Continuar sem login
             </a>
           )}
 
           {/* Diferenciais */}
-          <div className="grid grid-cols-3 gap-2 pt-1">
+          <div className="border-t border-white/10 pt-4 grid grid-cols-3 gap-2">
             <div className="flex flex-col items-center gap-1.5 text-center">
               <Clock className="size-5 text-amber-400" />
               <span className="text-xs text-zinc-400 leading-tight">Agendamento<br />em segundos</span>
