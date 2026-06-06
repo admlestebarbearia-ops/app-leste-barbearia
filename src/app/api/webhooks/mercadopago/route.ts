@@ -181,9 +181,16 @@ export async function POST(request: NextRequest) {
 
           if (error) throw error
           if (!updatedRows || updatedRows.length === 0) {
-            throw new Error(
-              `[MP Webhook] UPDATE afetou 0 linhas — status incompatível (appointmentId=${appointmentId}, nextStatus=${status})`
-            )
+            // 0 linhas: ou o agendamento já está no status desejado (retry idempotente)
+            // ou está em um status incompatível (ex: concluido, cancelado).
+            // Em ambos os casos retornamos silenciosamente — não relançamos o erro
+            // para que o MP receba 200 e pare de retentar este webhook.
+            console.warn('[MP Webhook] UPDATE afetou 0 linhas — possível retry ou transição inválida', {
+              appointmentId,
+              nextStatus: status,
+              currentStatus: appt?.current_status ?? 'desconhecido',
+            })
+            return
           }
 
           if (
