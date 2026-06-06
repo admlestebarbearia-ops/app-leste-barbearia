@@ -1244,7 +1244,7 @@ const handleConfirm = async () => {
                     'mx-auto h-10 w-10 flex items-center justify-center rounded-full text-xs font-bold transition-all',
                     'hover:bg-muted hover:text-foreground',
                   ].join(' '),
-                  today: 'text-primary border-b-2 border-primary',
+                  today: '[&>button]:text-foreground [&>button]:bg-transparent [&>button]:ring-1 [&>button]:ring-green-500 [&>button]:animate-pulse',
                   selected: '[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary [&>button]:scale-110 shadow-lg',
                   disabled: 'opacity-20 pointer-events-none text-muted-foreground font-normal',
                   outside: 'opacity-0 pointer-events-none',

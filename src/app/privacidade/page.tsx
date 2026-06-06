@@ -8,58 +8,78 @@ export default function PrivacidadePage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="max-w-2xl mx-auto px-6 py-14 flex flex-col gap-8">
-        {/* Cabeçalho */}
         <div className="flex flex-col gap-2">
           <Link href="/" className="text-xs text-zinc-500 hover:text-white mb-2 flex items-center gap-1">
             ← Voltar
           </Link>
           <h1 className="text-2xl font-extrabold uppercase tracking-widest text-white">Política de Privacidade</h1>
-          <p className="text-xs text-zinc-500">Última atualização: abril de 2026</p>
+          <p className="text-xs text-zinc-500">Última atualização: 06 de junho de 2026</p>
         </div>
 
-        <Section title="1. Quais dados coletamos">
-          <ul className="list-disc list-inside flex flex-col gap-1">
-            <li>Nome e e-mail da conta Google usada para login.</li>
-            <li>Histórico de agendamentos (serviço, data, horário, status).</li>
-            <li>Número de telefone, se informado voluntariamente.</li>
-          </ul>
+        <Section title="1. Quem somos">
+          A Leste Barbearia é a controladora dos dados pessoais tratados no aplicativo de agendamentos.
         </Section>
 
-        <Section title="2. Como usamos os dados">
+        <Section title="2. Dados pessoais coletados">
+          Quando você escolhe a opção <strong>Entrar com o Google</strong>, coletamos e armazenamos somente:
+          <ul className="list-disc list-inside flex flex-col gap-1">
+            <li>Nome</li>
+            <li>E-mail</li>
+            <li>Foto do perfil</li>
+          </ul>
+          Não coletamos dados sensíveis, contatos, mensagens, arquivos pessoais nem qualquer outro dado além do necessário para o agendamento.
+        </Section>
+
+        <Section title="3. Finalidade do tratamento">
           Os dados são usados exclusivamente para:
           <ul className="list-disc list-inside flex flex-col gap-1 mt-1">
-            <li>Realizar e gerenciar agendamentos.</li>
-            <li>Entrar em contato sobre confirmações ou cancelamentos.</li>
-            <li>Garantir segurança e evitar abusos no sistema.</li>
+            <li>Identificar você no sistema de agendamentos.</li>
+            <li>Vincular histórico e informações da sua conta.</li>
+            <li>Personalizar sua experiência no aplicativo.</li>
+            <li>Viabilizar atendimento e gestão da agenda.</li>
           </ul>
+          Não enviamos spam, não vendemos dados e não compartilhamos com empresas de publicidade ou marketing para fins comerciais.
         </Section>
 
-        <Section title="3. Compartilhamento">
-          Seus dados <strong>não são vendidos</strong> nem compartilhados com terceiros para fins comerciais. Eles ficam armazenados em infraestrutura segura (Supabase / PostgreSQL) com acesso restrito.
+        <Section title="4. Uso de dados do Google (OAuth)">
+          Os dados obtidos por meio do login com Google são utilizados apenas para autenticação e operação do serviço de agendamentos.
+          Não usamos esses dados para publicidade, perfilamento comercial, revenda, enriquecimento de base de dados ou qualquer finalidade incompatível com a experiência principal do usuário.
         </Section>
 
-        <Section title="4. Login com Google">
-          Ao entrar com o Google, recebemos apenas as informações básicas de perfil (nome e e-mail) autorizadas por você. Não acessamos contatos, arquivos ou outras contas.
+        <Section title="5. Base legal">
+          O tratamento ocorre com fundamento nas bases legais aplicáveis da LGPD, incluindo execução do serviço de agendamento, legítimo interesse para operação e segurança, e consentimento quando exigido.
         </Section>
 
-        <Section title="5. Seus direitos">
-          Você pode solicitar a exclusão de seus dados a qualquer momento entrando em contato pelo WhatsApp da barbearia. Após a exclusão, todos os seus registros serão removidos do sistema.
+        <Section title="6. Compartilhamento de dados">
+          Os dados podem ser compartilhados apenas quando necessário para viabilizar o serviço, com provedores de tecnologia e infraestrutura, observados critérios de segurança e confidencialidade.
         </Section>
 
-        <Section title="6. Cookies">
-          Usamos cookies de sessão exclusivamente para manter você autenticado durante a navegação. Não utilizamos cookies de rastreamento ou publicidade.
+        <Section title="7. Armazenamento e segurança">
+          Adotamos medidas técnicas e organizacionais para proteger seus dados contra acessos não autorizados, perda, alteração ou divulgação indevida. O acesso é restrito a pessoas autorizadas para operação da agenda e atendimento.
         </Section>
 
-        <Section title="7. Contato">
-          Para exercer seus direitos ou tirar dúvidas sobre privacidade, fale com a gente pelo WhatsApp da Leste Barbearia.
+        <Section title="8. Retenção dos dados">
+          Os dados são mantidos pelo período necessário para cumprir as finalidades desta Política, obrigações legais e exercício regular de direitos, com eliminação ou anonimização quando não mais necessários.
+        </Section>
+
+        <Section title="9. Seus direitos">
+          Nos termos da LGPD, você pode solicitar confirmação de tratamento, acesso, correção, anonimização, bloqueio, eliminação, informação sobre compartilhamento e revogação do consentimento quando aplicável.
+        </Section>
+
+        <Section title="10. Exclusão de dados">
+          Você pode solicitar a exclusão total da sua conta e dos seus dados a qualquer momento pelos canais oficiais de atendimento da Leste Barbearia.
+        </Section>
+
+        <Section title="11. Alterações desta Política">
+          Esta Política poderá ser atualizada para refletir melhorias no serviço, mudanças legais ou regulatórias.
+        </Section>
+
+        <Section title="12. Contato">
+          Em caso de dúvidas sobre esta Política ou sobre o tratamento dos seus dados pessoais, entre em contato com a administração da Leste Barbearia.
         </Section>
 
         <div className="pt-4 border-t border-white/10 text-xs text-zinc-600">
-          Veja também nossos{' '}
-          <Link href="/termos" className="text-zinc-400 hover:text-white underline underline-offset-2">
-            Termos de Uso
-          </Link>
-          .
+          Aplicativo desenvolvido e mantido por <strong>Agência JN</strong>.
         </div>
       </div>
     </main>

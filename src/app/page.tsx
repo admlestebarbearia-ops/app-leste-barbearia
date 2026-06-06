@@ -1,4 +1,5 @@
 import Image from 'next/image'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { LoginButton } from '@/components/auth/LoginButton'
@@ -71,6 +72,15 @@ export default async function LoginPage({ searchParams }: Props) {
         </div>
 
       </div>
+
+      <footer className="pt-10 text-center text-sm text-zinc-500">
+        <p>
+          © 2026 Leste Barbearia. Todos os direitos reservados. |{' '}
+          <Link href="/privacidade" className="hover:text-zinc-300 transition-colors">
+            Política de Privacidade
+          </Link>
+        </p>
+      </footer>
     </main>
   )
 }
