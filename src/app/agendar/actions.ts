@@ -226,7 +226,7 @@ export async function getAvailableSlots(
     extraBreaks.push({ start: nowInBRT, end: returnDT })
   }
 
-  return calculateAvailableSlots({
+  const result = calculateAvailableSlots({
     date,
     serviceDurationMinutes: duration,
     slotIntervalMinutes: slotInterval,
@@ -237,6 +237,36 @@ export async function getAvailableSlots(
     extraBreaks: extraBreaks.length > 0 ? extraBreaks : undefined,
     now: nowInBRT,
   })
+
+  // Defesa adicional: se o dia pesquisado é hoje em São Paulo, remove horários já passados.
+  // Isso evita qualquer divergência de timezone do host em produção.
+  const spNowParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date())
+
+  const get = (type: Intl.DateTimeFormatPartTypes) => spNowParts.find((part) => part.type === type)?.value ?? ''
+  const todaySp = `${get('year')}-${get('month')}-${get('day')}`
+  const nowTimeSp = `${get('hour')}:${get('minute')}`
+
+  if (date !== todaySp) return result
+
+  const filteredSlots = result.slots.filter((slot) => slot >= nowTimeSp)
+  if (filteredSlots.length !== result.slots.length) {
+    console.info('[availability] filtered past slots for today', {
+      date,
+      nowTimeSp,
+      before: result.slots.length,
+      after: filteredSlots.length,
+    })
+  }
+
+  return { ...result, slots: filteredSlots }
 }
 
 // ─── Criar agendamento ──────────────────────────────────────────────────────
@@ -495,9 +525,11 @@ export async function createAppointment(data: {
   }
 
   if (error) {
-    // Violação do índice único (overbooking): dois clientes tentaram o mesmo slot simultaneamente
-    if (error.code === '23505') {
-      return { success: false, error: 'Este horário acabou de ser reservado por outro cliente. Por favor, escolha outro horário.' }
+    // 23505 = unique_violation (start_time idêntico); 23P01 = exclusion_violation
+    // (trigger de sobreposição por duração). Ambos indicam que outro cliente acabou
+    // de reservar um intervalo que conflita com o solicitado.
+    if (error.code === '23505' || error.code === '23P01') {
+      return { success: false, error: 'Desculpe, este horário acabou de ser reservado. Por favor, atualize e escolha outro horário.' }
     }
     console.error('Erro ao criar agendamento:', error)
     return { success: false, error: `Erro ao confirmar agendamento: ${error.message}` }
@@ -565,16 +597,16 @@ export async function createAppointment(data: {
       expires_at: paymentExpiresAt,
     })
 
-    // Notifica admins: novo agendamento aguardando pagamento
+    // Notifica admins em background (sem bloquear o retorno do agendamento)
     const clientDisplayName = signedInWithGoogle
       ? ((user.user_metadata?.full_name as string | undefined) ?? data.clientName ?? user.email ?? 'Cliente')
       : (data.clientName ?? 'Visitante')
-    await firePushToAdmins({
+    void firePushToAdmins({
       title: '📅 Novo agendamento (aguardando pagamento)',
       body: `${clientDisplayName} — ${serviceSnapshot.name} em ${data.date.split('-').reverse().join('/')} às ${data.startTime.slice(0, 5)}`,
       url: '/admin',
       tag: `admin-novo-agend-${appointment.id}`,
-    })
+    }).catch(err => console.error('[push/background] admin push error:', err))
 
     revalidatePath('/agendar')
     return {
@@ -586,8 +618,8 @@ export async function createAppointment(data: {
     }
   }
 
-  // Notifica cliente + admins em paralelo (presencial/dinheiro)
-  await Promise.allSettled([
+  // Notifica cliente + admins em background (sem bloquear a resposta ao usuário)
+  void Promise.allSettled([
     signedInWithGoogle
       ? firePushToUser(user.id, {
           title: '✅ Agendamento confirmado!',
@@ -607,7 +639,7 @@ export async function createAppointment(data: {
       url: '/admin',
       tag: `admin-novo-agend-${appointment.id}`,
     }),
-  ])
+  ]).catch(err => console.error('[push/background] notification error:', err))
 
   revalidatePath('/agendar')
   return { success: true, appointmentId: appointment.id }

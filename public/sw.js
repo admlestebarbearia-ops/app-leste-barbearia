@@ -1,6 +1,6 @@
 // Service Worker — Barbearia Leste
 // Compatibilidade: Android Chrome/Firefox (vibrate+sound), iOS 16.4+ PWA (silent, sem vibrate)
-const STATIC_CACHE = 'leste-static-v3'
+const STATIC_CACHE = 'leste-static-v4'
 const NOTIF_ICON = '/android-chrome-192x192.png'
 const NOTIF_BADGE = '/android-chrome-96x96.png'
 
@@ -29,18 +29,12 @@ self.addEventListener('fetch', (e) => {
   const { request } = e
   const url = new URL(request.url)
 
-  if (url.pathname.startsWith('/_next/static/')) {
-    e.respondWith(
-      caches.match(request).then(cached =>
-        cached ?? fetch(request).then(res => {
-          if (res.ok) {
-            const clone = res.clone()
-            caches.open(STATIC_CACHE).then(c => c.put(request, clone))
-          }
-          return res
-        })
-      )
-    )
+  // Chunks JS/CSS do Next.js NÃO devem ser cacheados pelo SW:
+  // - Em produção, o Next.js usa nomes com hash imutável e Cache-Control adequado.
+  // - Em dev, o Turbopack regenera hashes a cada restart; cache stale causa
+  //   "module factory is not available" e quebra o HMR.
+  // O browser HTTP cache cuida disso corretamente sem SW.
+  if (url.pathname.startsWith('/_next/')) {
     return
   }
 

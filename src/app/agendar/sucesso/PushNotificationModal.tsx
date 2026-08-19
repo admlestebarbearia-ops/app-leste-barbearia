@@ -127,22 +127,14 @@ export function PushNotificationModal() {
   if (!visible) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm px-4 pb-10 sm:pb-0"
-      onClick={(e) => { if (e.target === e.currentTarget) setVisible(false) }}
-    >
-      <div className="w-full max-w-sm bg-zinc-900 border border-white/10 rounded-2xl p-7 flex flex-col gap-5 shadow-2xl">
-
-        <div className="flex flex-col items-center gap-3 text-center">
-          <span className="text-5xl leading-none">🔔</span>
-          <h2 className="text-xl font-black text-white leading-snug">
-            ⚠️ Não perca seu horário!
-          </h2>
-          <p className="text-sm text-zinc-400 leading-relaxed">
-            Para garantirmos sua vaga, ative as notificações. Avisaremos você{' '}
-            <strong className="text-white">20, 10 e 5 minutos antes</strong>.
-          </p>
-        </div>
+    <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col justify-center items-center p-6 text-center">
+      <div className="w-full max-w-md">
+        <div className="text-7xl leading-none">🔔</div>
+        <h2 className="text-3xl text-red-500 font-bold mt-6">⚠️ NÃO PERCA SUA VAGA!</h2>
+        <p className="text-white mt-4">
+          Ative os avisos agora. O sistema vai te avisar 20, 10 e 5 minutos antes do seu corte.
+          Sem isso, você pode esquecer e sua vaga será cancelada automaticamente.
+        </p>
 
         <button
           type="button"
@@ -150,9 +142,9 @@ export function PushNotificationModal() {
           onTouchStart={() => {}}
           disabled={loading}
           style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' as unknown as string }}
-          className="w-full h-14 rounded-xl bg-primary font-black text-white text-sm uppercase tracking-widest shadow-[0_0_28px_rgba(11,65,150,0.55)] animate-pulse disabled:opacity-70 disabled:animate-none transition-all active:scale-[0.97]"
+          className="bg-green-500 text-white w-full py-4 text-xl font-black mt-8 rounded animate-pulse disabled:opacity-70 disabled:animate-none"
         >
-          {loading ? 'Ativando...' : 'ATIVAR AVISOS AGORA'}
+          {loading ? 'Ativando...' : '👉 ATIVAR AVISOS AGORA'}
         </button>
 
         <button
@@ -160,11 +152,10 @@ export function PushNotificationModal() {
           onClick={() => setVisible(false)}
           onTouchStart={() => {}}
           style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' as unknown as string }}
-          className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors text-center"
+          className="text-gray-500 underline mt-4 text-sm"
         >
-          Não quero ser avisado (Risco de perder a vaga)
+          Não quero ser avisado (Assumo o risco de perder a vaga)
         </button>
-
       </div>
     </div>
   )

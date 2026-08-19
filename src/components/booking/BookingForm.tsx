@@ -1111,9 +1111,9 @@ const handleConfirm = async () => {
           <Image
             src={config?.logo_url ?? '/logo-barbearialeste.png'}
             alt="Leste Barbearia"
-            width={180}
-            height={180}
-            className="relative h-auto w-28 object-contain animate-logo-glow drop-shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+            width={140}
+            height={140}
+            className="relative h-auto w-24 object-contain animate-logo-glow drop-shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
           />
         </div>
         <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">

@@ -7,7 +7,7 @@ import { dedupeById, GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizeP
 import type { AppointmentStatus, BusinessConfig, ProductReservation } from '@/lib/supabase/types'
 import { getAppointmentPaymentSummaryMap } from '@/lib/booking/appointment-payment-context'
 import type { AppointmentPaymentContext } from '@/lib/booking/appointment-payment-context'
-import { getAppointmentOperationalStatus, isAppointmentPast } from '@/lib/booking/appointment-visibility'
+import { getAppointmentOperationalStatus } from '@/lib/booking/appointment-visibility'
 
 interface HistoryApptBase {
   id: string
@@ -135,14 +135,22 @@ export default async function ReservasPage({ searchParams }: Props) {
     ...activeAppointments.map((appointment) => appointment.id),
     ...historyRows.map((appointment) => appointment.id),
   ])
-  const hydratedAppointments = activeAppointments
-    .filter((appointment) => !isAppointmentPast(appointment.date, appointment.start_time))
+  const hydratedAppointments = historyRows
+    .filter((appointment) => appointment.status !== 'cancelado')
     .map((appointment) => ({
-    ...appointment,
-    payment_context: appointment.status === 'confirmado'
-      ? paymentSummaryById[appointment.id]?.paymentContext ?? 'pay_locally'
-      : null,
-  }))
+      id: appointment.id,
+      date: appointment.date,
+      start_time: appointment.start_time,
+      status: getAppointmentOperationalStatus(appointment.status, appointment.date, appointment.start_time),
+      services: appointment.services?.name || appointment.service_name_snapshot
+        ? {
+            name: appointment.services?.name ?? appointment.service_name_snapshot ?? 'Serviço',
+            price: null,
+            duration_minutes: null,
+          }
+        : null,
+      payment_context: paymentSummaryById[appointment.id]?.paymentContext ?? null,
+    }))
 
   // Busca expires_at de payment_intents para agendamentos aguardando pagamento
   const pendingIds = hydratedAppointments
@@ -186,7 +194,7 @@ export default async function ReservasPage({ searchParams }: Props) {
         date: string
         start_time: string
         status: AppointmentStatus
-        services: { name: string; price: number; duration_minutes: number | null } | null
+        services: { name: string; price: number | null; duration_minutes: number | null } | null
         payment_context: AppointmentPaymentContext | null
         expiresAt: string | null
       }>}

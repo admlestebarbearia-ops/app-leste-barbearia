@@ -19,7 +19,7 @@ interface Appt {
   date: string
   start_time: string
   status: string
-  services: { name: string; price: number; duration_minutes: number | null } | null
+  services: { name: string; price: number | null; duration_minutes: number | null } | null
   payment_context: AppointmentPaymentContext | null
   expiresAt: string | null
 }

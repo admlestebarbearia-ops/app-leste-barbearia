@@ -314,4 +314,50 @@ describe('calculateAvailableSlots', () => {
     assert.ok(!result.slots.includes('12:30'), 'slot 12:30 deve ser bloqueado: 12:30+40=13:10 invade a pausa das 13:00')
     assert.ok(result.slots.includes('14:30'), 'slot 14:30 deve estar disponível após o retorno da pausa')
   })
+
+  // ─── Testes CA-AG-01/02/03: fronteira de horário atual ───────────────────
+
+  it('CA-AG-01: slot às 04:30 aparece disponível quando agora é 04:13, qualquer serviço', () => {
+    // Bug original: frontend somava +30min → 04:30 ficava oculto quando agora=04:13.
+    // O motor deve mostrar 04:30 pois 04:30 > 04:13.
+    const result = calculateAvailableSlots({
+      date: '2026-05-01',
+      serviceDurationMinutes: 30,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ open_time: '04:00:00', close_time: '06:00:00' }),
+      specialSchedule: null,
+      now: new Date('2026-05-01T04:13:00'),
+    })
+    assert.ok(result.slots.includes('04:30'), 'slot 04:30 deve estar disponível: 04:30 > 04:13')
+    assert.ok(!result.slots.includes('04:00'), 'slot 04:00 deve estar oculto: já passou')
+  })
+
+  it('CA-AG-02: slot às 04:30 está oculto quando agora é 04:30 e alguns segundos (já iniciou)', () => {
+    const result = calculateAvailableSlots({
+      date: '2026-05-01',
+      serviceDurationMinutes: 30,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ open_time: '04:00:00', close_time: '06:00:00' }),
+      specialSchedule: null,
+      now: new Date('2026-05-01T04:30:30'), // 30s depois de 04:30 — slot já iniciou
+    })
+    assert.ok(!result.slots.includes('04:00'), 'slot 04:00 deve estar oculto')
+    assert.ok(!result.slots.includes('04:30'), 'slot 04:30 deve estar oculto: 04:30:00 < 04:30:30')
+    assert.ok(result.slots.includes('05:00'), 'slot 05:00 deve estar disponível')
+  })
+
+  it('CA-AG-03: serviço de 60min não exibe slot 19:30 quando barbearia fecha às 20:00', () => {
+    // 19:30 + 60min = 20:30 → passa do fechamento → deve ser ocultado.
+    // 19:00 + 60min = 20:00 → termina exatamente no fechamento → deve aparecer.
+    const result = calculateAvailableSlots({
+      date: '2026-05-01',
+      serviceDurationMinutes: 60,
+      slotIntervalMinutes: 30,
+      workingHours: makeWorkingHours({ open_time: '09:00:00', close_time: '20:00:00' }),
+      specialSchedule: null,
+      now: new Date('2026-05-01T04:00:00'),
+    })
+    assert.ok(result.slots.includes('19:00'), 'slot 19:00 deve aparecer: 19:00+60=20:00 cabe exatamente')
+    assert.ok(!result.slots.includes('19:30'), 'slot 19:30 NÃO deve aparecer: 19:30+60=20:30 passa do fechamento')
+  })
 })

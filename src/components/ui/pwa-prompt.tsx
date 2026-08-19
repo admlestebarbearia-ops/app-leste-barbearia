@@ -64,32 +64,32 @@ export default function PwaPrompt() {
 
     if (isStandalone()) return
     if (localStorage.getItem(DISMISSED_KEY)) return
+    if (sessionStorage.getItem('pwa-prompt-shown-session')) return
 
-    if (isIos()) {
-      setMode('ios')
-      setVisible(true)
-      return
-    }
-
-    // Tenta pegar o evento capturado pelo script inline no <head>
-    const tryShow = (retries = 0) => {
-      if (window.__pwaPrompt) {
-        setMode('install')
+    const timer = setTimeout(() => {
+      sessionStorage.setItem('pwa-prompt-shown-session', '1')
+      if (isIos()) {
+        setMode('ios')
         setVisible(true)
         return
       }
-      // Se o evento nunca disparou (cooldown pós-desinstalação, Firefox, etc.)
-      // mostra instrução manual após breve espera
-      if (retries >= 8) {
-        setMode('manual')
-        setVisible(true)
-        return
-      }
-      setTimeout(() => tryShow(retries + 1), 250)
-    }
-    tryShow()
 
-    // Também ouve o evento caso dispare depois
+      const tryShow = (retries = 0) => {
+        if (window.__pwaPrompt) {
+          setMode('install')
+          setVisible(true)
+          return
+        }
+        if (retries >= 8) {
+          setMode('manual')
+          setVisible(true)
+          return
+        }
+        setTimeout(() => tryShow(retries + 1), 250)
+      }
+      tryShow()
+    }, 5000)
+
     const handler = (e: Event) => {
       e.preventDefault()
       window.__pwaPrompt = e as Event & { prompt(): Promise<void> }
@@ -97,7 +97,10 @@ export default function PwaPrompt() {
       setVisible(true)
     }
     window.addEventListener('beforeinstallprompt', handler)
-    return () => window.removeEventListener('beforeinstallprompt', handler)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('beforeinstallprompt', handler)
+    }
   }, [pathname])
 
   const dismiss = () => {
