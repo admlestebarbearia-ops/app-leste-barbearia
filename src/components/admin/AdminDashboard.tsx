@@ -54,6 +54,7 @@ import {
   deleteUser,
   getUserDetails,
   concludeAppointment,
+  concludeAllDayAppointments,
   estornarAgendamento,
   listFinancialEntries,
   addManualFinancialEntry,
@@ -692,6 +693,12 @@ function TabHoje({
   const [hardDeleteLoading, setHardDeleteLoading] = useState(false)
   // Resumo do dia
   const [showDayReport, setShowDayReport] = useState(false)
+  // Modal Concluir Todos do dia
+  const [bulkConcludeOpen, setBulkConcludeOpen] = useState(false)
+  const [bulkConcludePayment, setBulkConcludePayment] = useState<PaymentMethod | ''>('')
+  const [bulkConcludeIsPending, setBulkConcludeIsPending] = useState(false)
+  const [bulkConcludePendingDate, setBulkConcludePendingDate] = useState('')
+  const [bulkConcludeLoading, setBulkConcludeLoading] = useState(false)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default')
   const [notifLoading, setNotifLoading] = useState(false)
   const [isStandalone, setIsStandalone] = useState(false)
@@ -1128,6 +1135,43 @@ function TabHoje({
     setCancelLoading(false)
   }
 
+  // ── Concluir TODOS do dia ──────────────────────────────────────────────
+  const bulkEligibleCount = useMemo(() => {
+    if (!selectedDay) return 0
+    const dayList = apptByDate[selectedDay] ?? []
+    return dayList.filter(a => {
+      if (a.status !== 'confirmado') return false
+      if (a.is_admin_block) return false
+      if (!isMounted) return false
+      return isAppointmentPast(a.date, a.start_time)
+    }).length
+  }, [selectedDay, apptByDate, isMounted])
+
+  const handleBulkConclude = async () => {
+    if (!selectedDay || (!bulkConcludePayment && !bulkConcludeIsPending)) return
+    setBulkConcludeLoading(true)
+    const result = await concludeAllDayAppointments(
+      selectedDay,
+      (bulkConcludeIsPending ? 'dinheiro' : bulkConcludePayment) as PaymentMethod,
+      bulkConcludeIsPending || undefined,
+      bulkConcludeIsPending ? (bulkConcludePendingDate || undefined) : undefined
+    )
+    setBulkConcludeLoading(false)
+    if (result.success) {
+      const msgs: string[] = []
+      if (result.concluded > 0) msgs.push(`${result.concluded} concluído${result.concluded > 1 ? 's' : ''}`)
+      if (result.skipped > 0) msgs.push(`${result.skipped} ignorado${result.skipped > 1 ? 's' : ''} (futuro/bloqueio)`)
+      toast.success(msgs.join(', ') || 'Nenhum atendimento elegível.')
+      setBulkConcludeOpen(false)
+      setBulkConcludePayment('')
+      setBulkConcludeIsPending(false)
+      setBulkConcludePendingDate('')
+      onRefresh()
+    } else {
+      toast.error(result.errors?.[0] ?? 'Erro ao concluir atendimentos.')
+    }
+  }
+
   const formatSelectedDay = (dateStr: string) => {
     const d = new Date(dateStr + 'T12:00:00')
     return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }).toUpperCase()
@@ -1267,6 +1311,15 @@ function TabHoje({
             </p>
             <div className="flex items-center gap-2">
               {/* Botão Resumo do Dia */}
+              {isMounted && bulkEligibleCount > 0 && (
+                <button
+                  onClick={() => { setBulkConcludeOpen(true); setBulkConcludePayment(''); setBulkConcludeIsPending(false); setBulkConcludePendingDate('') }}
+                  className="px-2.5 py-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-bold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all"
+                  title={`Concluir ${bulkEligibleCount} atendimento(s) passado(s)`}
+                >
+                  ✅ Concluir Todos ({bulkEligibleCount})
+                </button>
+              )}
               <button
                 onClick={() => setShowDayReport(true)}
                 className="px-2.5 py-1 rounded-lg border border-white/10 bg-white/5 text-[10px] font-semibold text-zinc-400 hover:text-white hover:border-white/20 transition-all"
@@ -1903,6 +1956,90 @@ function TabHoje({
             className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40"
           >
             {concludeLoading ? 'Salvando...' : concludeIsPending ? 'Confirmar (Fiado)' : 'Confirmar Conclusão'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {/* ── Modal: Concluir Todos do Dia ── */}
+    <Dialog open={bulkConcludeOpen} onOpenChange={(open) => { if (!open) { setBulkConcludeOpen(false); setBulkConcludePayment(''); setBulkConcludeIsPending(false); setBulkConcludePendingDate('') } }}>
+      <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-white">Concluir Todos os Atendimentos</DialogTitle>
+          <DialogDescription className="text-zinc-400">
+            {selectedDay && (
+              <>
+                <span className="text-emerald-400 font-bold">{bulkEligibleCount}</span> atendimento{bulkEligibleCount !== 1 ? 's' : ''} do dia{' '}
+                <span className="text-white font-bold">{selectedDay.split('-').reverse().join('/')}</span>
+              </>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-1">
+          {/* Aviso de segurança */}
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5">
+            <p className="text-xs text-amber-300 font-medium">⚠ Apenas atendimentos cujo horário já passou serão concluídos. Agendamentos futuros e bloqueios serão ignorados automaticamente.</p>
+          </div>
+
+          {/* Forma de pagamento */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-zinc-400">Forma de pagamento padrão</span>
+            <div className="grid grid-cols-2 gap-2">
+              {(['dinheiro', 'pix', 'credito'] as PaymentMethod[]).map((pm) => {
+                const labels: Record<PaymentMethod, string> = { dinheiro: 'Dinheiro', pix: 'PIX', debito: 'Débito', credito: 'Crédito', mercado_pago: 'Mercado Pago' }
+                return (
+                  <button
+                    key={pm}
+                    onClick={() => { setBulkConcludePayment(pm); setBulkConcludeIsPending(false) }}
+                    className={`flex flex-col items-start px-3 py-2 rounded-lg border text-sm transition-all ${
+                      bulkConcludePayment === pm && !bulkConcludeIsPending
+                        ? 'border-blue-500 bg-blue-500/15 text-white'
+                        : 'border-white/10 bg-white/5 text-zinc-300 hover:border-white/20'
+                    }`}
+                  >
+                    <span className="font-medium">{labels[pm]}</span>
+                  </button>
+                )
+              })}
+              <button
+                onClick={() => { setBulkConcludeIsPending(!bulkConcludeIsPending); setBulkConcludePayment('') }}
+                className={`flex flex-col items-start px-3 py-2 rounded-lg border text-sm transition-all ${
+                  bulkConcludeIsPending
+                    ? 'border-amber-500 bg-amber-500/15 text-white'
+                    : 'border-white/10 bg-white/5 text-zinc-300 hover:border-white/20'
+                }`}
+              >
+                <span className="font-medium">Pagar Depois</span>
+                <span className="text-[10px] text-zinc-500">Fiado / Promessa</span>
+              </button>
+            </div>
+            {bulkConcludeIsPending && (
+              <div className="flex flex-col gap-2">
+                <span className="text-xs text-zinc-400">Data prometida de pagamento (opcional)</span>
+                <input
+                  type="date"
+                  value={bulkConcludePendingDate}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setBulkConcludePendingDate(e.target.value)}
+                  className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-white/30"
+                />
+              </div>
+            )}
+            <p className="text-[10px] text-zinc-600 mt-1">
+              Atendimentos com pagamento online aprovado (MP) manterão a forma de pagamento original automaticamente.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setBulkConcludeOpen(false); setBulkConcludePayment(''); setBulkConcludeIsPending(false); setBulkConcludePendingDate('') }} disabled={bulkConcludeLoading}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleBulkConclude}
+            disabled={bulkConcludeLoading || (!bulkConcludePayment && !bulkConcludeIsPending)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40"
+          >
+            {bulkConcludeLoading ? 'Concluindo...' : `Confirmar (${bulkEligibleCount})`}
           </Button>
         </DialogFooter>
       </DialogContent>

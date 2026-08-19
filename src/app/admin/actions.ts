@@ -1240,6 +1240,140 @@ export async function concludeAppointment(
   }
 }
 
+// ─── FASE 3: Concluir TODOS os atendimentos do dia ────────────────────────
+// RN-CT01: Apenas agendamentos confirmados cujo horário já passou (BRT).
+// RN-CT02: Agendamentos futuros (mesmo dia) são SEMPRE ignorados.
+// RN-CT03: Bloqueios de horário (is_admin_block) são SEMPRE ignorados.
+// RN-CT04: Reutiliza a mesma lógica de resolução de pagamento da concludeAppointment.
+// RN-CT05: Evita duplicata de financial_transaction (mesma checagem existente).
+// US-CT01: Barbeiro quer concluir todos os atendimentos passados de um dia com 1 clique.
+export async function concludeAllDayAppointments(
+  date: string,
+  paymentMethod: PaymentMethod,
+  isPending?: boolean,
+  expectedPaymentDate?: string
+): Promise<{
+  success: boolean
+  concluded: number
+  skipped: number
+  errors: string[]
+}> {
+  try {
+    const { supabase } = await requireAdmin()
+
+    // Busca todos os agendamentos confirmados do dia
+    const { data: appts, error: fetchError } = await supabase
+      .from('appointments')
+      .select('id, date, start_time, status, client_id, service_name_snapshot, service_price_snapshot, is_admin_block')
+      .eq('date', date)
+      .eq('status', 'confirmado')
+
+    if (fetchError) throw fetchError
+    if (!appts || appts.length === 0) {
+      return { success: true, concluded: 0, skipped: 0, errors: [] }
+    }
+
+    let concluded = 0
+    let skipped = 0
+    const errors: string[] = []
+
+    for (const appt of appts) {
+      // RN-CT03: Ignora bloqueios de horário
+      if (appt.is_admin_block) {
+        skipped++
+        continue
+      }
+
+      // RN-CT01/RN-CT02: Valida que o horário já passou (BRT UTC-3 fixo)
+      const startTime = (appt.start_time as string).length === 5 ? `${appt.start_time}:00` : appt.start_time
+      const appointmentDateTime = new Date(`${appt.date}T${startTime}-03:00`)
+      if (appointmentDateTime.getTime() > Date.now()) {
+        skipped++
+        continue
+      }
+
+      // Race condition guard: re-verifica status (outro admin pode ter concluído)
+      if (appt.status !== 'confirmado') {
+        skipped++
+        continue
+      }
+
+      // RN-CT04: Resolve paymentMethod (detecta MP aprovado automaticamente)
+      const { data: paymentIntent } = await supabase
+        .from('payment_intents')
+        .select('status, payment_method, refunded_at')
+        .eq('appointment_id', appt.id)
+        .maybeSingle()
+
+      const resolvedPaymentMethod = (paymentIntent?.status === 'approved' && !paymentIntent.refunded_at)
+        ? paymentIntent.payment_method ?? paymentMethod ?? 'mercado_pago'
+        : isPending
+          ? undefined
+          : paymentMethod
+
+      const amount = appt.service_price_snapshot ?? 0
+
+      // Atualiza status do agendamento
+      const { error: updateError } = await supabase
+        .from('appointments')
+        .update({
+          status: 'concluido',
+          ...(isPending && expectedPaymentDate ? { expected_payment_date: expectedPaymentDate } : {}),
+        })
+        .eq('id', appt.id)
+        .eq('status', 'confirmado') // Optimistic lock: só atualiza se ainda confirmado
+
+      if (updateError) {
+        errors.push(`${appt.start_time?.slice(0, 5)} — ${updateError.message}`)
+        continue
+      }
+
+      // Cria financial_transaction (se amount > 0 e não existe duplicata)
+      if (amount > 0) {
+        const { data: existingTx } = await supabase
+          .from('financial_transactions')
+          .select('id')
+          .eq('source_id', appt.id)
+          .eq('source_type', 'APPOINTMENT')
+          .maybeSingle()
+
+        if (!existingTx) {
+          if (isPending) {
+            await supabase.from('financial_transactions').insert({
+              amount,
+              type: 'IN',
+              status: 'PENDING',
+              due_date: expectedPaymentDate ?? appt.date,
+              source_id: appt.id,
+              source_type: 'APPOINTMENT',
+              description: appt.service_name_snapshot ?? 'Serviço',
+            })
+          } else if (resolvedPaymentMethod) {
+            await supabase.from('financial_transactions').insert({
+              amount,
+              type: 'IN',
+              status: 'PAID',
+              due_date: appt.date,
+              source_id: appt.id,
+              source_type: 'APPOINTMENT',
+              description: `${appt.service_name_snapshot ?? 'Serviço'} (${resolvedPaymentMethod})`,
+            })
+          }
+        }
+      }
+
+      concluded++
+    }
+
+    revalidatePath('/admin')
+    revalidatePath('/reservas')
+    revalidatePath('/perfil')
+    return { success: true, concluded, skipped, errors }
+  } catch (e) {
+    return { success: false, concluded: 0, skipped: 0, errors: [(e as Error).message] }
+  }
+}
+
 export async function estornarAgendamento(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
