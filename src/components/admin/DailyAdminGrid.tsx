@@ -22,6 +22,7 @@ const _getFalse = () => false
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Lock, Scissors, MessageCircle, Check, X, Trash2 } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -294,10 +295,10 @@ export function DailyAdminGrid({
               <button
                 key={slot.time}
                 onClick={() => openFreeModal(slot.time)}
-                className="flex flex-col items-center justify-center gap-0.5 bg-neutral-800 hover:bg-neutral-700 border border-white/8 rounded-xl px-2 py-3 transition-all"
+                className="flex flex-col items-center justify-center gap-0.5 bg-[#141418] hover:bg-[#1c1c22] border border-white/10 rounded-xl px-2 py-3.5 transition-all duration-150 shadow-sm group"
               >
-                <span className="text-sm font-bold text-white tabular-nums">{slot.time}</span>
-                <span className="text-[9px] text-zinc-600 font-medium">livre</span>
+                <span className="text-sm font-bold text-white tabular-nums group-hover:scale-105 transition-transform">{slot.time}</span>
+                <span className="text-[9px] text-emerald-400/80 font-semibold tracking-wider uppercase">livre</span>
               </button>
             )
           }
@@ -310,31 +311,31 @@ export function DailyAdminGrid({
           ).split(' ')[0].slice(0, 8)
 
           const slotBg = isBlock
-            ? 'bg-zinc-800/60 border-zinc-600/40 hover:bg-zinc-700/60'
+            ? 'bg-zinc-900/80 border-zinc-700/50 hover:bg-zinc-800/80'
             : appt.status === 'concluido'
-            ? 'bg-blue-700/25 border-blue-500/30 hover:bg-blue-700/35'
+            ? 'bg-blue-950/40 border-blue-500/40 hover:bg-blue-900/40'
             : appt.status === 'faltou'
-            ? 'bg-amber-700/20 border-amber-500/25 hover:bg-amber-700/30'
+            ? 'bg-amber-950/40 border-amber-500/40 hover:bg-amber-900/40'
             : appt.status === 'aguardando_pagamento'
-            ? 'bg-yellow-700/25 border-yellow-500/30 hover:bg-yellow-700/35'
-            : 'bg-emerald-700/25 border-emerald-500/30 hover:bg-emerald-700/35'
+            ? 'bg-yellow-950/40 border-yellow-500/40 hover:bg-yellow-900/40'
+            : 'bg-emerald-950/40 border-emerald-500/40 hover:bg-emerald-900/40'
 
-          const timeColor = isBlock ? 'text-zinc-400'
-            : appt.status === 'concluido' ? 'text-blue-300'
-            : appt.status === 'faltou' ? 'text-amber-300'
-            : appt.status === 'aguardando_pagamento' ? 'text-yellow-300'
-            : 'text-emerald-300'
+          const timeColor = isBlock ? 'text-zinc-400 font-semibold'
+            : appt.status === 'concluido' ? 'text-blue-300 font-bold'
+            : appt.status === 'faltou' ? 'text-amber-300 font-bold'
+            : appt.status === 'aguardando_pagamento' ? 'text-yellow-300 font-bold'
+            : 'text-emerald-300 font-bold'
 
           const subColor = isBlock ? 'text-zinc-500'
             : appt.status === 'concluido' ? 'text-blue-400'
             : appt.status === 'faltou' ? 'text-amber-400'
             : appt.status === 'aguardando_pagamento' ? 'text-yellow-400'
-            : 'text-emerald-400'
+            : 'text-emerald-400 font-semibold'
 
-          const slotLabel = isBlock ? '🔒'
-            : appt.status === 'concluido' ? `✓ ${firstName}`
-            : appt.status === 'faltou' ? `✗ ${firstName}`
-            : appt.status === 'aguardando_pagamento' ? `⏳ ${firstName}`
+          const slotLabel = isBlock ? 'Bloqueado'
+            : appt.status === 'concluido' ? `Concluído · ${firstName}`
+            : appt.status === 'faltou' ? `Faltou · ${firstName}`
+            : appt.status === 'aguardando_pagamento' ? `Pendente · ${firstName}`
             : firstName
 
           return (
@@ -342,15 +343,16 @@ export function DailyAdminGrid({
               key={`${slot.time}-${appt.id}`}
               onClick={() => setSelectedAppt(appt)}
               className={[
-                'flex flex-col items-center justify-center gap-0.5 border rounded-xl px-2 py-3 transition-all',
+                'flex flex-col items-center justify-center gap-0.5 border rounded-xl px-2 py-3.5 transition-all duration-150 shadow-sm active:scale-95',
                 slotBg,
               ].join(' ')}
             >
-              <span className={`text-sm font-bold tabular-nums ${timeColor}`}>
+              <span className={`text-sm tabular-nums ${timeColor}`}>
                 {appt.start_time?.slice(0, 5)}
               </span>
-              <span className={`text-[9px] font-semibold leading-tight text-center w-full truncate px-0.5 ${subColor}`}>
-                {slotLabel}
+              <span className={`text-[10px] font-semibold leading-tight text-center w-full truncate px-0.5 flex items-center justify-center gap-1 ${subColor}`}>
+                {isBlock && <Lock size={10} className="shrink-0" />}
+                <span className="truncate">{slotLabel}</span>
               </span>
             </button>
           )
@@ -361,7 +363,7 @@ export function DailyAdminGrid({
       <Dialog open={!!selectedFreeTime} onOpenChange={(open) => { if (!open) setSelectedFreeTime(null) }}>
         <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white text-base">
+            <DialogTitle className="text-white text-base font-bold">
               {selectedFreeTime} — Horário livre
             </DialogTitle>
           </DialogHeader>
@@ -391,11 +393,21 @@ export function DailyAdminGrid({
                 key={tab}
                 onClick={() => setFreeModalTab(tab)}
                 className={[
-                  'flex-1 py-2 rounded-lg text-xs font-bold transition-all',
+                  'flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5',
                   freeModalTab === tab ? 'bg-white text-black' : 'text-zinc-400 hover:text-zinc-200',
                 ].join(' ')}
               >
-                {tab === 'agendar' ? '✂️ Agendar Cliente' : '🔒 Bloquear Horário'}
+                {tab === 'agendar' ? (
+                  <>
+                    <Scissors size={14} />
+                    <span>Agendar Cliente</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock size={14} />
+                    <span>Bloquear Horário</span>
+                  </>
+                )}
               </button>
             ))}
           </div>
@@ -497,8 +509,9 @@ export function DailyAdminGrid({
       <Dialog open={!!selectedAppt} onOpenChange={(open) => { if (!open) setSelectedAppt(null) }}>
         <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-white text-base">
-              {selectedAppt?.is_admin_block ? '🔒 Bloqueio de Horário' : 'Detalhes do Agendamento'}
+            <DialogTitle className="text-white text-base font-bold flex items-center gap-2">
+              {selectedAppt?.is_admin_block && <Lock size={16} className="text-zinc-400" />}
+              <span>{selectedAppt?.is_admin_block ? 'Bloqueio de Horário' : 'Detalhes do Agendamento'}</span>
             </DialogTitle>
           </DialogHeader>
 
@@ -554,7 +567,7 @@ export function DailyAdminGrid({
                     {(selectedAppt.status === 'concluido' || selectedAppt.status === 'faltou') && (
                       <InfoRow
                         label="Status"
-                        value={selectedAppt.status === 'concluido' ? '✓ Concluído' : '✗ Faltou'}
+                        value={selectedAppt.status === 'concluido' ? 'Concluído' : 'Faltou'}
                         valueClass={selectedAppt.status === 'concluido' ? 'text-blue-400 font-semibold' : 'text-amber-400 font-semibold'}
                       />
                     )}
@@ -596,25 +609,23 @@ export function DailyAdminGrid({
                       rel="noreferrer"
                       className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 text-sm font-semibold hover:bg-emerald-600/30 transition-colors"
                     >
-                      💬 Contactar Cliente
+                      <MessageCircle size={15} />
+                      <span>Contactar Cliente</span>
                     </a>
                   )}
 
-                  {/* Concluir: sempre no DOM; visibilidade via CSS evita mismatch estrutural SSR↔CSR.
-                      suppressHydrationWarning: tolera diff de className se isMounted diferir na hidratação. */}
+                  {/* Concluir */}
                   <button
                     suppressHydrationWarning
                     onClick={() => {
                       const appt = selectedAppt
-                      // Fecha este dialog primeiro; deixa o frame de animação
-                      // do Radix completar antes de abrir o modal do pai,
-                      // evitando conflito de focus-trap entre dois dialogs.
                       setSelectedAppt(null)
                       requestAnimationFrame(() => onConclude(appt))
                     }}
                     className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-colors${isMounted && isAppointmentPast(selectedAppt.date, selectedAppt.start_time) ? '' : ' hidden'}`}
                   >
-                    ✓ Concluir Atendimento
+                    <Check size={16} />
+                    <span>Concluir Atendimento</span>
                   </button>
 
                   {/* Botões secundários: Faltou / Cancelar / Bloquear */}
@@ -653,9 +664,10 @@ export function DailyAdminGrid({
                 <button
                   disabled={actionLoading === 'rmblock' + selectedAppt.id}
                   onClick={() => handleRemoveBlock(selectedAppt)}
-                  className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 transition-colors disabled:opacity-40"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 transition-colors disabled:opacity-40"
                 >
-                  {actionLoading === 'rmblock' + selectedAppt.id ? 'Removendo…' : '🗑 Remover Bloqueio'}
+                  <Trash2 size={15} />
+                  <span>{actionLoading === 'rmblock' + selectedAppt.id ? 'Removendo…' : 'Remover Bloqueio'}</span>
                 </button>
               )}
 
@@ -667,9 +679,10 @@ export function DailyAdminGrid({
                     setSelectedAppt(null)
                     requestAnimationFrame(() => onHardDelete(appt))
                   }}
-                  className="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 transition-colors"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm font-bold hover:bg-red-500/20 transition-colors"
                 >
-                  🗑 Apagar Registro Permanentemente
+                  <Trash2 size={15} />
+                  <span>Apagar Registro Permanentemente</span>
                 </button>
               )}
             </div>

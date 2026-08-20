@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck, CheckCircle2, BarChart3, ShoppingBag, CreditCard, Check, List, Grid, AlertTriangle, Clock, UserX, XCircle, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -417,6 +417,18 @@ export function AdminDashboard({
 
         {/* Rodapé do Drawer */}
         <div className="px-5 py-4 border-t border-white/10 flex flex-col gap-1">
+          {/* Botão Pausar Agendamentos (no Drawer para não poluir a barra superior) */}
+          <button
+            onClick={() => { setIsPauseDialogOpen(true); setIsDrawerOpen(false) }}
+            className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              config.is_paused
+                ? 'bg-red-500/20 text-red-400 border border-red-500/40'
+                : 'text-zinc-400 hover:bg-white/5 hover:text-white'
+            }`}
+          >
+            {config.is_paused ? <Play size={18} className="text-red-400" /> : <Pause size={18} className="text-zinc-500" />}
+            {config.is_paused ? 'Retomar Expediente' : 'Pausar Expediente'}
+          </button>
           <a
             href="/"
             className="flex items-center gap-3 w-full px-4 py-3 rounded-xl text-sm font-semibold text-zinc-400 hover:bg-white/5 hover:text-white transition-all duration-200"
@@ -434,7 +446,7 @@ export function AdminDashboard({
         </div>
       </aside>
 
-      {/* Header */}
+      {/* Header Limpo & Elegante */}
       <header className="sticky top-0 z-30 bg-neutral-950/80 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-3 min-w-0">
@@ -466,20 +478,8 @@ export function AdminDashboard({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Notificações push para o admin */}
+            {/* Notificações push para o admin (sininho inteligente no header) */}
             <PushNotificationToggle compact />
-
-            {/* Botão Pausar Agendamentos */}
-            <button
-              onClick={() => setIsPauseDialogOpen(true)}
-              className={`flex items-center gap-1.5 cursor-pointer px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 ${
-                config.is_paused
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/40'
-                  : 'bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20'
-              }`}
-            >
-              {config.is_paused ? 'Retomar agenda' : 'Pausar agenda'}
-            </button>
 
             {/* Menu Hambúrguer */}
             <button
@@ -661,7 +661,14 @@ function TabHoje({
   refundedApptIds?: Set<string>
   onStandaloneUpdated?: (id: string, newStatus: 'reservado' | 'retirado' | 'cancelado' | 'deleted') => void
 }) {
-  const todayStr = new Date().toISOString().split('T')[0]
+  const getLocalTodayStr = () => {
+    const d = new Date()
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+  const todayStr = getLocalTodayStr()
   const [loading, setLoading] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   // isMounted: false no SSR/hydration (getServerSnapshot), true no cliente após hidratação.
@@ -1191,29 +1198,6 @@ function TabHoje({
         </div>
       )}
 
-      {/* Notificações */}
-      {notifPermission !== 'granted' && (
-        <button
-          onClick={requestNotifPermission}
-          disabled={notifLoading}
-          className="flex items-center gap-3 w-full bg-amber-500/15 border border-amber-500/30 rounded-xl px-4 py-3.5 text-left hover:bg-amber-500/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          <span className="text-2xl shrink-0">{notifLoading ? '⏳' : notifPermission === 'denied' ? '🚫' : '🔔'}</span>
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="text-xs text-amber-300 font-bold">
-              {notifLoading ? 'Aguardando permissão...' : notifPermission === 'denied' ? 'Notificações bloqueadas' : 'Ativar notificações'}
-            </span>
-            <span className="text-[11px] text-amber-400/70 leading-tight">
-              {notifPermission === 'denied'
-                ? isStandalone
-                  ? 'Toque para ver como ativar nas Configurações do celular'
-                  : 'Clique para ver como desbloquear no navegador'
-                : 'Receba alertas de novos agendamentos mesmo com a tela bloqueada'}
-            </span>
-          </div>
-        </button>
-      )}
-
       {/* Cabeçalho */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -1227,13 +1211,13 @@ function TabHoje({
             </button>
           )}
         </div>
-        <span className="text-[10px] font-bold text-zinc-500 bg-white/5 py-1 px-3 rounded-full border border-white/5">
+        <span className="text-[10px] font-bold text-zinc-400 bg-white/5 py-1 px-3 rounded-full border border-white/10">
           {totalConfirmed} confirmado(s)
         </span>
       </div>
 
       {/* ── CALENDÁRIO ESTILO iOS ── */}
-      <div className="bg-neutral-900 rounded-2xl overflow-hidden">
+      <div className="bg-[#141418] border border-white/10 rounded-2xl overflow-hidden shadow-xl">
         {/* Navegação de mês */}
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <button
@@ -1250,7 +1234,7 @@ function TabHoje({
         {/* Dias da semana */}
         <div className="grid grid-cols-7 px-2 pb-1">
           {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
-            <div key={i} className="flex items-center justify-center text-[10px] font-bold text-zinc-600 py-1">
+            <div key={i} className="flex items-center justify-center text-[10px] font-bold text-zinc-500 py-1">
               {d}
             </div>
           ))}
@@ -1272,24 +1256,26 @@ function TabHoje({
                 <button
                   onClick={() => setSelectedDay(isSelected ? null : dateStr)}
                   className={[
-                    'relative w-10 h-10 flex items-center justify-center rounded-full transition-all duration-150 select-none',
-                    isSelected
-                      ? 'bg-blue-600'
+                    'relative w-10 h-10 flex items-center justify-center rounded-full transition-all duration-200 select-none',
+                    isToday && isSelected
+                      ? 'bg-blue-600 text-white font-bold scale-105 shadow-lg ring-2 ring-emerald-400 ring-offset-2 ring-offset-[#141418]'
+                      : isSelected
+                      ? 'bg-blue-600 text-white font-bold scale-105 shadow-lg shadow-blue-600/30'
                       : isToday
-                        ? 'bg-white/15 ring-1 ring-white/30'
-                        : 'hover:bg-white/8',
+                      ? 'bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/40 hover:bg-emerald-500/20'
+                      : 'hover:bg-white/10 text-zinc-300',
                   ].join(' ')}
                 >
                   <span className={[
-                    'text-[13px] font-semibold leading-none',
-                    isSelected ? 'text-white' : isToday ? 'text-white' : hasAppts ? 'text-white' : 'text-zinc-600',
+                    'text-[13px] leading-none',
+                    isSelected ? 'text-white font-bold' : isToday ? 'text-emerald-400 font-semibold' : hasAppts ? 'text-white font-medium' : 'text-zinc-500',
                   ].join(' ')}>
                     {dayNum}
                   </span>
                   {hasAppts && (
                     <span className={[
-                      'absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-black',
-                      isSelected ? 'bg-white text-blue-600' : 'bg-red-600 text-white',
+                      'absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-black shadow-sm',
+                      isSelected ? 'bg-white text-blue-600' : 'bg-red-500 text-white',
                     ].join(' ')}>
                       {pendingCount}
                     </span>
@@ -1314,32 +1300,44 @@ function TabHoje({
               {isMounted && bulkEligibleCount > 0 && (
                 <button
                   onClick={() => { setBulkConcludeOpen(true); setBulkConcludePayment(''); setBulkConcludeIsPending(false); setBulkConcludePendingDate('') }}
-                  className="px-2.5 py-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-[10px] font-bold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all shadow-sm"
                   title={`Concluir ${bulkEligibleCount} atendimento(s) passado(s)`}
                 >
-                  ✅ Concluir Todos ({bulkEligibleCount})
+                  <CheckCircle2 size={14} />
+                  <span>Concluir Todos ({bulkEligibleCount})</span>
                 </button>
               )}
               <button
                 onClick={() => setShowDayReport(true)}
-                className="px-2.5 py-1 rounded-lg border border-white/10 bg-white/5 text-[10px] font-semibold text-zinc-400 hover:text-white hover:border-white/20 transition-all"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-zinc-300 hover:text-white hover:border-white/20 transition-all"
                 title="Resumo do dia"
               >
-                📊 Resumo
+                <BarChart3 size={14} />
+                <span>Resumo</span>
               </button>
-              <div className="flex gap-1 bg-white/5 p-0.5 rounded-lg">
+              <div className="flex gap-1 bg-white/5 p-1 rounded-lg border border-white/10">
                 {(['lista', 'grade'] as const).map(mode => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
                     className={[
-                      'px-2.5 py-1 rounded-md text-[10px] font-bold transition-all',
+                      'flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition-all',
                       viewMode === mode
-                        ? 'bg-white text-black'
-                        : 'text-zinc-500 hover:text-zinc-300',
+                        ? 'bg-white text-black shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200',
                     ].join(' ')}
                   >
-                    {mode === 'lista' ? '☰ Lista' : '▦ Grade'}
+                    {mode === 'lista' ? (
+                      <>
+                        <List size={13} />
+                        <span>Lista</span>
+                      </>
+                    ) : (
+                      <>
+                        <Grid size={13} />
+                        <span>Grade</span>
+                      </>
+                    )}
                   </button>
                 ))}
               </div>
@@ -1471,8 +1469,9 @@ function TabHoje({
                       {(productReservationsByAppt[appt.id] ?? []).length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-0.5">
                           {productReservationsByAppt[appt.id].map((pr) => (
-                            <span key={pr.id} className="text-[9px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/20 px-1.5 py-0.5 rounded-full">
-                              🛍 {pr.product_name_snapshot}
+                            <span key={pr.id} className="inline-flex items-center gap-1 text-[9px] font-bold bg-violet-500/10 text-violet-400 border border-violet-500/20 px-2 py-0.5 rounded-full">
+                              <ShoppingBag size={10} />
+                              <span>{pr.product_name_snapshot}</span>
                             </span>
                           ))}
                         </div>
@@ -1482,7 +1481,7 @@ function TabHoje({
                     {/* Badge de status */}
                     <div className="shrink-0">
                       <span className={[
-                        'text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-full border',
+                        'text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border',
                         appt.status === 'confirmado' ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' :
                         appt.status === 'cancelado'  ? 'text-zinc-500 border-white/10 bg-white/5' :
                         appt.status === 'concluido'  ? 'text-blue-400 border-blue-500/20 bg-blue-500/10' :
@@ -1494,14 +1493,17 @@ function TabHoje({
                   </div>
 
                   {/* Rodapé — botões de ação */}
-                  <div className="flex gap-2 flex-wrap pt-1 border-t border-white/5">
+                  <div className="flex gap-2 flex-wrap items-center pt-2 border-t border-white/5">
                     {appt.status === 'aguardando_pagamento' && (
                       <>
-                        <span className="text-[9px] font-bold text-amber-300/70 self-center">💳 Aguardando pagamento MP</span>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300/80 self-center">
+                          <CreditCard size={12} />
+                          <span>Aguardando pagamento MP</span>
+                        </span>
                         <button
                           disabled={!!loading}
                           onClick={() => { setCancelAppt(appt); setCancelReason(''); setCancelWithRefund(false); setCancelCanRefund(false) }}
-                          className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                          className="text-xs font-semibold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg hover:text-white transition-all disabled:opacity-40"
                         >
                           Cancelar
                         </button>
@@ -1515,32 +1517,32 @@ function TabHoje({
                             href={`https://wa.me/55${(appt.profiles?.phone ?? appt.client_phone ?? '').replace(/\D/g, '')}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-[10px] font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 rounded-lg"
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 transition-all"
                           >
-                            WhatsApp
+                            <MessageCircle size={13} />
+                            <span>WhatsApp</span>
                           </a>
                         )}
-                        {/* Concluir: sempre no DOM; visibilidade via CSS evita mismatch estrutural SSR↔CSR.
-                            suppressHydrationWarning: tolera diff de className se isMounted diferir. */}
                         <button
                           suppressHydrationWarning
                           disabled={!!loading}
                           onClick={() => { setConcludeAppt(appt); setConcludeIsPending(false); setConcludePendingDate(''); setRatingScore(0); setRatingNote('') }}
-                          className={`text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40${isMounted && isAppointmentPast(appt.date, appt.start_time) ? '' : ' hidden'}`}
+                          className={`inline-flex items-center gap-1.5 text-xs font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-40${isMounted && isAppointmentPast(appt.date, appt.start_time) ? '' : ' hidden'}`}
                         >
-                          ✓ Concluir
+                          <Check size={14} />
+                          <span>Concluir</span>
                         </button>
                         <button
                           disabled={!!loading}
                           onClick={() => handleStatus(appt.id, 'faltou')}
-                          className="text-[10px] font-bold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                          className="text-xs font-semibold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 rounded-lg hover:bg-amber-500/20 transition-all disabled:opacity-40"
                         >
                           Faltou
                         </button>
                         <button
                           disabled={!!loading}
                           onClick={() => { setCancelAppt(appt); setCancelReason(''); setCancelWithRefund(false); setCancelCanRefund(canRefund) }}
-                          className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                          className="text-xs font-semibold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg hover:text-white transition-all disabled:opacity-40"
                         >
                           Cancelar
                         </button>
@@ -1548,7 +1550,7 @@ function TabHoje({
                           <button
                             disabled={!!loading}
                             onClick={() => handleBlock(appt.client_id, true)}
-                            className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                            className="text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all disabled:opacity-40"
                           >
                             Bloquear
                           </button>
@@ -1557,7 +1559,7 @@ function TabHoje({
                           <button
                             disabled={!!loading}
                             onClick={() => handleBlock(appt.client_id, false)}
-                            className="text-[10px] font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                            className="text-xs font-semibold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-40"
                           >
                             Desbloquear
                           </button>
@@ -1571,20 +1573,21 @@ function TabHoje({
                           <button
                             disabled={estornoLoading === appt.id}
                             onClick={() => handleEstorno(appt.id)}
-                            className="text-[10px] font-bold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                            className="text-xs font-semibold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg disabled:opacity-40"
                           >
                             {estornoLoading === appt.id ? '...' : 'Estornar'}
                           </button>
                         ) : refundedApptIds.has(appt.id) ? (
-                          <span className="text-[10px] font-bold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg">
+                          <span className="text-xs font-semibold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg">
                             Estornado
                           </span>
                         ) : null}
                         <button
                           onClick={() => { setHardDeleteAppt(appt); setHardDeleteText('') }}
-                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all"
                         >
-                          🗑 Apagar
+                          <Trash2 size={13} />
+                          <span>Apagar</span>
                         </button>
                       </>
                     )}
@@ -1595,28 +1598,28 @@ function TabHoje({
                           <button
                             disabled={estornoLoading === appt.id}
                             onClick={() => handleEstorno(appt.id)}
-                            className="text-[10px] font-bold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                            className="text-xs font-semibold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg disabled:opacity-40"
                           >
                             {estornoLoading === appt.id ? '...' : 'Estornar'}
                           </button>
                         ) : refundedApptIds.has(appt.id) ? (
-                          <span className="text-[10px] font-bold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 rounded-lg">
+                          <span className="text-xs font-semibold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg">
                             Estornado
                           </span>
                         ) : null}
                         {deleteConfirm === appt.id ? (
                           <>
-                            <span className="text-[10px] text-zinc-500 self-center">Confirmar?</span>
+                            <span className="text-xs text-zinc-400 self-center">Confirmar?</span>
                             <button
                               disabled={loading === 'del' + appt.id}
                               onClick={() => handleDelete(appt.id)}
-                              className="text-[10px] font-black text-white bg-red-600 border border-red-500 px-2.5 py-1 rounded-lg disabled:opacity-40"
+                              className="text-xs font-bold text-white bg-red-600 border border-red-500 px-3 py-1.5 rounded-lg disabled:opacity-40"
                             >
                               {loading === 'del' + appt.id ? '...' : 'Excluir'}
                             </button>
                             <button
                               onClick={() => setDeleteConfirm(null)}
-                              className="text-[10px] font-bold text-zinc-400 border border-white/10 bg-white/5 px-2.5 py-1 rounded-lg"
+                              className="text-xs font-semibold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg"
                             >
                               Não
                             </button>
@@ -1624,16 +1627,17 @@ function TabHoje({
                         ) : (
                           <button
                             onClick={() => setDeleteConfirm(appt.id)}
-                            className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
+                            className="text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg"
                           >
                             Excluir
                           </button>
                         )}
                         <button
                           onClick={() => { setHardDeleteAppt(appt); setHardDeleteText('') }}
-                          className="text-[10px] font-bold text-red-400 border border-red-500/20 bg-red-500/10 px-2.5 py-1 rounded-lg"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all"
                         >
-                          🗑 Apagar
+                          <Trash2 size={13} />
+                          <span>Apagar</span>
                         </button>
                       </>
                     )}
@@ -1757,9 +1761,10 @@ function TabHoje({
                 <button
                   disabled={!fiadoPaymentMethod || confirmingFiado}
                   onClick={() => fiadoPaymentMethod && void handleConfirmFiado(selectedAppt.id, fiadoPaymentMethod)}
-                  className="w-full text-[11px] font-black uppercase tracking-widest py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 disabled:opacity-40 transition-colors cursor-pointer"
+                  className="flex items-center justify-center gap-1.5 w-full text-[11px] font-black uppercase tracking-widest py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-300 hover:bg-amber-500/30 disabled:opacity-40 transition-colors cursor-pointer"
                 >
-                  {confirmingFiado ? 'Aguarde...' : '✓ Confirmar Recebimento'}
+                  <Check size={14} />
+                  <span>{confirmingFiado ? 'Aguarde...' : 'Confirmar Recebimento'}</span>
                 </button>
               </div>
             )}
@@ -1794,7 +1799,7 @@ function TabHoje({
                 {productReservationsByAppt[selectedAppt.id].map((pr) => (
                   <div key={pr.id} className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-base">🛍</span>
+                      <ShoppingBag size={14} className="text-violet-400 shrink-0" />
                       <span className="text-sm text-white/90 truncate">{pr.product_name_snapshot}</span>
                       {pr.quantity > 1 && (
                         <span className="text-[10px] text-zinc-500">×{pr.quantity}</span>
@@ -1929,9 +1934,9 @@ function TabHoje({
                 <button
                   key={star}
                   onClick={() => setRatingScore(ratingScore === star ? 0 : star)}
-                  className={`text-2xl transition-all ${star <= ratingScore ? 'opacity-100' : 'opacity-30 hover:opacity-60'}`}
+                  className="p-1 transition-all hover:scale-110"
                 >
-                  ⭐
+                  <Star size={20} className={star <= ratingScore ? 'text-amber-400 fill-amber-400' : 'text-zinc-600'} />
                 </button>
               ))}
             </div>
@@ -2118,7 +2123,10 @@ function TabHoje({
         <Dialog open={showDayReport} onOpenChange={(open) => { if (!open) setShowDayReport(false) }}>
           <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
             <DialogHeader>
-              <DialogTitle className="text-white">📊 Resumo — {formatSelectedDay(selectedDay)}</DialogTitle>
+              <DialogTitle className="text-white flex items-center gap-2">
+                <BarChart3 size={18} className="text-zinc-400 shrink-0" />
+                <span>Resumo — {formatSelectedDay(selectedDay)}</span>
+              </DialogTitle>
             </DialogHeader>
             <div className="flex flex-col gap-4 py-1">
               {/* Cards receita */}
@@ -2138,35 +2146,50 @@ function TabHoje({
               {/* Status breakdown */}
               <div className="bg-white/5 rounded-xl p-3 flex flex-col gap-2">
                 <p className="text-[9px] uppercase tracking-wider text-zinc-500 font-semibold">Status ({total} total)</p>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   {confirmado.length > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-400">✅ Confirmado</span>
-                      <span className="text-[11px] font-bold text-white tabular-nums">{confirmado.length}</span>
+                      <span className="flex items-center gap-1.5 text-xs text-zinc-300">
+                        <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
+                        <span>Confirmado</span>
+                      </span>
+                      <span className="text-xs font-bold text-white tabular-nums">{confirmado.length}</span>
                     </div>
                   )}
                   {aguardando.length > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-400">⏳ Aguardando</span>
-                      <span className="text-[11px] font-bold text-white tabular-nums">{aguardando.length}</span>
+                      <span className="flex items-center gap-1.5 text-xs text-zinc-300">
+                        <Clock size={13} className="text-amber-400 shrink-0" />
+                        <span>Aguardando</span>
+                      </span>
+                      <span className="text-xs font-bold text-white tabular-nums">{aguardando.length}</span>
                     </div>
                   )}
                   {concluido.length > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-400">🏁 Concluído</span>
-                      <span className="text-[11px] font-bold text-emerald-400 tabular-nums">{concluido.length}</span>
+                      <span className="flex items-center gap-1.5 text-xs text-zinc-300">
+                        <CheckCircle2 size={13} className="text-blue-400 shrink-0" />
+                        <span>Concluído</span>
+                      </span>
+                      <span className="text-xs font-bold text-emerald-400 tabular-nums">{concluido.length}</span>
                     </div>
                   )}
                   {faltou > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-400">👻 Faltou</span>
-                      <span className="text-[11px] font-bold text-amber-400 tabular-nums">{faltou}</span>
+                      <span className="flex items-center gap-1.5 text-xs text-zinc-300">
+                        <UserX size={13} className="text-amber-400 shrink-0" />
+                        <span>Faltou</span>
+                      </span>
+                      <span className="text-xs font-bold text-amber-400 tabular-nums">{faltou}</span>
                     </div>
                   )}
                   {cancelado > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-zinc-400">❌ Cancelado</span>
-                      <span className="text-[11px] font-bold text-red-400 tabular-nums">{cancelado}</span>
+                      <span className="flex items-center gap-1.5 text-xs text-zinc-300">
+                        <XCircle size={13} className="text-red-400 shrink-0" />
+                        <span>Cancelado</span>
+                      </span>
+                      <span className="text-xs font-bold text-red-400 tabular-nums">{cancelado}</span>
                     </div>
                   )}
                   {total === 0 && (
@@ -2199,7 +2222,10 @@ function TabHoje({
     <Dialog open={!!hardDeleteAppt} onOpenChange={(open) => { if (!open) { setHardDeleteAppt(null); setHardDeleteText('') } }}>
       <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-red-400">⚠️ Excluir Permanentemente</DialogTitle>
+          <DialogTitle className="text-red-400 flex items-center gap-2">
+            <AlertTriangle size={18} className="shrink-0" />
+            <span>Excluir Permanentemente</span>
+          </DialogTitle>
           <DialogDescription className="text-zinc-400">
             Esta ação não pode ser desfeita. Todos os dados vinculados serão removidos.
           </DialogDescription>
@@ -5814,8 +5840,9 @@ function TabClientes() {
                           {formatCurrency(client.total_spent)}
                         </span>
                         {client.avg_rating != null && (
-                          <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-amber-300">
-                            ⭐ {client.avg_rating.toFixed(1)}
+                          <span className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-amber-300 text-[11px] font-bold">
+                            <Star size={12} className="text-amber-400 fill-amber-400 mr-1" />
+                            <span>{client.avg_rating.toFixed(1)}</span>
                           </span>
                         )}
                       </div>
@@ -5878,8 +5905,9 @@ function TabClientes() {
                         </p>
                       </div>
                       {client.avg_rating != null && (
-                        <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-300">
-                          ⭐ {client.avg_rating.toFixed(1)}
+                        <span className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                          <Star size={11} className="text-amber-400 fill-amber-400 mr-1" />
+                          <span>{client.avg_rating.toFixed(1)}</span>
                         </span>
                       )}
                     </div>
