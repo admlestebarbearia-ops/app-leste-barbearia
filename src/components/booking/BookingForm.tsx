@@ -1103,209 +1103,249 @@ const handleConfirm = async () => {
   }
 
   return (
-    <div className="flex flex-col gap-0 pb-32 min-h-screen">
-      {/* Header Premium */}
-      <header className="flex flex-col items-center justify-center pt-5 pb-3 px-4">
-        <div className="relative mb-3 flex w-full items-center justify-center">
-          <div className="absolute h-24 w-24 rounded-full bg-primary/15 blur-3xl" />
-          <Image
-            src={config?.logo_url ?? '/logo-barbearialeste.png'}
-            alt="Leste Barbearia"
-            width={140}
-            height={140}
-            className="relative h-auto w-24 object-contain animate-logo-glow drop-shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
-          />
-        </div>
-        <h1 className="text-foreground text-xs md:text-sm tracking-[0.15em] font-bold uppercase text-center">
-          SELECIONE O SERVIÇO
-        </h1>
-        {isAuthenticatedUser && isAdmin && (
-          <a href="/admin" className="text-[10px] text-primary font-bold mt-3 tracking-widest uppercase py-1 px-3 bg-primary/10 rounded-full">Painel Admin</a>
-        )}
-      </header>
+    <div className="relative flex flex-col gap-0 pb-32 min-h-screen bg-[#09090b] text-foreground overflow-x-hidden">
+      {/* ── Top Hero Image com Esmaecimento para o Preto ── */}
+      <div className="absolute top-0 left-0 right-0 h-[280px] sm:h-[320px] pointer-events-none z-0 overflow-hidden">
+        {/* Imagem de Fundo nítida no topo */}
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: "url('/fundo.jpg?v=2')",
+            backgroundSize: 'cover',
+            backgroundPosition: 'center top',
+            opacity: 0.85,
+          }}
+        />
+        {/* Esmaecimento suave em gradiente para o preto (#09090b) */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/60 to-[#09090b]" />
+      </div>
 
-      <div className="px-4 pt-2 flex flex-col gap-10 max-w-lg mx-auto w-full">
-
-        {/* Secao 1: Servico — Grid 3 colunas */}
-        <section>
-          <div className="grid grid-cols-3 gap-3">
-            {services.map((service) => {
-              const isSelected = selectedService?.id === service.id;
-              const iconPath = SERVICE_ICON_PATHS[service.icon_name ?? ''] ?? SERVICE_ICON_PATHS.scissors;
-              return (
-              <button
-                key={service.id}
-                type="button"
-                onClick={() => handleServiceSelect(service)}
-                onTouchStart={() => {}}
-                style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
-                className={[
-                  'w-full h-[110px] flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all duration-200',
-                  isSelected
-                    ? 'border-primary bg-primary/20 ring-2 ring-primary/40 shadow-[0_0_20px_rgba(80,100,255,0.25)] scale-[1.04]'
-                    : 'border-white/[0.06] bg-[#1a1a1a] active:bg-[#222] active:scale-[0.97]',
-                ].join(' ')}
-              >
-                <img
-                  src={iconPath}
-                  alt={service.name}
-                  className={['w-8 h-8 object-contain select-none transition-opacity', isSelected ? 'invert opacity-100' : 'invert opacity-40'].join(' ')}
-                  draggable={false}
-                />
-                <span className={['text-[10px] uppercase tracking-wider text-center leading-tight px-2 font-medium', isSelected ? 'text-white' : 'text-white/60'].join(' ')}>
-                  {service.name}
-                </span>
-              </button>
-            )})}
+      {/* Conteúdo Principal */}
+      <div className="relative z-10 flex flex-col w-full">
+        {/* Header Premium com Logo e Título */}
+        <header className="flex flex-col items-center justify-center pt-7 pb-4 px-4">
+          <div className="relative mb-3 flex w-full items-center justify-center">
+            <div className="absolute h-28 w-28 rounded-full bg-amber-500/20 blur-3xl" />
+            <Image
+              src={config?.logo_url ?? '/logo-barbearialeste.png'}
+              alt="Leste Barbearia"
+              width={140}
+              height={140}
+              className="relative h-auto w-24 sm:w-28 object-contain animate-logo-glow drop-shadow-[0_12px_24px_rgba(0,0,0,0.8)]"
+              priority
+            />
           </div>
-        </section>
+          <h1 className="text-white text-xs sm:text-sm tracking-[0.2em] font-extrabold uppercase text-center drop-shadow-md">
+            SELECIONE O SERVIÇO
+          </h1>
+          {isAuthenticatedUser && isAdmin && (
+            <a href="/admin" className="text-[10px] text-amber-400 font-bold mt-3 tracking-widest uppercase py-1 px-3 bg-amber-500/10 border border-amber-500/30 rounded-full hover:bg-amber-500/20 transition-all">
+              Painel Admin
+            </a>
+          )}
+        </header>
 
-        {/* Secao 2: Barbeiro */}
-        {selectedService && (
-          <section ref={barberSectionRef} className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
-            <div className="flex items-center gap-4 w-full mb-6 max-w-[250px] mx-auto opacity-70">
-               <div className="h-[1px] flex-1 bg-border"></div>
-               <Scissors size={18} className="text-muted-foreground rotate-90" />
-               <div className="h-[1px] flex-1 bg-border"></div>
-            </div>
-            
-            <h2 className="text-xs tracking-[0.2em] font-bold uppercase text-foreground mb-6 text-center">
-              ESCOLHA O BARBEIRO
-            </h2>
-            
-            <div className="w-full flex justify-center">
-              <div className="flex items-center gap-5 bg-card py-4 px-6 rounded-2xl border border-primary/30 card-shadow ring-1 ring-primary/20 w-fit cursor-default">
-                <div className="relative">
-                  <div className="absolute inset-0 rounded-full bg-primary/30 blur-md"></div>
-                  <Image
-                    src={barber?.photo_url ?? config?.barber_photo_url ?? '/barbearialeste.png'}
-                    alt={displayName ?? 'Barbeiro'}
-                    width={56}
-                    height={56}
-                    className="w-14 h-14 rounded-full object-cover border-[3px] border-primary relative z-10"
-                    unoptimized
-                  />
-                  <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-1 border border-border z-20 shadow-md">
-                    <Check size={12} className="text-primary" strokeWidth={4} />
+        <div className="px-4 pt-3 flex flex-col gap-8 max-w-lg mx-auto w-full">
+
+          {/* Secao 1: Servico — Grid Elegante de Cards */}
+          <section>
+            <div className="grid grid-cols-3 gap-2.5">
+              {services.map((service) => {
+                const isSelected = selectedService?.id === service.id;
+                const iconPath = SERVICE_ICON_PATHS[service.icon_name ?? ''] ?? SERVICE_ICON_PATHS.scissors;
+                return (
+                <button
+                  key={service.id}
+                  type="button"
+                  onClick={() => handleServiceSelect(service)}
+                  onTouchStart={() => {}}
+                  style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
+                  className={[
+                    'w-full min-h-[96px] h-auto p-2 flex flex-col items-center justify-between rounded-2xl border transition-all duration-200 shadow-md gap-1',
+                    isSelected
+                      ? 'border-primary bg-primary/20 ring-1 ring-primary/40 shadow-[0_4px_20px_rgba(11,65,150,0.35)] scale-[1.02]'
+                      : 'border-white/10 bg-[#141418] hover:border-white/20 hover:bg-[#1a1a20] active:scale-[0.97]',
+                  ].join(' ')}
+                >
+                  <div className={['w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors', isSelected ? 'bg-primary/30' : 'bg-white/5'].join(' ')}>
+                    <img
+                      src={iconPath}
+                      alt={service.name}
+                      className={['w-4 h-4 object-contain select-none transition-opacity', isSelected ? 'invert opacity-100' : 'invert opacity-60'].join(' ')}
+                      draggable={false}
+                    />
                   </div>
-                </div>
-                <div className="flex flex-col gap-0.5 pr-2">
-                  <span className="font-extrabold text-sm uppercase tracking-wide text-foreground string-capitalize">{displayName}</span>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mb-1">Mestre</span>
-                  <div className="flex items-center gap-1">
-                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
-                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
-                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
-                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
-                     <Star size={12} className="fill-primary text-primary" strokeWidth={0} />
-                     <span className="text-[10px] font-bold text-foreground ml-1">5.0</span>
+                  <span className={['text-[10px] sm:text-[11px] uppercase tracking-wider text-center leading-tight font-extrabold line-clamp-2 break-words px-0.5', isSelected ? 'text-white' : 'text-zinc-200'].join(' ')}>
+                    {service.name}
+                  </span>
+                  {service.price != null && (
+                    <span className={['text-[9.5px] font-extrabold tracking-tight px-2 py-0.5 rounded-full shrink-0', isSelected ? 'bg-primary text-white font-black' : 'bg-white/5 text-zinc-300 border border-white/10'].join(' ')}>
+                      R$ {service.price.toFixed(2).replace('.', ',')}
+                    </span>
+                  )}
+                </button>
+              )})}
+            </div>
+          </section>
+
+          {/* Secao 2: Barbeiro */}
+          {selectedService && (
+            <section ref={barberSectionRef} className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+              <div className="flex items-center gap-4 w-full mb-5 max-w-[250px] mx-auto opacity-40">
+                 <div className="h-[1px] flex-1 bg-white/20"></div>
+                 <Scissors size={16} className="text-zinc-400 rotate-90" />
+                 <div className="h-[1px] flex-1 bg-white/20"></div>
+              </div>
+              
+              <h2 className="text-xs tracking-[0.2em] font-extrabold uppercase text-white mb-4 text-center">
+                BARBEIRO SELECIONADO
+              </h2>
+              
+              <div className="w-full flex justify-center">
+                <div className="flex items-center gap-4 bg-[#141418] py-3.5 px-5 rounded-2xl border border-primary/40 shadow-[0_8px_24px_rgba(0,0,0,0.6)] ring-1 ring-primary/20 w-fit cursor-default">
+                  <div className="relative">
+                    <div className="absolute inset-0 rounded-full bg-primary/30 blur-md"></div>
+                    <Image
+                      src={barber?.photo_url ?? config?.barber_photo_url ?? '/barbearialeste.png'}
+                      alt={displayName ?? 'Barbeiro'}
+                      width={52}
+                      height={52}
+                      className="w-13 h-13 rounded-full object-cover border-2 border-primary relative z-10"
+                      unoptimized
+                    />
+                    <div className="absolute -bottom-1 -right-1 bg-[#09090b] rounded-full p-1 border border-primary/50 z-20 shadow-md">
+                      <Check size={10} className="text-primary-foreground" strokeWidth={4} />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-0.5 pr-2">
+                    <span className="font-extrabold text-sm uppercase tracking-wide text-white string-capitalize">{displayName}</span>
+                    <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold mb-0.5">Mestre Barbeiro</span>
+                    <div className="flex items-center gap-1">
+                       <Star size={11} className="fill-amber-400 text-amber-400" strokeWidth={0} />
+                       <Star size={11} className="fill-amber-400 text-amber-400" strokeWidth={0} />
+                       <Star size={11} className="fill-amber-400 text-amber-400" strokeWidth={0} />
+                       <Star size={11} className="fill-amber-400 text-amber-400" strokeWidth={0} />
+                       <Star size={11} className="fill-amber-400 text-amber-400" strokeWidth={0} />
+                       <span className="text-[10px] font-extrabold text-white ml-1">5.0</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
-        )}
+            </section>
+          )}
 
-        {/* Secao 3: Data */}
-        {selectedService && (
-          <section ref={calendarSectionRef} className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500">
-             <div className="flex items-center gap-4 w-full mb-8 max-w-[250px] mx-auto opacity-70">
-               <div className="h-[1px] flex-1 bg-border"></div>
-               <CalendarDays size={18} className="text-muted-foreground" />
-               <div className="h-[1px] flex-1 bg-border"></div>
-            </div>
-            
-            <div className="flex justify-center bg-card rounded-[2rem] p-5 card-shadow border border-border w-full max-w-[340px] mx-auto">
-              <DayPicker
-                mode="single"
-                selected={selectedDate}
-                onSelect={(date) => {
-                handleDateSelect(date)
-                if (date) scrollToRef(slotsSectionRef)
-              }}
-                locale={ptBR}
-                disabled={isDateDisabled}
-                classNames={{
-                  root: 'w-full',
-                  months: 'w-full',
-                  month: 'w-full',
-                  month_caption: 'flex justify-between items-center px-2 pb-5',
-                  caption_label: 'text-sm font-bold tracking-widest text-foreground uppercase',
-                  nav: 'flex gap-2',
-                  button_previous: 'h-9 w-9 flex items-center justify-center rounded-xl border-2 border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
-                  button_next: 'h-9 w-9 flex items-center justify-center rounded-xl border-2 border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors',
-                  month_grid: 'w-full border-collapse',
-                  weekdays: 'flex mb-4',
-                  weekday: 'flex-1 text-center text-[10px] uppercase tracking-widest text-muted-foreground font-bold',
-                  weeks: 'flex flex-col gap-3',
-                  week: 'flex',
-                  day: 'flex-1 relative p-0 m-0',
-                  day_button: [
-                    'mx-auto h-10 w-10 flex items-center justify-center rounded-full text-xs font-bold transition-all',
-                    'hover:bg-muted hover:text-foreground',
-                  ].join(' '),
-                  today: '[&>button]:text-foreground [&>button]:bg-transparent [&>button]:ring-1 [&>button]:ring-green-500 [&>button]:animate-pulse',
-                  selected: '[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary [&>button]:scale-110 shadow-lg',
-                  disabled: 'opacity-20 pointer-events-none text-muted-foreground font-normal',
-                  outside: 'opacity-0 pointer-events-none',
-                  hidden: 'invisible',
+          {/* Secao 3: Data */}
+          {selectedService && (
+            <section ref={calendarSectionRef} className="mt-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
+               <div className="flex items-center gap-4 w-full mb-6 max-w-[250px] mx-auto opacity-40">
+                 <div className="h-[1px] flex-1 bg-white/20"></div>
+                 <CalendarDays size={16} className="text-zinc-400" />
+                 <div className="h-[1px] flex-1 bg-white/20"></div>
+              </div>
+              
+              <div className="flex justify-center bg-[#141418] rounded-[2rem] p-5 shadow-[0_8px_32px_rgba(0,0,0,0.6)] border border-white/10 w-full max-w-[340px] mx-auto flex-col items-center">
+                <DayPicker
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => {
+                  handleDateSelect(date)
+                  if (date) scrollToRef(slotsSectionRef)
                 }}
-              />
-            </div>
-            {/* Melhoria 01: legenda com o período disponível para agendamento */}
-            {(config?.calendar_max_days_ahead || config?.calendar_open_until_date) && (
-              <p className="text-[10px] uppercase tracking-widest font-semibold text-white/25 text-center mt-3">
-                {config.calendar_open_until_date
-                  ? `Agend. até ${format(new Date(config.calendar_open_until_date + 'T00:00:00'), "dd/MM/yy", { locale: ptBR })}`
-                  : `Disponível: próximos ${config.calendar_max_days_ahead} dias`}
-              </p>
-            )}
-          </section>
-        )}
+                  locale={ptBR}
+                  disabled={isDateDisabled}
+                  classNames={{
+                    root: 'w-full',
+                    months: 'w-full',
+                    month: 'w-full',
+                    month_caption: 'flex justify-between items-center px-2 pb-5',
+                    caption_label: 'text-sm font-extrabold tracking-widest text-white uppercase',
+                    nav: 'flex gap-2',
+                    button_previous: 'h-9 w-9 flex items-center justify-center rounded-xl border border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 transition-colors',
+                    button_next: 'h-9 w-9 flex items-center justify-center rounded-xl border border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 transition-colors',
+                    month_grid: 'w-full border-collapse',
+                    weekdays: 'flex mb-4',
+                    weekday: 'flex-1 text-center text-[10px] uppercase tracking-widest text-zinc-400 font-bold',
+                    weeks: 'flex flex-col gap-3',
+                    week: 'flex',
+                    day: 'flex-1 relative p-0 m-0',
+                    day_button: [
+                      'mx-auto h-10 w-10 flex items-center justify-center rounded-full text-xs font-bold transition-all text-white',
+                      'hover:bg-white/10 hover:text-white',
+                    ].join(' '),
+                    today: '[&>button]:text-emerald-400 [&>button]:font-black [&>button]:ring-2 [&>button]:ring-emerald-500/80 [&>button]:shadow-[0_0_12px_rgba(16,185,129,0.5)] [&>button]:animate-pulse',
+                    selected: '[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:font-extrabold [&>button]:scale-110 [&>button]:shadow-lg [&>button]:shadow-primary/40 [&>button]:rounded-full [&[aria-current="date"]>button]:bg-emerald-500 [&[aria-current="date"]>button]:text-black [&[aria-current="date"]>button]:ring-2 [&[aria-current="date"]>button]:ring-emerald-300 [&[aria-current="date"]>button]:shadow-[0_0_20px_rgba(16,185,129,0.8)]',
+                    disabled: 'opacity-20 pointer-events-none text-zinc-500 font-normal',
+                    outside: 'opacity-0 pointer-events-none',
+                    hidden: 'invisible',
+                  }}
+                />
 
-        {/* Secao 4: Horarios */}
-        {selectedDate && (
-          <section ref={slotsSectionRef} className="mt-2 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-36">
-            <h2 className="text-[10px] tracking-[0.2em] font-bold uppercase text-foreground mb-5 text-center mt-6">
-               Horários disponíveis em {format(selectedDate, 'dd/MM')}
-            </h2>
-
-            {loadingSlots && (
-              <div className="grid grid-cols-4 gap-3 max-w-[340px] mx-auto">
-                {[...Array(8)].map((_, i) => (
-                  <div key={i} className="h-12 rounded-xl bg-card border border-border animate-pulse card-shadow" />
-                ))}
+                {/* Legenda visual explicativa do calendário */}
+                <div className="flex items-center justify-center gap-4 pt-4 mt-2 border-t border-white/5 w-full">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Hoje</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-primary shadow-[0_0_8px_rgba(11,65,150,0.8)]" />
+                    <span className="text-[10px] font-bold text-zinc-300 uppercase tracking-wider">Selecionado</span>
+                  </div>
+                </div>
               </div>
-            )}
+              {/* Legenda com o período disponível */}
+              {(config?.calendar_max_days_ahead || config?.calendar_open_until_date) && (
+                <p className="text-[10px] uppercase tracking-widest font-semibold text-zinc-500 text-center mt-3">
+                  {config.calendar_open_until_date
+                    ? `Agend. até ${format(new Date(config.calendar_open_until_date + 'T00:00:00'), "dd/MM/yy", { locale: ptBR })}`
+                    : `Disponível: próximos ${config.calendar_max_days_ahead} dias`}
+                </p>
+              )}
+            </section>
+          )}
 
-            {!loadingSlots && availableSlots.length === 0 && (
-              <p className="text-xs tracking-widest text-muted-foreground text-center bg-card p-6 rounded-2xl border border-border uppercase font-semibold max-w-[340px] mx-auto">
-                Nenhum horário disponível.
-              </p>
-            )}
+          {/* Secao 4: Horarios */}
+          {selectedDate && (
+            <section ref={slotsSectionRef} className="mt-1 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-36">
+              <h2 className="text-[11px] tracking-[0.2em] font-extrabold uppercase text-white mb-5 text-center mt-6">
+                 HORÁRIOS EM {format(selectedDate, 'dd/MM')}
+              </h2>
 
-            {!loadingSlots && availableSlots.length > 0 && (
-              <div className="grid grid-cols-4 gap-3 max-w-[340px] mx-auto">
-                {availableSlots.map((slot) => {
-                   const isSel = selectedTime === slot;
-                   return (
-                  <button
-                    key={slot}
-                    onClick={() => setSelectedTime(slot)}
-                    className={[
-                      'h-12 rounded-xl border text-sm font-extrabold transition-all card-shadow',
-                      isSel
-                        ? 'border-primary bg-primary text-primary-foreground scale-[1.03] shadow-primary/30 shadow-lg relative'
-                        : 'border-border bg-card text-foreground hover:border-foreground/30',
-                    ].join(' ')}
-                  >
-                    {slot}
-                  </button>
-                )})}
-              </div>
-            )}
-          </section>
-        )}
+              {loadingSlots && (
+                <div className="grid grid-cols-4 gap-2.5 max-w-[340px] mx-auto">
+                  {[...Array(8)].map((_, i) => (
+                    <div key={i} className="h-11 rounded-xl bg-[#141418] border border-white/10 animate-pulse" />
+                  ))}
+                </div>
+              )}
+
+              {!loadingSlots && availableSlots.length === 0 && (
+                <p className="text-xs tracking-widest text-zinc-400 text-center bg-[#141418] p-6 rounded-2xl border border-white/10 uppercase font-semibold max-w-[340px] mx-auto">
+                  Nenhum horário disponível.
+                </p>
+              )}
+
+              {!loadingSlots && availableSlots.length > 0 && (
+                <div className="grid grid-cols-4 gap-2.5 max-w-[340px] mx-auto">
+                  {availableSlots.map((slot) => {
+                     const isSel = selectedTime === slot;
+                     return (
+                    <button
+                      key={slot}
+                      onClick={() => setSelectedTime(slot)}
+                      className={[
+                        'h-11 rounded-xl border text-xs font-extrabold transition-all shadow-sm',
+                        isSel
+                          ? 'border-primary bg-primary text-primary-foreground scale-[1.04] shadow-[0_0_20px_rgba(11,65,150,0.4)] relative z-10'
+                          : 'border-white/10 bg-[#141418] text-zinc-200 hover:border-primary/50 hover:bg-[#1a1a20]',
+                      ].join(' ')}
+                    >
+                      {slot}
+                    </button>
+                  )})}
+                </div>
+              )}
+            </section>
+          )}
 
         {/* Modo livre: nome e telefone */}
         {showFreeMode && selectedTime && (
@@ -1382,6 +1422,7 @@ const handleConfirm = async () => {
           </div>
         )}
 
+      </div>
       </div>
 
       {/* Barra de confirmacao flutuante (CTA) */}
