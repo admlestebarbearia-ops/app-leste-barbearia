@@ -1289,39 +1289,38 @@ function TabHoje({
 
       {/* ── LISTA / GRADE DO DIA ── */}
       {selectedDay && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 w-full">
           {/* Cabeçalho com toggle Lista ↔ Grade */}
-          <div className="flex items-center justify-between">
-            <p suppressHydrationWarning className="text-[10px] font-black tracking-[0.15em] text-zinc-500 uppercase">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full">
+            <p suppressHydrationWarning className="text-[10px] font-black tracking-[0.15em] text-zinc-500 uppercase shrink-0">
               Agendamentos — {formatSelectedDay(selectedDay)}
             </p>
-            <div className="flex items-center gap-2">
-              {/* Botão Resumo do Dia */}
+            <div className="flex items-center gap-1.5 flex-wrap max-w-full">
               {isMounted && bulkEligibleCount > 0 && (
                 <button
                   onClick={() => { setBulkConcludeOpen(true); setBulkConcludePayment(''); setBulkConcludeIsPending(false); setBulkConcludePendingDate('') }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all shadow-sm"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all shadow-sm shrink-0"
                   title={`Concluir ${bulkEligibleCount} atendimento(s) passado(s)`}
                 >
-                  <CheckCircle2 size={14} />
-                  <span>Concluir Todos ({bulkEligibleCount})</span>
+                  <CheckCircle2 size={13} />
+                  <span>Concluir ({bulkEligibleCount})</span>
                 </button>
               )}
               <button
                 onClick={() => setShowDayReport(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-zinc-300 hover:text-white hover:border-white/20 transition-all"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-zinc-300 hover:text-white hover:border-white/20 transition-all shrink-0"
                 title="Resumo do dia"
               >
-                <BarChart3 size={14} />
+                <BarChart3 size={13} />
                 <span>Resumo</span>
               </button>
-              <div className="flex gap-1 bg-white/5 p-1 rounded-lg border border-white/10">
+              <div className="flex gap-0.5 bg-white/5 p-0.5 rounded-lg border border-white/10 shrink-0">
                 {(['lista', 'grade'] as const).map(mode => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
                     className={[
-                      'flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold transition-all',
+                      'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold transition-all',
                       viewMode === mode
                         ? 'bg-white text-black shadow-sm'
                         : 'text-zinc-400 hover:text-zinc-200',
@@ -1329,12 +1328,12 @@ function TabHoje({
                   >
                     {mode === 'lista' ? (
                       <>
-                        <List size={13} />
+                        <List size={12} />
                         <span>Lista</span>
                       </>
                     ) : (
                       <>
-                        <Grid size={13} />
+                        <Grid size={12} />
                         <span>Grade</span>
                       </>
                     )}
