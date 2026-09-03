@@ -188,6 +188,24 @@ export async function getMyQueueStatus(entryId: string): Promise<{
   }
 }
 
+/** Vincula o alvo de notificação (userId da sessão de push) a uma entrada da fila. */
+export async function setQueueNotifyTarget(
+  entryId: string,
+  userId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const admin = createAdminClient()
+    const { error } = await admin
+      .from('queue_entries')
+      .update({ notify_user_id: userId })
+      .eq('id', entryId)
+    if (error) throw error
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
 /** Cliente desiste da fila. */
 export async function leaveQueue(entryId: string): Promise<{ success: boolean; error?: string }> {
   try {
@@ -280,12 +298,15 @@ export async function advanceQueue(date: string): Promise<{ success: boolean; er
 
     const { data: rows } = await supabase
       .from('queue_entries')
-      .select('id, client_id, joined_at, status')
+      .select('id, client_id, notify_user_id, joined_at, status')
       .eq('date', date)
       .in('status', ['aguardando', 'chamado'])
       .order('joined_at', { ascending: true })
 
-    const active = (rows ?? []) as Array<{ id: string; client_id: string | null; joined_at: string; status: string }>
+    const active = (rows ?? []) as Array<{ id: string; client_id: string | null; notify_user_id: string | null; joined_at: string; status: string }>
+
+    const pushTarget = (r: { client_id: string | null; notify_user_id: string | null }) =>
+      r.notify_user_id ?? r.client_id
 
     // Conclui o atual (chamado).
     const current = active.find((r) => r.status === 'chamado')
@@ -303,8 +324,9 @@ export async function advanceQueue(date: string): Promise<{ success: boolean; er
         .from('queue_entries')
         .update({ status: 'chamado', called_at: now })
         .eq('id', next.id)
-      if (next.client_id) {
-        void firePushToUser(next.client_id, {
+      const nextTarget = pushTarget(next)
+      if (nextTarget) {
+        void firePushToUser(nextTarget, {
           title: '💈 É a sua vez!',
           body: 'O barbeiro está te chamando. Pode vir!',
           url: '/agendar',
@@ -313,12 +335,13 @@ export async function advanceQueue(date: string): Promise<{ success: boolean; er
       }
       // Avisa o novo "próximo" (segundo da fila).
       const following = active.find((r) => r.status === 'aguardando' && r.id !== next.id)
-      if (following?.client_id) {
-        void firePushToUser(following.client_id, {
+      const followingTarget = following ? pushTarget(following) : null
+      if (followingTarget) {
+        void firePushToUser(followingTarget, {
           title: '⏳ Você é o próximo',
           body: 'Falta pouco! Vá se encaminhando para a barbearia.',
           url: '/agendar',
-          tag: `queue-next-${following.id}`,
+          tag: `queue-next-${following!.id}`,
         })
       }
     }

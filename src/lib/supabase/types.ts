@@ -298,4 +298,5 @@ export interface QueueEntry {
   joined_at: string
   called_at: string | null
   finished_at: string | null
+  notify_user_id: string | null
 }

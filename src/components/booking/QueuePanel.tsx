@@ -1,9 +1,30 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { joinQueue, getMyQueueStatus, leaveQueue } from '@/app/agendar/queue-actions'
+import { joinQueue, getMyQueueStatus, leaveQueue, setQueueNotifyTarget } from '@/app/agendar/queue-actions'
+import { savePushSubscription } from '@/app/api/push/actions'
+import { ensurePushBrowserSession } from '@/lib/push/browser-session'
 import { toast } from 'sonner'
-import { Clock, Check, Users, LogOut } from 'lucide-react'
+import { Clock, Check, Users, LogOut, Bell } from 'lucide-react'
+
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)))
+}
+
+function isIosNonStandalone(): boolean {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  const standalone = !!(
+    (navigator as unknown as Record<string, unknown>)['standalone'] ||
+    window.matchMedia('(display-mode: standalone)').matches
+  )
+  return ios && !standalone
+}
 
 interface Props {
   date: string
@@ -30,6 +51,47 @@ export function QueuePanel({ date, serviceId, isLoggedIn, userPhone }: Props) {
   const [phone, setPhone] = useState(userPhone ?? '')
   const [joining, setJoining] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [notifBusy, setNotifBusy] = useState(false)
+  const [notifEnabled, setNotifEnabled] = useState(false)
+
+  const enableNotifications = useCallback(async (id: string) => {
+    if (isIosNonStandalone()) {
+      toast.error('No iPhone, adicione o app à Tela de Início para receber avisos.')
+      return
+    }
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !VAPID_PUBLIC_KEY) {
+      toast.error('Seu navegador não suporta avisos.')
+      return
+    }
+    setNotifBusy(true)
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        toast.error('Permissão de avisos negada.')
+        return
+      }
+      const session = await ensurePushBrowserSession()
+      const reg =
+        (await navigator.serviceWorker.getRegistration()) ??
+        (await navigator.serviceWorker.register('/sw.js'))
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY).buffer as ArrayBuffer,
+      })
+      const json = sub.toJSON()
+      await savePushSubscription({
+        endpoint: sub.endpoint,
+        keys: { p256dh: json.keys?.p256dh ?? '', auth: json.keys?.auth ?? '' },
+      })
+      await setQueueNotifyTarget(id, session.userId)
+      setNotifEnabled(true)
+      toast.success('Avisos ativados! Vamos te chamar aqui e no celular.')
+    } catch {
+      toast.error('Não foi possível ativar os avisos.')
+    } finally {
+      setNotifBusy(false)
+    }
+  }, [])
 
   // Recupera uma entrada já salva neste dispositivo.
   useEffect(() => {
@@ -145,9 +207,19 @@ export function QueuePanel({ date, serviceId, isLoggedIn, userPhone }: Props) {
           )}
         </div>
 
-        <p className="text-[11px] text-zinc-500 text-center max-w-[280px]">
-          Mantenha esta tela aberta ou ative as notificações para avisarmos quando for a sua vez.
-        </p>
+        {notifEnabled ? (
+          <p className="flex items-center gap-1.5 text-[11px] text-emerald-400 text-center">
+            <Bell size={12} /> Avisos ativados — vamos te chamar no celular.
+          </p>
+        ) : (
+          <button
+            onClick={() => entryId && enableNotifications(entryId)}
+            disabled={notifBusy}
+            className="flex items-center gap-2 text-xs font-bold text-white bg-white/10 border border-white/15 rounded-xl px-4 py-2.5 hover:bg-white/15 disabled:opacity-50 transition-all"
+          >
+            <Bell size={14} /> {notifBusy ? 'Ativando…' : 'Avisar no meu celular'}
+          </button>
+        )}
 
         <button
           onClick={handleLeave}
