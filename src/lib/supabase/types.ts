@@ -43,6 +43,7 @@ export interface BusinessConfig {
   block_multi_day_booking: boolean          // bloqueia cliente com agendamento em data diferente
   calendar_max_days_ahead: number           // dias à frente que o calendário fica aberto (padrão 30)
   calendar_open_until_date: string | null   // data limite absoluta (YYYY-MM-DD) ou null
+  auto_conclude_enabled: boolean            // auto-concluir atendimentos de dias passados (cron diário)
   // ─── Fase 3: Financeiro ───────────────────────────────────────────────
   has_card_machine: boolean                 // o estabelecimento usa maquininha?
   default_card_rate_pct: number             // legado — mantido por compatibilidade

@@ -2525,6 +2525,7 @@ function TabConfiguracoes({
   const [blockMultiDay, setBlockMultiDay] = useState(config.block_multi_day_booking ?? false)
   const [maxDaysAhead, setMaxDaysAhead] = useState(String(config.calendar_max_days_ahead ?? 30))
   const [openUntilDate, setOpenUntilDate] = useState(config.calendar_open_until_date ?? '')
+  const [autoConclude, setAutoConclude] = useState<boolean>(config.auto_conclude_enabled ?? false)
   const [savingAgenda, setSavingAgenda] = useState(false)
 
   // Fase 4: Mercado Pago — estado local do token para refletir connect/disconnect imediatamente
@@ -2695,6 +2696,21 @@ function TabConfiguracoes({
       onRefresh()
     } else {
       toast.error(result.error ?? 'Erro ao salvar.')
+    }
+  }
+
+  // Salva o auto-concluir de forma isolada (não afeta os demais ajustes se a
+  // coluna ainda não existir no banco — ex.: migração não aplicada).
+  const handleToggleAutoConclude = async (value: boolean) => {
+    const previous = autoConclude
+    setAutoConclude(value) // otimista
+    const result = await saveBusinessConfig({ auto_conclude_enabled: value })
+    if (result.success) {
+      toast.success(value ? 'Auto-concluir ativado.' : 'Auto-concluir desativado.')
+      onRefresh()
+    } else {
+      setAutoConclude(previous) // reverte
+      toast.error(result.error ?? 'Erro ao salvar. Rode a migração do auto-concluir no banco.')
     }
   }
 
@@ -3221,6 +3237,15 @@ function TabConfiguracoes({
                 <span className="text-xs text-muted-foreground">Cliente com agendamento confirmado não pode marcar em outra data simultaneamente.</span>
               </div>
               <Switch checked={blockMultiDay} onCheckedChange={setBlockMultiDay} />
+            </div>
+
+            {/* Auto-concluir atendimentos passados */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col gap-0.5 flex-1">
+                <span className="text-sm text-foreground">Concluir atendimentos passados automaticamente</span>
+                <span className="text-xs text-muted-foreground">Todo dia, atendimentos de datas anteriores ainda &quot;confirmados&quot; viram &quot;concluídos&quot; sozinhos. Pagos online mantêm a forma real; presenciais entram com valor cheio e forma &quot;a definir&quot; (você corrige depois se quiser).</span>
+              </div>
+              <Switch checked={autoConclude} onCheckedChange={handleToggleAutoConclude} />
             </div>
 
             {/* Dias de antecedência */}
