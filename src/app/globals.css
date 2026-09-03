@@ -126,6 +126,19 @@ button * {
   touch-action: manipulation;
 }
 
+/* ── Área segura para notch / Dynamic Island (iPhone) ──
+   env(safe-area-inset-top) vale 0px em telas sem notch,
+   então Android e desktop ficam idênticos ao que já eram. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-top-header {
+  padding-top: calc(env(safe-area-inset-top) + 1rem);
+}
+.safe-top-hero {
+  padding-top: calc(env(safe-area-inset-top) + 1.75rem);
+}
+
 .style-reset {
   appearance: none;
   -webkit-appearance: none;

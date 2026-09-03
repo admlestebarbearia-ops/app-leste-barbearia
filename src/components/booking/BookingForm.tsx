@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useTransition, useRef } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { DayPicker } from 'react-day-picker'
+import { DayPicker, useDayPicker, type CalendarMonth } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
@@ -23,7 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
-import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag, Images, Download, Share, QrCode, CreditCard, Banknote, ChevronRight } from 'lucide-react'
+import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag, Images, Download, Share, QrCode, CreditCard, Banknote, ChevronLeft, ChevronRight } from 'lucide-react'
 
 // Ícones SVG customizados da pasta public/barber-icon
 const SERVICE_ICON_PATHS: Record<string, string> = {
@@ -54,6 +54,40 @@ interface Props {
   canViewAppointments: boolean
   /** Quando true (login recém-feito sem WhatsApp salvo), abre o modal de captura automaticamente */
   setupPhone?: boolean
+}
+
+// Cabeçalho de mês do calendário — controle total do layout das setas.
+// Substitui o Nav padrão do react-day-picker (que perdia o posicionamento
+// ao sobrescrever as classes, deixando as setas "coladas" no título).
+function CalendarMonthCaption({ calendarMonth }: { calendarMonth: CalendarMonth }) {
+  const { goToMonth, nextMonth, previousMonth } = useDayPicker()
+  const navBtn =
+    'h-9 w-9 flex items-center justify-center rounded-xl border border-white/15 bg-white/[0.06] text-white hover:bg-white/15 active:scale-95 disabled:opacity-25 disabled:pointer-events-none transition-all'
+  return (
+    <div className="flex items-center justify-between w-full px-1 pb-5">
+      <button
+        type="button"
+        aria-label="Mês anterior"
+        disabled={!previousMonth}
+        onClick={() => previousMonth && goToMonth(previousMonth)}
+        className={navBtn}
+      >
+        <ChevronLeft size={18} strokeWidth={2.5} />
+      </button>
+      <span className="text-sm font-extrabold tracking-widest text-white uppercase">
+        {format(calendarMonth.date, 'LLLL yyyy', { locale: ptBR })}
+      </span>
+      <button
+        type="button"
+        aria-label="Próximo mês"
+        disabled={!nextMonth}
+        onClick={() => nextMonth && goToMonth(nextMonth)}
+        className={navBtn}
+      >
+        <ChevronRight size={18} strokeWidth={2.5} />
+      </button>
+    </div>
+  )
 }
 
 export function BookingForm({
@@ -785,7 +819,7 @@ const handleConfirm = async () => {
     return (
       <div className="flex flex-col min-h-screen bg-background">
         {/* Header */}
-        <div className="sticky top-0 z-50 flex items-center gap-3 px-4 py-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
+        <div className="safe-top-header sticky top-0 z-50 flex items-center gap-3 px-4 pb-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
           <button
             onClick={() => {
               if (retryPayment) {
@@ -1003,7 +1037,7 @@ const handleConfirm = async () => {
     return (
       <div className="flex flex-col min-h-screen bg-background">
         {/* Barra superior */}
-        <div className="sticky top-0 z-50 flex items-center gap-3 px-4 py-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
+        <div className="safe-top-header sticky top-0 z-50 flex items-center gap-3 px-4 pb-4 bg-background/90 backdrop-blur-md border-b border-white/[0.06]">
           <button
             onClick={handleCancelPayment}
             disabled={cancellingPaymentStep || paymentExpired}
@@ -1123,7 +1157,7 @@ const handleConfirm = async () => {
       {/* Conteúdo Principal */}
       <div className="relative z-10 flex flex-col w-full">
         {/* Header Premium com Logo e Título */}
-        <header className="flex flex-col items-center justify-center pt-7 pb-4 px-4">
+        <header className="safe-top-hero flex flex-col items-center justify-center pb-4 px-4">
           <div className="relative mb-3 flex w-full items-center justify-center">
             <div className="absolute h-28 w-28 rounded-full bg-amber-500/20 blur-3xl" />
             <Image
@@ -1253,15 +1287,11 @@ const handleConfirm = async () => {
                 }}
                   locale={ptBR}
                   disabled={isDateDisabled}
+                  components={{ MonthCaption: CalendarMonthCaption, Nav: () => null }}
                   classNames={{
                     root: 'w-full',
                     months: 'w-full',
                     month: 'w-full',
-                    month_caption: 'flex justify-between items-center px-2 pb-5',
-                    caption_label: 'text-sm font-extrabold tracking-widest text-white uppercase',
-                    nav: 'flex gap-2',
-                    button_previous: 'h-9 w-9 flex items-center justify-center rounded-xl border border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 transition-colors',
-                    button_next: 'h-9 w-9 flex items-center justify-center rounded-xl border border-white/10 text-zinc-300 hover:text-white hover:bg-white/10 transition-colors',
                     month_grid: 'w-full border-collapse',
                     weekdays: 'flex mb-4',
                     weekday: 'flex-1 text-center text-[10px] uppercase tracking-widest text-zinc-400 font-bold',

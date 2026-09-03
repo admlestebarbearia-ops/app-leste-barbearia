@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck, CheckCircle2, BarChart3, ShoppingBag, CreditCard, Check, List, Grid, AlertTriangle, Clock, UserX, XCircle, MessageCircle } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck, CheckCircle2, BarChart3, ShoppingBag, CreditCard, Check, List, Grid, AlertTriangle, Clock, UserX, XCircle, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -447,7 +447,7 @@ export function AdminDashboard({
       </aside>
 
       {/* Header Limpo & Elegante */}
-      <header className="sticky top-0 z-30 bg-neutral-950/80 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+      <header className="safe-top sticky top-0 z-30 bg-neutral-950/80 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {/* Logo — clicável para upload, sem bordas */}
@@ -1222,13 +1222,15 @@ function TabHoje({
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <button
             onClick={prevMonth}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white transition-all text-lg"
-          >‹</button>
+            aria-label="Mês anterior"
+            className="w-9 h-9 flex items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white hover:bg-white/15 active:scale-95 transition-all"
+          ><ChevronLeft size={18} strokeWidth={2.5} /></button>
           <span suppressHydrationWarning className="text-sm font-bold text-white capitalize">{calMonthLabel}</span>
           <button
             onClick={nextMonth}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white transition-all text-lg"
-          >›</button>
+            aria-label="Próximo mês"
+            className="w-9 h-9 flex items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white hover:bg-white/15 active:scale-95 transition-all"
+          ><ChevronRight size={18} strokeWidth={2.5} /></button>
         </div>
 
         {/* Dias da semana */}
