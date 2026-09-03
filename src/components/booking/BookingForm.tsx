@@ -8,6 +8,8 @@ import { ptBR } from 'date-fns/locale'
 import { format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
 import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone, cancelPendingPayment, getPendingPaymentStatus, getMyPendingFiadoSummary } from '@/app/agendar/actions'
+import { getActiveQueueDay } from '@/app/agendar/queue-actions'
+import { QueuePanel } from '@/components/booking/QueuePanel'
 import { PaymentBrick } from '@/components/payment/PaymentBrick'
 import { createClient } from '@/lib/supabase/client'
 import { PUBLIC_MP_METHOD_OPTIONS, getPublicMpMethodBadge, type PublicMpMethod } from '@/lib/mercadopago/checkout-config'
@@ -21,7 +23,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig } from '@/lib/supabase/types'
+import type { Service, Barber, WorkingHours, SpecialSchedule, BusinessConfig, QueueDay } from '@/lib/supabase/types'
 import 'react-day-picker/style.css'
 import { Scissors, Star, CalendarDays, User, Menu, Home, Check, MapPin, MessageCircle, X, FileText, Shield, LogOut, ShoppingBag, Images, Download, Share, QrCode, CreditCard, Banknote, ChevronLeft, ChevronRight } from 'lucide-react'
 
@@ -196,6 +198,7 @@ export function BookingForm({
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
+  const [queueDay, setQueueDay] = useState<QueueDay | null>(null)
   const [availableSlots, setAvailableSlots] = useState<string[]>([])
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [loadingSlots, setLoadingSlots] = useState(false)
@@ -513,12 +516,19 @@ export function BookingForm({
       setSelectedDate(date)
       setSelectedTime(null)
       setAvailableSlots([])
+      setQueueDay(null)
 
       if (!date || !selectedService) return
 
-      setLoadingSlots(true)
       const dateStr = format(date, 'yyyy-MM-dd')
       const fetchId = ++fetchIdRef.current
+
+      // Dia em modo fila? Mostra a fila em vez dos horários.
+      const qday = await getActiveQueueDay(dateStr)
+      if (fetchId !== fetchIdRef.current) return
+      if (qday) { setQueueDay(qday); return }
+
+      setLoadingSlots(true)
       const { slots, error } = await getAvailableSlots(dateStr, selectedService.id)
       setLoadingSlots(false)
 
@@ -1334,7 +1344,18 @@ const handleConfirm = async () => {
           )}
 
           {/* Secao 4: Horarios */}
-          {selectedDate && (
+          {selectedDate && queueDay && (
+            <section ref={slotsSectionRef} className="mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-36">
+              <QueuePanel
+                date={format(selectedDate, 'yyyy-MM-dd')}
+                serviceId={selectedService?.id ?? null}
+                isLoggedIn={isAuthenticatedUser}
+                userPhone={userPhone}
+              />
+            </section>
+          )}
+
+          {selectedDate && !queueDay && (
             <section ref={slotsSectionRef} className="mt-1 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-36">
               <h2 className="text-[11px] tracking-[0.2em] font-extrabold uppercase text-white mb-5 text-center mt-6">
                  HORÁRIOS EM {format(selectedDate, 'dd/MM')}
