@@ -1287,7 +1287,7 @@ const handleConfirm = async () => {
                 }}
                   locale={ptBR}
                   disabled={isDateDisabled}
-                  components={{ MonthCaption: CalendarMonthCaption, Nav: () => null }}
+                  components={{ MonthCaption: CalendarMonthCaption, Nav: () => <></> }}
                   classNames={{
                     root: 'w-full',
                     months: 'w-full',

@@ -129,14 +129,16 @@ button * {
 /* ── Área segura para notch / Dynamic Island (iPhone) ──
    env(safe-area-inset-top) vale 0px em telas sem notch,
    então Android e desktop ficam idênticos ao que já eram. */
+/* max() garante uma folga mínima confortável em telas SEM notch
+   (onde env() = 0) e, quando há notch, usa o recuo do aparelho. */
 .safe-top {
-  padding-top: env(safe-area-inset-top);
+  padding-top: max(0.75rem, env(safe-area-inset-top));
 }
 .safe-top-header {
-  padding-top: calc(env(safe-area-inset-top) + 1rem);
+  padding-top: max(1.5rem, calc(env(safe-area-inset-top) + 0.5rem));
 }
 .safe-top-hero {
-  padding-top: calc(env(safe-area-inset-top) + 1.75rem);
+  padding-top: max(2.25rem, calc(env(safe-area-inset-top) + 1rem));
 }
 
 .style-reset {
