@@ -361,7 +361,7 @@ export function AdminDashboard({
         ].join(' ')}
       >
         {/* Cabeçalho do Drawer com logo */}
-        <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
+        <div className="safe-top-header flex items-center justify-between px-5 pb-5 border-b border-white/10">
           <div className="flex items-center gap-3">
             <Image
               src={headerLogoSrc}
