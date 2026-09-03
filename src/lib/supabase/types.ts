@@ -267,3 +267,35 @@ export interface ProductPaymentIntent {
   created_at: string
   updated_at: string
 }
+
+// ─── Sistema de Fila (ordem de chegada) ───────────────────────────────
+export type QueueMode = 'estimativa' | 'recepcao'
+export type QueueEntryStatus =
+  | 'aguardando'
+  | 'chamado'
+  | 'atendido'
+  | 'desistiu'
+  | 'ausente'
+
+export interface QueueDay {
+  date: string
+  is_active: boolean
+  mode: QueueMode
+  avg_service_minutes: number
+  created_at: string
+}
+
+export interface QueueEntry {
+  id: string
+  date: string
+  client_id: string | null
+  client_name: string | null
+  client_phone: string | null
+  service_id: string | null
+  service_name_snapshot: string | null
+  service_duration_minutes_snapshot: number | null
+  status: QueueEntryStatus
+  joined_at: string
+  called_at: string | null
+  finished_at: string | null
+}
