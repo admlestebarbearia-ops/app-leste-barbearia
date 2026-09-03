@@ -75,8 +75,17 @@ import {
   listClientsWithDebt,
   listUpcomingRevenue,
 } from '@/app/admin/actions'
+import {
+  listQueueForDay,
+  activateQueueDay,
+  deactivateQueueDay,
+  advanceQueue,
+  markQueueServed,
+  markQueueAbsent,
+  leaveQueue,
+} from '@/app/agendar/queue-actions'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
-import type { PaymentMethod } from '@/lib/supabase/types'
+import type { PaymentMethod, QueueDay, QueueEntry, QueueMode } from '@/lib/supabase/types'
 import type {
   BusinessConfig,
   WorkingHours,
@@ -99,7 +108,7 @@ const _subNoop = (_: () => void) => () => {}
 const _getTrue = () => true
 const _getFalse = () => false
 
-type Tab = 'hoje' | 'configuracoes' | 'servicos' | 'barbeiros' | 'admins' | 'galeria' | 'produtos' | 'financeiro' | 'clientes'
+type Tab = 'hoje' | 'fila' | 'configuracoes' | 'servicos' | 'barbeiros' | 'admins' | 'galeria' | 'produtos' | 'financeiro' | 'clientes'
 
 interface Props {
   config: BusinessConfig
@@ -387,6 +396,7 @@ export function AdminDashboard({
         <nav className="flex-1 flex flex-col gap-1 p-3 overflow-y-auto">
           {([
             { key: 'hoje',          label: 'Agenda',      icon: CalendarDays },
+            { key: 'fila',          label: 'Fila',        icon: Clock },
             { key: 'configuracoes', label: 'Preferências', icon: Settings2 },
             { key: 'servicos',      label: 'Catálogo',    icon: Scissors },
             { key: 'barbeiros',     label: 'Barbeiros',   icon: Users },
@@ -552,6 +562,9 @@ export function AdminDashboard({
         )}
         {tab === 'clientes' && (
           <TabClientes />
+        )}
+        {tab === 'fila' && (
+          <TabFila />
         )}
         </div>
       </main>
@@ -4783,6 +4796,160 @@ function TabProdutos({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------
+// Tab: Fila (ordem de chegada)
+// ------------------------------------------------------------------
+function TabFila() {
+  const today = new Date().toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' })
+  const [date, setDate] = useState(today)
+  const [day, setDay] = useState<QueueDay | null>(null)
+  const [entries, setEntries] = useState<QueueEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<QueueMode>('estimativa')
+  const [avgMin, setAvgMin] = useState('30')
+
+  const load = async () => {
+    const res = await listQueueForDay(date)
+    setDay(res.day)
+    setEntries(res.entries)
+    if (res.day) { setMode(res.day.mode); setAvgMin(String(res.day.avg_service_minutes)) }
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    void load()
+    const t = setInterval(() => { void load() }, 15000) // acompanha a fila ao vivo
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date])
+
+  const isActive = day?.is_active ?? false
+  const waiting = entries.filter((e) => e.status === 'aguardando')
+  const current = entries.find((e) => e.status === 'chamado')
+
+  const act = async (fn: () => Promise<{ success: boolean; error?: string }>, okMsg?: string) => {
+    setBusy(true)
+    const res = await fn()
+    setBusy(false)
+    if (res.success) { if (okMsg) toast.success(okMsg); await load() }
+    else toast.error(res.error ?? 'Erro.')
+  }
+
+  const modeBtn = (active: boolean) =>
+    `px-3 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+      active ? 'bg-white text-black border-white' : 'bg-transparent text-zinc-400 border-white/10 hover:border-white/20'
+    }`
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500 mb-1">Atendimento</h2>
+          <p className="text-xl font-semibold text-white leading-none">Fila do dia</p>
+        </div>
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="h-9 bg-[#1a1a1a] border border-white/10 rounded-lg px-2 text-sm text-zinc-200"
+        />
+      </div>
+
+      {loading ? (
+        <div className="text-center text-xs text-zinc-600 py-8">Carregando…</div>
+      ) : !isActive ? (
+        <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-sm text-foreground font-semibold">Atender por fila neste dia</span>
+            <span className="text-xs text-muted-foreground">Ative em dias cheios (ex.: véspera de Natal). Os clientes entram por ordem de chegada e acompanham a posição pelo celular, sem marcar horário.</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs text-muted-foreground">Como a fila anda?</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setMode('estimativa')} className={modeBtn(mode === 'estimativa')}>
+                Por tempo<br />(automático)
+              </button>
+              <button onClick={() => setMode('recepcao')} className={modeBtn(mode === 'recepcao')}>
+                Manual<br />(aperto &quot;Próximo&quot;)
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground flex-1">Tempo médio por atendimento</Label>
+            <Input type="number" min="5" value={avgMin} onChange={(e) => setAvgMin(e.target.value)} className="h-9 w-20" />
+            <span className="text-xs text-muted-foreground">min</span>
+          </div>
+          <Button onClick={() => act(() => activateQueueDay(date, mode, parseInt(avgMin, 10) || 30), 'Fila ativada para este dia.')} disabled={busy} size="sm">
+            Ativar fila
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="bg-emerald-500/[0.06] border border-emerald-500/20 rounded-xl p-4 flex items-center justify-between gap-3">
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase tracking-widest text-emerald-500 font-bold">Fila ativa</span>
+              <span className="text-sm text-white">{waiting.length} aguardando{current ? ' · 1 sendo atendido' : ''}</span>
+            </div>
+            <button
+              onClick={() => act(() => deactivateQueueDay(date), 'Fila desativada.')}
+              disabled={busy}
+              className="text-xs text-zinc-400 border border-white/10 rounded-lg px-3 py-1.5 hover:text-white transition-colors shrink-0"
+            >
+              Desativar
+            </button>
+          </div>
+
+          <button
+            onClick={() => act(() => advanceQueue(date))}
+            disabled={busy || (!current && waiting.length === 0)}
+            className="w-full h-14 rounded-2xl bg-primary text-primary-foreground font-extrabold text-base flex items-center justify-center gap-2 disabled:opacity-40 active:scale-[0.98] transition-all"
+          >
+            <Check size={20} /> PRÓXIMO CLIENTE
+          </button>
+
+          {current && (
+            <div className="bg-[#141418] border border-primary/30 rounded-xl p-4">
+              <span className="text-[10px] uppercase tracking-widest text-primary font-bold">Atendendo agora</span>
+              <p className="text-base text-white font-semibold mt-1">{current.client_name ?? 'Cliente'}</p>
+              <p className="text-xs text-zinc-500">{current.service_name_snapshot ?? '—'}{current.client_phone ? ` · ${current.client_phone}` : ''}</p>
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => act(() => markQueueServed(current.id), 'Atendimento concluído.')} disabled={busy} className="flex-1 text-xs font-bold text-emerald-400 border border-emerald-400/20 bg-emerald-400/10 rounded-lg py-2">
+                  Concluir
+                </button>
+                <button onClick={() => act(() => markQueueAbsent(current.id), 'Marcado como ausente.')} disabled={busy} className="flex-1 text-xs font-bold text-amber-400 border border-amber-400/20 bg-amber-400/10 rounded-lg py-2">
+                  Não veio
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            <span className="text-[11px] uppercase tracking-widest text-zinc-500 font-bold">Na fila ({waiting.length})</span>
+            {waiting.length === 0 ? (
+              <p className="text-xs text-zinc-600 py-4 text-center">Ninguém aguardando no momento.</p>
+            ) : (
+              waiting.map((e, i) => (
+                <div key={e.id} className="flex items-center gap-3 bg-[#141418] border border-white/5 rounded-xl p-3">
+                  <span className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">{e.client_name ?? 'Cliente'}</p>
+                    <p className="text-[11px] text-zinc-500 truncate">{e.service_name_snapshot ?? '—'}{e.client_phone ? ` · ${e.client_phone}` : ''}</p>
+                  </div>
+                  <button onClick={() => act(() => leaveQueue(e.id), 'Removido da fila.')} disabled={busy} className="text-zinc-600 hover:text-red-400 transition-colors shrink-0" aria-label="Remover da fila">
+                    <X size={16} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }
