@@ -2540,6 +2540,7 @@ function TabConfiguracoes({
   const [maxDaysAhead, setMaxDaysAhead] = useState(String(config.calendar_max_days_ahead ?? 30))
   const [openUntilDate, setOpenUntilDate] = useState(config.calendar_open_until_date ?? '')
   const [autoConclude, setAutoConclude] = useState<boolean>(config.auto_conclude_enabled ?? false)
+  const [showAutoConcludeWarning, setShowAutoConcludeWarning] = useState(false)
   const [savingAgenda, setSavingAgenda] = useState(false)
 
   // Fase 4: Mercado Pago — estado local do token para refletir connect/disconnect imediatamente
@@ -2715,17 +2716,26 @@ function TabConfiguracoes({
 
   // Salva o auto-concluir de forma isolada (não afeta os demais ajustes se a
   // coluna ainda não existir no banco — ex.: migração não aplicada).
-  const handleToggleAutoConclude = async (value: boolean) => {
-    const previous = autoConclude
-    setAutoConclude(value) // otimista
+  const saveAutoConclude = async (value: boolean) => {
     const result = await saveBusinessConfig({ auto_conclude_enabled: value })
     if (result.success) {
+      setAutoConclude(value)
       toast.success(value ? 'Auto-concluir ativado.' : 'Auto-concluir desativado.')
       onRefresh()
     } else {
-      setAutoConclude(previous) // reverte
+      setAutoConclude(!value)
       toast.error(result.error ?? 'Erro ao salvar. Rode a migração do auto-concluir no banco.')
     }
+  }
+
+  const handleToggleAutoConclude = async (value: boolean) => {
+    if (value) {
+      // Ativar → mostra o aviso antes de gravar (risco financeiro).
+      setAutoConclude(true) // reflete o switch; confirma/reverte no modal
+      setShowAutoConcludeWarning(true)
+      return
+    }
+    await saveAutoConclude(false)
   }
 
   const handleSaveMercadoPago = async () => {
@@ -3261,6 +3271,39 @@ function TabConfiguracoes({
               </div>
               <Switch checked={autoConclude} onCheckedChange={handleToggleAutoConclude} />
             </div>
+
+            {showAutoConcludeWarning && (
+              <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+                <div className="w-full max-w-sm bg-neutral-950 border border-amber-500/30 rounded-2xl p-6 flex flex-col gap-4 shadow-2xl">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle size={20} className="text-amber-400 shrink-0" />
+                    <h3 className="text-base font-bold text-white">Antes de ativar, atenção</h3>
+                  </div>
+                  <p className="text-sm text-zinc-300 leading-relaxed">
+                    Com o auto-concluir ligado, os atendimentos <span className="text-white font-semibold">presenciais</span> viram &quot;concluídos&quot; sozinhos — e isso pode <span className="text-amber-400 font-semibold">afetar seu financeiro</span>:
+                  </p>
+                  <ul className="text-xs text-zinc-400 flex flex-col gap-1.5 pl-1">
+                    <li>• Quem <span className="text-white">faltou</span> e você não marcou pode ser contado como atendido.</li>
+                    <li>• A <span className="text-white">forma de pagamento</span> fica &quot;a definir&quot; (você corrige depois).</li>
+                  </ul>
+                  <p className="text-xs text-zinc-500">Pagamentos online concluem sozinhos de qualquer forma — isso é seguro.</p>
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      onClick={() => { setAutoConclude(false); setShowAutoConcludeWarning(false) }}
+                      className="flex-1 h-10 rounded-lg border border-white/10 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={() => { setShowAutoConcludeWarning(false); void saveAutoConclude(true) }}
+                      className="flex-1 h-10 rounded-lg bg-amber-500/90 text-black font-bold text-sm hover:bg-amber-500 transition-colors"
+                    >
+                      Ativar mesmo assim
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Dias de antecedência */}
             <div className="flex flex-col gap-1.5">
