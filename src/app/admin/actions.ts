@@ -2397,12 +2397,17 @@ export async function createAdminAppointment(data: {
   barberId: string
   date: string
   startTime: string
-  clientName: string
+  clientName?: string
   clientPhone?: string
 }): Promise<{ success: boolean; appointmentId?: string; error?: string }> {
   try {
-    await requireAdmin()
+    const { user } = await requireAdmin()
     const adminClient = createAdminClient()
+
+    // Nome do cliente: usa o digitado; se vazio, cai no nome do admin logado.
+    const meta = (user.user_metadata ?? {}) as { full_name?: string; name?: string }
+    const finalClientName =
+      data.clientName?.trim() || meta.full_name?.trim() || meta.name?.trim() || user.email || 'Cliente'
 
     // ── Valida serviço ────────────────────────────────────────────────────
     const { data: service } = await adminClient
@@ -2465,7 +2470,7 @@ export async function createAdminAppointment(data: {
       .from('appointments')
       .insert({
         client_id: null,
-        client_name: data.clientName.trim(),
+        client_name: finalClientName,
         client_phone: data.clientPhone?.trim() || null,
         client_email: null,
         barber_id: data.barberId,

@@ -9,6 +9,7 @@ import { format, parseISO } from 'date-fns'
 import { toast } from 'sonner'
 import { getAvailableSlots, createAppointment, getMyAppointments, cancelMyAppointment, saveUserPhone, cancelPendingPayment, getPendingPaymentStatus, getMyPendingFiadoSummary } from '@/app/agendar/actions'
 import { getActiveQueueDay } from '@/app/agendar/queue-actions'
+import { createAdminAppointment } from '@/app/admin/actions'
 import { QueuePanel } from '@/components/booking/QueuePanel'
 import { PaymentBrick } from '@/components/payment/PaymentBrick'
 import { createClient } from '@/lib/supabase/client'
@@ -199,6 +200,8 @@ export function BookingForm({
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [queueDay, setQueueDay] = useState<QueueDay | null>(null)
+  const [showAdminConfirm, setShowAdminConfirm] = useState(false)
+  const [adminClientName, setAdminClientName] = useState('')
   const [availableSlots, setAvailableSlots] = useState<string[]>([])
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
   const [loadingSlots, setLoadingSlots] = useState(false)
@@ -587,6 +590,35 @@ const handleConfirm = async () => {
     }
 
     submitBooking()
+  }
+
+  // Admin agenda direto para o cliente (sem pagamento, sem regras de cliente).
+  const submitAdminBooking = async () => {
+    if (isSubmittingRef.current || isSubmitting || isPending) return
+    if (!selectedService || !selectedDate || !selectedTime || !barber) return
+    isSubmittingRef.current = true
+    setIsSubmitting(true)
+    try {
+      const result = await createAdminAppointment({
+        serviceId: selectedService.id,
+        barberId: barber.id,
+        date: format(selectedDate, 'yyyy-MM-dd'),
+        startTime: selectedTime + ':00',
+        clientName: adminClientName.trim() || undefined,
+      })
+      if (result.success) {
+        toast.success('Cliente agendado! ✅')
+        setShowAdminConfirm(false)
+        setAdminClientName('')
+        setSelectedTime(null)
+        void refetchRef.current?.()
+      } else {
+        toast.error(result.error ?? 'Erro ao agendar.')
+      }
+    } finally {
+      isSubmittingRef.current = false
+      setIsSubmitting(false)
+    }
   }
 
   const handleSaveWhats = async () => {
@@ -1498,7 +1530,10 @@ const handleConfirm = async () => {
             <Button
               onClick={() => {
                 // Ação real do botão (executada diretamente ou após aceite no modal)
-                const executeAdvance = needsPaymentStep ? () => {
+                // Admin: abre a confirmação simples (nome opcional), sem pagamento nem regras.
+                const executeAdvance = isAdmin
+                  ? () => setShowAdminConfirm(true)
+                  : needsPaymentStep ? () => {
                   if (isAuthenticatedUser && !savedPhone) {
                     setPendingGoToPayment(true)
                     setShowWhatsCapture(true)
@@ -1519,10 +1554,52 @@ const handleConfirm = async () => {
               disabled={!canConfirm || isPending}
               className="flex-1 h-14 rounded-2xl text-xs font-extrabold tracking-[0.15em] uppercase bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50 shadow-[0_8px_30px_rgba(0,0,0,0.6)] border border-primary/50 flex items-center justify-center gap-1.5"
             >
-              {isPending ? 'Aguarde...' : needsPaymentStep ? <><span>Avançar</span><ChevronRight size={14} /></> : 'Confirmar'}
+              {isPending ? 'Aguarde...' : isAdmin ? 'Agendar cliente' : needsPaymentStep ? <><span>Avançar</span><ChevronRight size={14} /></> : 'Confirmar'}
             </Button>
          </div>
       </div>
+
+      {/* Modal admin: agendar para cliente (nome opcional) */}
+      {showAdminConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowAdminConfirm(false)} />
+          <div className="relative bg-[#111] border border-white/10 rounded-2xl px-6 py-6 max-w-sm w-full flex flex-col gap-4 shadow-[0_24px_64px_rgba(0,0,0,0.8)] animate-in fade-in zoom-in-95 duration-200">
+            <div>
+              <p className="text-[11px] uppercase tracking-widest text-amber-400 font-bold">Agendar para cliente</p>
+              <p className="text-sm text-zinc-300 mt-1.5">
+                {selectedService?.name}
+                {selectedDate ? ` · ${format(selectedDate, 'dd/MM')}` : ''}
+                {selectedTime ? ` · ${selectedTime}` : ''}
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-zinc-500">Nome do cliente (opcional)</label>
+              <input
+                value={adminClientName}
+                onChange={(e) => setAdminClientName(e.target.value)}
+                placeholder="Deixe em branco se não souber"
+                className="h-12 bg-background border border-white/10 rounded-xl px-4 text-white placeholder:text-zinc-600 focus:border-white/25 focus:outline-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2 mt-1">
+              <button
+                onClick={() => setShowAdminConfirm(false)}
+                className="flex-1 h-12 rounded-xl border border-white/10 text-sm text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={submitAdminBooking}
+                disabled={isSubmitting || isPending}
+                className="flex-1 h-12 rounded-xl bg-primary text-primary-foreground font-extrabold text-sm disabled:opacity-50 active:scale-[0.98] transition-all"
+              >
+                {isSubmitting ? 'Agendando…' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de aviso de tolerância (CA06) */}
       {toleranceModalOpen && (
