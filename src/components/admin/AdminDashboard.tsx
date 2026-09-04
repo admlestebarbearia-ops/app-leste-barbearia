@@ -131,7 +131,7 @@ const ADMIN_TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
 
 /** Abas do rodapé: "Agenda" é fixa; as 3 seguintes vêm da configuração. */
 const FIXED_NAV_TAB: Tab = 'hoje'
-const DEFAULT_NAV_TABS = ['fila', 'financeiro', 'clientes']
+const DEFAULT_NAV_TABS = ['configuracoes', 'servicos', 'financeiro']
 
 interface Props {
   config: BusinessConfig
@@ -1887,34 +1887,23 @@ function TabHoje({
               </button>
             </div>
 
+            {/* Lista suspensa em vez de uma listinha rolável: o celular abre o
+                seletor nativo em tela cheia com TODOS os serviços, eliminando
+                o "scroll dentro de scroll" que passava despercebido. */}
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Serviço</Label>
-                {services.filter(s => s.is_active).length > 4 && (
-                  <span className="text-[10px] text-zinc-600">role para ver todos ↓</span>
-                )}
-              </div>
-              <div className="flex flex-col gap-1.5 max-h-[168px] overflow-y-auto pr-1">
+              <Label className="text-xs text-muted-foreground">Serviço</Label>
+              <select
+                value={newApptServiceId}
+                onChange={(e) => setNewApptServiceId(e.target.value)}
+                className="h-12 w-full rounded-lg border border-white/15 bg-background px-3 text-sm font-bold text-white outline-none focus:border-blue-400"
+              >
                 {services.filter(s => s.is_active).map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => setNewApptServiceId(s.id)}
-                    className={[
-                      'flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-xs font-bold border transition-all text-left',
-                      newApptServiceId === s.id
-                        ? 'bg-blue-500 text-white border-blue-400'
-                        : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/25',
-                    ].join(' ')}
-                  >
-                    <span className="truncate">{s.name}</span>
-                    {s.price != null && (
-                      <span className={newApptServiceId === s.id ? 'text-white/80 shrink-0' : 'text-zinc-500 shrink-0'}>
-                        R$ {s.price.toFixed(2).replace('.', ',')}
-                      </span>
-                    )}
-                  </button>
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {s.price != null ? ` — R$ ${s.price.toFixed(2).replace('.', ',')}` : ''}
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
 
             <div className="flex flex-col gap-1.5">
