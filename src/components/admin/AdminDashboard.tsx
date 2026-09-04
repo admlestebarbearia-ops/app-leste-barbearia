@@ -6071,6 +6071,19 @@ function TabClientes() {
   const [detailData, setDetailData] = useState<ClientDirectoryDetails | null>(null)
   const [deleteClientConfirm, setDeleteClientConfirm] = useState(false)
   const [deletingClient, setDeletingClient] = useState(false)
+  const [blockingClientId, setBlockingClientId] = useState<string | null>(null)
+
+  const handleToggleBlock = async (clientId: string, block: boolean) => {
+    setBlockingClientId(clientId)
+    const result = await toggleBlockClient(clientId, block)
+    setBlockingClientId(null)
+    if (result.success) {
+      toast.success(block ? 'Cliente bloqueado.' : 'Cliente desbloqueado.')
+      await loadDirectory()
+    } else {
+      toast.error(result.error ?? 'Erro ao alterar o bloqueio.')
+    }
+  }
 
   const loadDirectory = async () => {
     setLoading(true)
@@ -6413,6 +6426,24 @@ function TabClientes() {
                       >
                         Abrir ficha
                       </button>
+                      {/* Bloquear vive aqui (e não no card de agendamento): só faz
+                          sentido para quem tem conta, e este é o cadastro do cliente. */}
+                      {client.client_id && (
+                        <button
+                          disabled={blockingClientId === client.client_id}
+                          onClick={() => void handleToggleBlock(client.client_id!, !client.is_blocked)}
+                          className={[
+                            'rounded-xl border px-3 py-2 text-[11px] font-bold transition-colors disabled:opacity-40',
+                            client.is_blocked
+                              ? 'border-blue-500/20 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20'
+                              : 'border-red-500/20 bg-red-500/10 text-red-300 hover:bg-red-500/20',
+                          ].join(' ')}
+                        >
+                          {blockingClientId === client.client_id
+                            ? '...'
+                            : client.is_blocked ? 'Desbloquear' : 'Bloquear'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )
