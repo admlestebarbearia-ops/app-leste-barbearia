@@ -6,6 +6,7 @@ import { savePushSubscription } from '@/app/api/push/actions'
 import { ensurePushBrowserSession } from '@/lib/push/browser-session'
 import { toast } from 'sonner'
 import { Clock, Check, Users, LogOut, Bell } from 'lucide-react'
+import type { QueueDay } from '@/lib/supabase/types'
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
 
@@ -31,6 +32,12 @@ interface Props {
   serviceId: string | null
   isLoggedIn: boolean
   userPhone: string | null
+  queueDay: QueueDay
+}
+
+function formatClock(minutesFromNow: number): string {
+  const d = new Date(Date.now() + Math.max(0, minutesFromNow) * 60000)
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })
 }
 
 type QueueStatus = Awaited<ReturnType<typeof getMyQueueStatus>>
@@ -43,7 +50,7 @@ function formatMinutes(min: number): string {
   return m > 0 ? `~${h}h ${m}min` : `~${h}h`
 }
 
-export function QueuePanel({ date, serviceId, isLoggedIn, userPhone }: Props) {
+export function QueuePanel({ date, serviceId, isLoggedIn, userPhone, queueDay }: Props) {
   const storageKey = `queue_entry_${date}`
   const [entryId, setEntryId] = useState<string | null>(null)
   const [status, setStatus] = useState<QueueStatus | null>(null)
@@ -198,11 +205,14 @@ export function QueuePanel({ date, serviceId, isLoggedIn, userPhone }: Props) {
                 <span className="text-base font-bold text-zinc-500"> na frente</span>
               </p>
               {typeof status.estimateMinutes === 'number' && (
-                <p className="text-sm text-zinc-400 mt-3">
-                  Estimativa de espera: <span className="text-white font-semibold">{formatMinutes(status.estimateMinutes)}</span>
-                </p>
+                <>
+                  <p className="text-sm text-zinc-400 mt-3">
+                    Previsão de atendimento: <span className="text-white font-semibold">~{formatClock(status.estimateMinutes)}</span>
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-0.5">Espera aproximada de {formatMinutes(status.estimateMinutes)}</p>
+                </>
               )}
-              <p className="text-[10px] text-zinc-600 mt-1">Tempo estimado, não garantido.</p>
+              <p className="text-[10px] text-zinc-600 mt-1">Previsão, não garantia — é atendimento por ordem de chegada.</p>
             </>
           )}
         </div>
@@ -231,7 +241,26 @@ export function QueuePanel({ date, serviceId, isLoggedIn, userPhone }: Props) {
     )
   }
 
+  // ── Fila cheia (barbeiro fechou a entrada) ──
+  if (!queueDay.accepting_joins) {
+    return (
+      <div className="w-full max-w-[360px] mx-auto">
+        <div className="bg-amber-500/[0.06] border border-amber-500/20 rounded-[2rem] p-6 flex flex-col gap-3 text-center">
+          <div className="w-14 h-14 rounded-full bg-amber-500/15 flex items-center justify-center mx-auto">
+            <Users size={26} className="text-amber-400" />
+          </div>
+          <p className="text-base font-bold text-white">Fila cheia por enquanto</p>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            A fila de hoje está lotada. Pode abrir vaga quando o barbeiro for atendendo — volte em alguns minutos e fique de olho.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   // ── Ainda não está na fila: entrar ──
+  const introMessage = queueDay.call_message?.trim()
+    || 'Hoje não precisa marcar horário. Entre na fila e acompanhe sua posição pelo celular — sem precisar esperar na barbearia.'
   return (
     <div className="w-full max-w-[360px] mx-auto flex flex-col gap-4">
       <div className="bg-[#141418] border border-white/10 rounded-[2rem] p-6 flex flex-col gap-3 text-center shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
@@ -240,7 +269,7 @@ export function QueuePanel({ date, serviceId, isLoggedIn, userPhone }: Props) {
         </div>
         <p className="text-base font-bold text-white">Atendimento por ordem de chegada</p>
         <p className="text-xs text-zinc-400 leading-relaxed">
-          Hoje não precisa marcar horário. Entre na fila e acompanhe sua posição pelo celular — sem precisar esperar na barbearia.
+          {introMessage}
         </p>
 
         {!isLoggedIn && (

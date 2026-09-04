@@ -1351,6 +1351,7 @@ const handleConfirm = async () => {
                 serviceId={selectedService?.id ?? null}
                 isLoggedIn={isAuthenticatedUser}
                 userPhone={userPhone}
+                queueDay={queueDay}
               />
             </section>
           )}

@@ -282,6 +282,10 @@ export interface QueueDay {
   is_active: boolean
   mode: QueueMode
   avg_service_minutes: number
+  accepting_joins: boolean
+  call_message: string | null
+  lead_minutes: number
+  tolerance_minutes: number
   created_at: string
 }
 

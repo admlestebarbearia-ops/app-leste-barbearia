@@ -79,6 +79,7 @@ import {
   listQueueForDay,
   activateQueueDay,
   deactivateQueueDay,
+  setQueueAccepting,
   advanceQueue,
   markQueueServed,
   markQueueAbsent,
@@ -4812,12 +4813,22 @@ function TabFila() {
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<QueueMode>('estimativa')
   const [avgMin, setAvgMin] = useState('30')
+  const DEFAULT_QUEUE_MSG = 'Hoje o atendimento é por ordem de chegada (fila). Entre na fila e acompanhe sua posição pelo celular, sem precisar esperar aqui.'
+  const [callMsg, setCallMsg] = useState(DEFAULT_QUEUE_MSG)
+  const [leadMin, setLeadMin] = useState('15')
+  const [tolMin, setTolMin] = useState('10')
 
   const load = async () => {
     const res = await listQueueForDay(date)
     setDay(res.day)
     setEntries(res.entries)
-    if (res.day) { setMode(res.day.mode); setAvgMin(String(res.day.avg_service_minutes)) }
+    if (res.day) {
+      setMode(res.day.mode)
+      setAvgMin(String(res.day.avg_service_minutes))
+      setCallMsg(res.day.call_message ?? DEFAULT_QUEUE_MSG)
+      setLeadMin(String(res.day.lead_minutes))
+      setTolMin(String(res.day.tolerance_minutes))
+    }
     setLoading(false)
   }
 
@@ -4830,6 +4841,7 @@ function TabFila() {
   }, [date])
 
   const isActive = day?.is_active ?? false
+  const accepting = day?.accepting_joins ?? true
   const waiting = entries.filter((e) => e.status === 'aguardando')
   const current = entries.find((e) => e.status === 'chamado')
 
@@ -4885,24 +4897,81 @@ function TabFila() {
             <Input type="number" min="5" value={avgMin} onChange={(e) => setAvgMin(e.target.value)} className="h-9 w-20" />
             <span className="text-xs text-muted-foreground">min</span>
           </div>
-          <Button onClick={() => act(() => activateQueueDay(date, mode, parseInt(avgMin, 10) || 30), 'Fila ativada para este dia.')} disabled={busy} size="sm">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground flex-1">Avisar &quot;é o próximo&quot; com antecedência</Label>
+            <Input type="number" min="0" value={leadMin} onChange={(e) => setLeadMin(e.target.value)} className="h-9 w-20" />
+            <span className="text-xs text-muted-foreground">min</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-muted-foreground flex-1">Tolerância de chegada (quando chamado)</Label>
+            <Input type="number" min="0" value={tolMin} onChange={(e) => setTolMin(e.target.value)} className="h-9 w-20" />
+            <span className="text-xs text-muted-foreground">min</span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Mensagem para o cliente (já vem pronta, edite se quiser)</Label>
+            <textarea
+              value={callMsg}
+              onChange={(e) => setCallMsg(e.target.value)}
+              rows={3}
+              className="bg-[#0f0f12] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:border-white/25 focus:outline-none resize-none"
+            />
+          </div>
+          <Button
+            onClick={() => act(() => activateQueueDay(date, {
+              mode,
+              avgServiceMinutes: parseInt(avgMin, 10) || 30,
+              callMessage: callMsg,
+              leadMinutes: parseInt(leadMin, 10),
+              toleranceMinutes: parseInt(tolMin, 10),
+            }), 'Fila ativada para este dia.')}
+            disabled={busy}
+            size="sm"
+          >
             Ativar fila
           </Button>
         </div>
       ) : (
         <>
-          <div className="bg-emerald-500/[0.06] border border-emerald-500/20 rounded-xl p-4 flex items-center justify-between gap-3">
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase tracking-widest text-emerald-500 font-bold">Fila ativa</span>
-              <span className="text-sm text-white">{waiting.length} aguardando{current ? ' · 1 sendo atendido' : ''}</span>
+          <div className="bg-[#141418] border border-white/10 rounded-2xl p-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col">
+                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Na fila agora</span>
+                <span className="text-4xl font-black text-white tabular-nums leading-none mt-1">
+                  {waiting.length}
+                  <span className="text-sm font-bold text-zinc-500"> aguardando</span>
+                </span>
+                {current && <span className="text-[11px] text-primary mt-1">1 sendo atendido</span>}
+              </div>
+              <span className={[
+                'text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border',
+                accepting
+                  ? 'text-emerald-400 border-emerald-400/30 bg-emerald-400/10'
+                  : 'text-amber-400 border-amber-400/30 bg-amber-400/10',
+              ].join(' ')}>
+                {accepting ? '● Aberta' : '● Fechada'}
+              </span>
             </div>
-            <button
-              onClick={() => act(() => deactivateQueueDay(date), 'Fila desativada.')}
-              disabled={busy}
-              className="text-xs text-zinc-400 border border-white/10 rounded-lg px-3 py-1.5 hover:text-white transition-colors shrink-0"
-            >
-              Desativar
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => act(() => setQueueAccepting(date, !accepting), accepting ? 'Entrada fechada.' : 'Entrada aberta.')}
+                disabled={busy}
+                className={[
+                  'flex-1 text-xs font-bold rounded-lg py-2.5 border transition-colors',
+                  accepting
+                    ? 'text-amber-400 border-amber-400/20 bg-amber-400/10 hover:bg-amber-400/15'
+                    : 'text-emerald-400 border-emerald-400/20 bg-emerald-400/10 hover:bg-emerald-400/15',
+                ].join(' ')}
+              >
+                {accepting ? 'Fechar entrada' : 'Abrir entrada'}
+              </button>
+              <button
+                onClick={() => act(() => deactivateQueueDay(date), 'Fila desativada.')}
+                disabled={busy}
+                className="text-xs text-zinc-400 border border-white/10 rounded-lg px-3 py-2.5 hover:text-white transition-colors shrink-0"
+              >
+                Desativar
+              </button>
+            </div>
           </div>
 
           <button

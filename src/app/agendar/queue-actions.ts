@@ -65,6 +65,9 @@ export async function joinQueue(input: {
       .eq('is_active', true)
       .maybeSingle()
     if (!qday) return { success: false, error: 'A fila não está aberta para este dia.' }
+    if ((qday as { accepting_joins?: boolean }).accepting_joins === false) {
+      return { success: false, error: 'A fila está cheia no momento. Volte em alguns minutos — pode abrir vaga.' }
+    }
 
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -228,17 +231,45 @@ export async function leaveQueue(entryId: string): Promise<{ success: boolean; e
 /** Ativa (ou atualiza) o modo fila em uma data. */
 export async function activateQueueDay(
   date: string,
-  mode: QueueMode = 'estimativa',
-  avgServiceMinutes = 30,
+  opts: {
+    mode?: QueueMode
+    avgServiceMinutes?: number
+    callMessage?: string | null
+    leadMinutes?: number
+    toleranceMinutes?: number
+  } = {},
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { supabase } = await requireAdmin()
     const { error } = await supabase.from('queue_days').upsert({
       date,
       is_active: true,
-      mode,
-      avg_service_minutes: avgServiceMinutes > 0 ? avgServiceMinutes : 30,
+      accepting_joins: true,
+      mode: opts.mode ?? 'estimativa',
+      avg_service_minutes: opts.avgServiceMinutes && opts.avgServiceMinutes > 0 ? opts.avgServiceMinutes : 30,
+      call_message: opts.callMessage?.trim() || null,
+      lead_minutes: typeof opts.leadMinutes === 'number' && opts.leadMinutes >= 0 ? opts.leadMinutes : 15,
+      tolerance_minutes: typeof opts.toleranceMinutes === 'number' && opts.toleranceMinutes >= 0 ? opts.toleranceMinutes : 10,
     })
+    if (error) throw error
+    revalidatePath('/admin')
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: (e as Error).message }
+  }
+}
+
+/** Abre ou fecha a entrada de novos clientes na fila (controle manual do barbeiro). */
+export async function setQueueAccepting(
+  date: string,
+  accepting: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { supabase } = await requireAdmin()
+    const { error } = await supabase
+      .from('queue_days')
+      .update({ accepting_joins: accepting })
+      .eq('date', date)
     if (error) throw error
     revalidatePath('/admin')
     return { success: true }
@@ -328,18 +359,18 @@ export async function advanceQueue(date: string): Promise<{ success: boolean; er
       if (nextTarget) {
         void firePushToUser(nextTarget, {
           title: '💈 É a sua vez!',
-          body: 'O barbeiro está te chamando. Pode vir!',
+          body: 'Se você está na barbearia, pode sentar na cadeira.',
           url: '/agendar',
           tag: `queue-called-${next.id}`,
         })
       }
-      // Avisa o novo "próximo" (segundo da fila).
+      // Avisa o novo "próximo" (segundo da fila) — com antecedência.
       const following = active.find((r) => r.status === 'aguardando' && r.id !== next.id)
       const followingTarget = following ? pushTarget(following) : null
       if (followingTarget) {
         void firePushToUser(followingTarget, {
-          title: '⏳ Você é o próximo',
-          body: 'Falta pouco! Vá se encaminhando para a barbearia.',
+          title: '⏳ Você é o próximo!',
+          body: 'Venha para a barbearia com antecedência. Esteja aqui quando for sua vez, ou perde a vaga e vai para o fim da fila.',
           url: '/agendar',
           tag: `queue-next-${following!.id}`,
         })
