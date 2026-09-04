@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck, CheckCircle2, BarChart3, ShoppingBag, CreditCard, Check, List, Grid, AlertTriangle, Clock, UserX, XCircle, MessageCircle, Phone, Lock, Plus } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck, CheckCircle2, BarChart3, ShoppingBag, CreditCard, Check, List, Grid, AlertTriangle, Clock, UserX, XCircle, MessageCircle, Phone, Lock, Plus, MoreVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -74,6 +74,9 @@ import {
   hardDeleteAppointment,
   listClientsWithDebt,
   listUpcomingRevenue,
+  getAdminDayTimeline,
+  listActiveBarbers,
+  createAdminAppointment,
 } from '@/app/admin/actions'
 import {
   listQueueForDay,
@@ -690,6 +693,18 @@ function TabHoje({
   const isMounted = useSyncExternalStore(_subNoop, _getTrue, _getFalse)
   // Grade interativa (Epic 1)
   const [viewMode, setViewMode] = useState<'lista' | 'grade'>('lista')
+  // ── Modal "Novo agendamento" (atalho rápido do botão flutuante) ──────────
+  const [newApptOpen, setNewApptOpen] = useState(false)
+  const [newApptSlots, setNewApptSlots] = useState<string[]>([])
+  const [newApptBarberId, setNewApptBarberId] = useState('')
+  const [newApptLoadingSlots, setNewApptLoadingSlots] = useState(false)
+  const [newApptTime, setNewApptTime] = useState<string | null>(null)
+  const [newApptServiceId, setNewApptServiceId] = useState('')
+  const [newApptName, setNewApptName] = useState('')
+  const [newApptPhone, setNewApptPhone] = useState('')
+  const [newApptSaving, setNewApptSaving] = useState(false)
+  // Menu "⋮" por card (ações raras: bloquear/desbloquear cliente)
+  const [menuApptId, setMenuApptId] = useState<string | null>(null)
   // Modal Concluir Agendamento
   const [concludeAppt, setConcludeAppt] = useState<Appointment | null>(null)
   const [concludeLoading, setConcludeLoading] = useState(false)
@@ -1025,6 +1040,56 @@ function TabHoje({
   const getDisplayName = (appt: Appointment) =>
     appt.profiles?.display_name ?? appt.client_name ?? 'Cliente'
 
+  // ── "Novo agendamento": abre o modal já com os horários livres do dia ──────
+  const openNewAppt = async () => {
+    if (!selectedDay) return
+    setNewApptOpen(true)
+    setNewApptTime(null)
+    setNewApptName('')
+    setNewApptPhone('')
+    setNewApptServiceId(services.find(s => s.is_active)?.id ?? '')
+    setNewApptLoadingSlots(true)
+    try {
+      const [timeline, barbersRes] = await Promise.all([
+        getAdminDayTimeline(selectedDay),
+        listActiveBarbers(),
+      ])
+      // Remove os horários que já têm agendamento ativo no dia.
+      const taken = new Set(
+        dayAppts
+          .filter(a => a.status === 'confirmado' || a.status === 'aguardando_pagamento')
+          .map(a => (a.start_time ?? '').slice(0, 5))
+      )
+      setNewApptSlots((timeline.allSlots ?? []).filter(t => !taken.has(t.slice(0, 5))))
+      setNewApptBarberId(barbersRes.barbers?.[0]?.id ?? '')
+    } catch {
+      setNewApptSlots([])
+    } finally {
+      setNewApptLoadingSlots(false)
+    }
+  }
+
+  const submitNewAppt = async () => {
+    if (!selectedDay || !newApptTime || !newApptServiceId || !newApptBarberId) return
+    setNewApptSaving(true)
+    const result = await createAdminAppointment({
+      serviceId: newApptServiceId,
+      barberId: newApptBarberId,
+      date: selectedDay,
+      startTime: newApptTime.length === 5 ? `${newApptTime}:00` : newApptTime,
+      clientName: newApptName.trim() || undefined,
+      clientPhone: newApptPhone.trim() || undefined,
+    })
+    setNewApptSaving(false)
+    if (result.success) {
+      toast.success('Cliente agendado!')
+      setNewApptOpen(false)
+      onRefresh()
+    } else {
+      toast.error(result.error ?? 'Erro ao agendar.')
+    }
+  }
+
   const handleStatus = async (id: string, status: 'cancelado' | 'faltou') => {
     setLoading(id + status)
     const result = await updateAppointmentStatus(id, status)
@@ -1315,7 +1380,7 @@ function TabHoje({
               {isMounted && bulkEligibleCount > 0 && (
                 <button
                   onClick={() => { setBulkConcludeOpen(true); setBulkConcludePayment(''); setBulkConcludeIsPending(false); setBulkConcludePendingDate('') }}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all shadow-sm shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all shadow-sm shrink-0"
                   title={`Concluir ${bulkEligibleCount} atendimento(s) passado(s)`}
                 >
                   <CheckCircle2 size={13} />
@@ -1324,19 +1389,19 @@ function TabHoje({
               )}
               <button
                 onClick={() => setShowDayReport(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-zinc-300 hover:text-white hover:border-white/20 transition-all shrink-0"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-white/10 bg-white/5 text-xs font-semibold text-zinc-300 hover:text-white hover:border-white/20 transition-all shrink-0"
                 title="Resumo do dia"
               >
                 <BarChart3 size={13} />
                 <span>Resumo</span>
               </button>
-              <div className="flex gap-0.5 bg-white/5 p-0.5 rounded-lg border border-white/10 shrink-0">
+              <div className="flex gap-0.5 bg-white/5 p-0.5 rounded-md border border-white/10 shrink-0">
                 {(['lista', 'grade'] as const).map(mode => (
                   <button
                     key={mode}
                     onClick={() => setViewMode(mode)}
                     className={[
-                      'flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold transition-all',
+                      'flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold transition-all',
                       viewMode === mode
                         ? 'bg-white text-black shadow-sm'
                         : 'text-zinc-400 hover:text-zinc-200',
@@ -1510,6 +1575,52 @@ function TabHoje({
                         return null
                       })()}
                     </div>
+
+                    {/* Menu "⋮" — ações raras/severas ficam aqui, fora do caminho
+                        das ações do dia a dia (WhatsApp/Concluir/Faltou/Cancelar) */}
+                    {appt.client_id && (
+                      <div className="relative shrink-0">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setMenuApptId(menuApptId === appt.id ? null : appt.id) }}
+                          className="p-1.5 rounded-lg text-zinc-500 hover:text-white hover:bg-white/10 transition-colors"
+                          aria-label="Mais opções"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                        {menuApptId === appt.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={(e) => { e.stopPropagation(); setMenuApptId(null) }}
+                            />
+                            <div
+                              className="absolute right-0 top-9 z-50 w-48 bg-neutral-950 border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {!appt.profiles?.is_blocked ? (
+                                <button
+                                  disabled={!!loading}
+                                  onClick={() => { setMenuApptId(null); handleBlock(appt.client_id, true) }}
+                                  className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-semibold text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+                                >
+                                  <Lock size={13} />
+                                  <span>Bloquear cliente</span>
+                                </button>
+                              ) : (
+                                <button
+                                  disabled={!!loading}
+                                  onClick={() => { setMenuApptId(null); handleBlock(appt.client_id, false) }}
+                                  className="w-full flex items-center gap-2 px-3 py-2.5 text-xs font-semibold text-blue-400 hover:bg-blue-500/10 transition-colors disabled:opacity-40"
+                                >
+                                  <ShieldCheck size={13} />
+                                  <span>Desbloquear cliente</span>
+                                </button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Rodapé — botões de ação.
@@ -1574,26 +1685,7 @@ function TabHoje({
                           <XCircle size={13} />
                           <span>Cancelar</span>
                         </button>
-                        {appt.client_id && !appt.profiles?.is_blocked && (
-                          <button
-                            disabled={!!loading}
-                            onClick={() => handleBlock(appt.client_id, true)}
-                            className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all disabled:opacity-40"
-                          >
-                            <Lock size={13} />
-                            <span>Bloquear</span>
-                          </button>
-                        )}
-                        {appt.client_id && appt.profiles?.is_blocked && (
-                          <button
-                            disabled={!!loading}
-                            onClick={() => handleBlock(appt.client_id, false)}
-                            className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-40"
-                          >
-                            <ShieldCheck size={13} />
-                            <span>Desbloquear</span>
-                          </button>
-                        )}
+                        {/* Bloquear/Desbloquear agora vivem no menu "⋮" do topo do card */}
                       </>
                     )}
 
@@ -1678,16 +1770,8 @@ function TabHoje({
             </div>
           ) : null}
 
-          {/* CTA principal — leva ao fluxo onde o admin agenda para o cliente
-              (serviço → data → horário → "Agendar cliente", com nome opcional).
-              Deixa a ação de agendar visível sem precisar achar a aba "Grade". */}
-          <a
-            href="/agendar"
-            className="mt-1 inline-flex items-center justify-center gap-2 w-full h-12 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-sm shadow-[0_4px_20px_rgba(59,130,246,0.35)] active:scale-[0.99] transition-all"
-          >
-            <Plus size={18} />
-            <span>Novo agendamento</span>
-          </a>
+          {/* Espaço para o botão flutuante não cobrir o último card */}
+          <div className="h-16 shrink-0" aria-hidden="true" />
         </div>
       )}
 
@@ -1699,6 +1783,124 @@ function TabHoje({
         />
       )}
     </div>
+
+    {/* ── Botão FLUTUANTE "Novo agendamento" ──
+        Fica fixo na tela enquanto o barbeiro rola a lista — mesmo com dezenas
+        de agendamentos ele nunca some. Abre o modal rápido de agendar. */}
+    {selectedDay && (
+      <button
+        onClick={openNewAppt}
+        className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 inline-flex items-center justify-center gap-2 px-6 h-12 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-sm shadow-[0_8px_30px_rgba(0,0,0,0.6),0_4px_20px_rgba(59,130,246,0.45)] active:scale-95 transition-all"
+      >
+        <Plus size={18} />
+        <span>Novo agendamento</span>
+      </button>
+    )}
+
+    {/* ── Modal: Novo agendamento (rápido) ── */}
+    <Dialog open={newApptOpen} onOpenChange={(open) => { if (!open) setNewApptOpen(false) }}>
+      <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-white">
+            {newApptTime ? 'Dados do cliente' : 'Escolha o horário'}
+          </DialogTitle>
+        </DialogHeader>
+
+        {/* Etapa 1 — escolher horário livre */}
+        {!newApptTime && (
+          <div className="flex flex-col gap-3 py-1">
+            {newApptLoadingSlots ? (
+              <p className="text-center text-xs text-zinc-500 py-6">Carregando horários…</p>
+            ) : newApptSlots.length === 0 ? (
+              <p className="text-center text-xs text-zinc-500 py-6">
+                Nenhum horário livre neste dia.
+              </p>
+            ) : (
+              <div className="grid grid-cols-4 gap-2 max-h-[280px] overflow-y-auto">
+                {newApptSlots.map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setNewApptTime(t)}
+                    className="h-11 rounded-lg border border-white/10 bg-white/5 text-sm font-bold text-white hover:bg-blue-500 hover:border-blue-400 transition-all tabular-nums"
+                  >
+                    {t.slice(0, 5)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Etapa 2 — serviço + nome (opcional) */}
+        {newApptTime && (
+          <div className="flex flex-col gap-3 py-1">
+            <div className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
+              <span className="text-sm font-bold text-white tabular-nums">
+                {newApptTime.slice(0, 5)}
+              </span>
+              <button
+                onClick={() => setNewApptTime(null)}
+                className="text-[11px] font-semibold text-blue-400 hover:text-blue-300"
+              >
+                trocar horário
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Serviço</Label>
+              <div className="grid grid-cols-2 gap-2 max-h-[150px] overflow-y-auto">
+                {services.filter(s => s.is_active).map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setNewApptServiceId(s.id)}
+                    className={[
+                      'px-2 py-2 rounded-lg text-[11px] font-bold border transition-all text-left',
+                      newApptServiceId === s.id
+                        ? 'bg-white text-black border-white'
+                        : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/25',
+                    ].join(' ')}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Nome do cliente (opcional)</Label>
+              <Input
+                value={newApptName}
+                onChange={(e) => setNewApptName(e.target.value)}
+                placeholder="Deixe em branco se não souber"
+                className="h-10"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Telefone (opcional)</Label>
+              <Input
+                value={newApptPhone}
+                onChange={(e) => setNewApptPhone(e.target.value)}
+                placeholder="(11) 99999-9999"
+                inputMode="numeric"
+                className="h-10"
+              />
+            </div>
+          </div>
+        )}
+
+        {newApptTime && (
+          <DialogFooter>
+            <Button
+              onClick={submitNewAppt}
+              disabled={newApptSaving || !newApptServiceId || !newApptBarberId}
+              className="w-full h-11 bg-blue-500 hover:bg-blue-400 text-white font-extrabold"
+            >
+              {newApptSaving ? 'Agendando…' : 'Confirmar agendamento'}
+            </Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
 
     {/* ── Modal: Detalhes do Cliente ── */}
     <Dialog open={!!selectedAppt} onOpenChange={(open) => { if (!open) setSelectedAppt(null) }}>      <DialogContent className="bg-neutral-900 border-white/10 text-white max-w-sm">
