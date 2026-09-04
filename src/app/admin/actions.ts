@@ -2409,6 +2409,17 @@ export async function createAdminAppointment(data: {
     const finalClientName =
       data.clientName?.trim() || meta.full_name?.trim() || meta.name?.trim() || user.email || 'Cliente'
 
+    // ── Valida a data: não deixa agendar em dia que já passou ─────────────
+    // O fluxo do cliente já era protegido (o motor de horários descarta slots
+    // passados), mas o caminho do admin não validava nada — dava para criar
+    // agendamento em datas anteriores tanto pela Grade quanto pelo modal.
+    // Hoje continua permitido (mesmo em horário já passado), porque o barbeiro
+    // legitimamente registra encaixes que acabaram de acontecer.
+    const todayBRT = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().split('T')[0]
+    if (data.date < todayBRT) {
+      return { success: false, error: 'Não é possível agendar em uma data que já passou.' }
+    }
+
     // ── Valida serviço ────────────────────────────────────────────────────
     const { data: service } = await adminClient
       .from('services')

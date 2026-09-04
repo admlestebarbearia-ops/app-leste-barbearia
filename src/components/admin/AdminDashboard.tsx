@@ -1073,16 +1073,25 @@ function TabHoje({
     setNewApptPhone('')
     setNewApptServiceId(services.find(s => s.is_active)?.id ?? '')
 
-    // Remove os horários que já têm agendamento ativo no dia.
+    // Remove horários já ocupados e, se for hoje, os que já passaram.
     const taken = new Set(
       dayAppts
         .filter(a => a.status === 'confirmado' || a.status === 'aguardando_pagamento')
         .map(a => (a.start_time ?? '').slice(0, 5))
     )
+    const nowHM = new Date().toTimeString().slice(0, 5)
+    const isToday = selectedDay === todayStr
+    const usable = (slots: string[]) =>
+      slots.filter(t => {
+        const hm = t.slice(0, 5)
+        if (taken.has(hm)) return false
+        if (isToday && hm < nowHM) return false
+        return true
+      })
 
     // Caminho rápido: dados já pré-carregados.
     if (dayTimelineSlots && dayBarbers) {
-      setNewApptSlots(dayTimelineSlots.filter(t => !taken.has(t.slice(0, 5))))
+      setNewApptSlots(usable(dayTimelineSlots))
       setNewApptBarberId(dayBarbers[0]?.id ?? '')
       setNewApptLoadingSlots(false)
       return
@@ -1094,7 +1103,7 @@ function TabHoje({
         getAdminDayTimeline(selectedDay),
         listActiveBarbers(),
       ])
-      setNewApptSlots((timeline.allSlots ?? []).filter(t => !taken.has(t.slice(0, 5))))
+      setNewApptSlots(usable(timeline.allSlots ?? []))
       setNewApptBarberId(barbersRes.barbers?.[0]?.id ?? '')
     } catch {
       setNewApptSlots([])
@@ -1788,6 +1797,12 @@ function TabHoje({
           <DialogTitle className="text-white">
             {newApptTime ? 'Dados do cliente' : 'Escolha o horário'}
           </DialogTitle>
+          {selectedDay && (
+            <p suppressHydrationWarning className="text-xs text-zinc-400 font-semibold">
+              {formatSelectedDay(selectedDay)}
+              {selectedDay === todayStr ? ' (hoje)' : ''}
+            </p>
+          )}
         </DialogHeader>
 
         {/* Etapa 1 — escolher horário livre */}
@@ -1819,32 +1834,43 @@ function TabHoje({
         {newApptTime && (
           <div className="flex flex-col gap-3 py-1">
             <div className="flex items-center justify-between bg-white/5 rounded-lg px-3 py-2">
-              <span className="text-sm font-bold text-white tabular-nums">
-                {newApptTime.slice(0, 5)}
+              <span suppressHydrationWarning className="text-sm font-bold text-white">
+                <span className="tabular-nums">{newApptTime.slice(0, 5)}</span>
+                <span className="text-zinc-400 font-medium"> · {formatSelectedDay(selectedDay!)}</span>
               </span>
               <button
                 onClick={() => setNewApptTime(null)}
-                className="text-[11px] font-semibold text-blue-400 hover:text-blue-300"
+                className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 shrink-0"
               >
-                trocar horário
+                trocar
               </button>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Serviço</Label>
-              <div className="grid grid-cols-2 gap-2 max-h-[150px] overflow-y-auto">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs text-muted-foreground">Serviço</Label>
+                {services.filter(s => s.is_active).length > 4 && (
+                  <span className="text-[10px] text-zinc-600">role para ver todos ↓</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5 max-h-[168px] overflow-y-auto pr-1">
                 {services.filter(s => s.is_active).map(s => (
                   <button
                     key={s.id}
                     onClick={() => setNewApptServiceId(s.id)}
                     className={[
-                      'px-2 py-2 rounded-lg text-[11px] font-bold border transition-all text-left',
+                      'flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-xs font-bold border transition-all text-left',
                       newApptServiceId === s.id
-                        ? 'bg-white text-black border-white'
+                        ? 'bg-blue-500 text-white border-blue-400'
                         : 'bg-white/5 text-zinc-300 border-white/10 hover:border-white/25',
                     ].join(' ')}
                   >
-                    {s.name}
+                    <span className="truncate">{s.name}</span>
+                    {s.price != null && (
+                      <span className={newApptServiceId === s.id ? 'text-white/80 shrink-0' : 'text-zinc-500 shrink-0'}>
+                        R$ {s.price.toFixed(2).replace('.', ',')}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
