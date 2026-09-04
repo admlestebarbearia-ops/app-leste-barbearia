@@ -60,6 +60,7 @@ export function QueuePanel({ date, serviceId, isLoggedIn, userPhone, queueDay }:
   const [loading, setLoading] = useState(true)
   const [notifBusy, setNotifBusy] = useState(false)
   const [notifEnabled, setNotifEnabled] = useState(false)
+  const [lostSpot, setLostSpot] = useState(false)
 
   const enableNotifications = useCallback(async (id: string) => {
     if (isIosNonStandalone()) {
@@ -110,10 +111,18 @@ export function QueuePanel({ date, serviceId, isLoggedIn, userPhone, queueDay }:
 
   const refresh = useCallback(async (id: string) => {
     const s = await getMyQueueStatus(id)
-    if (!s.found || (s.status && ['atendido', 'desistiu', 'ausente'].includes(s.status))) {
+    if (!s.found || (s.status && ['atendido', 'desistiu'].includes(s.status))) {
       try { localStorage.removeItem(storageKey) } catch { /* ignore */ }
       setEntryId(null)
       setStatus(null)
+      return
+    }
+    if (s.status === 'ausente') {
+      // Perdeu a vez (não estava presente quando foi chamado).
+      try { localStorage.removeItem(storageKey) } catch { /* ignore */ }
+      setEntryId(null)
+      setStatus(null)
+      setLostSpot(true)
       return
     }
     setStatus(s)
@@ -160,6 +169,26 @@ export function QueuePanel({ date, serviceId, isLoggedIn, userPhone, queueDay }:
 
   if (loading) {
     return <div className="text-center text-xs text-zinc-600 py-8">Carregando…</div>
+  }
+
+  // ── Perdeu a vez: não estava presente quando foi chamado ──
+  if (lostSpot) {
+    return (
+      <div className="w-full max-w-[360px] mx-auto">
+        <div className="bg-amber-500/[0.06] border border-amber-500/20 rounded-[2rem] p-6 flex flex-col gap-3 text-center">
+          <p className="text-base font-bold text-white">Você perdeu a vez 😕</p>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Você foi chamado, mas não estava na barbearia. Não tem problema — você pode entrar de novo na fila (vai para o fim, mantendo a ordem).
+          </p>
+          <button
+            onClick={() => setLostSpot(false)}
+            className="mt-2 h-11 rounded-xl bg-primary text-primary-foreground font-extrabold text-sm active:scale-[0.98] transition-all"
+          >
+            Voltar para a fila
+          </button>
+        </div>
+      </div>
+    )
   }
 
   // ── Já está na fila: mostra a posição ao vivo ──
