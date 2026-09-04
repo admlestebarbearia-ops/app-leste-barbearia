@@ -140,6 +140,10 @@ button * {
 .safe-top-hero {
   padding-top: max(2.25rem, calc(env(safe-area-inset-top) + 1rem));
 }
+/* Barra de navegação fixa no rodapé: respeita a faixa do gesto no iPhone. */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
 
 .style-reset {
   appearance: none;

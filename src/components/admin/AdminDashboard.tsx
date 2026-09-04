@@ -114,6 +114,25 @@ const _getFalse = () => false
 
 type Tab = 'hoje' | 'fila' | 'configuracoes' | 'servicos' | 'barbeiros' | 'admins' | 'galeria' | 'produtos' | 'financeiro' | 'clientes'
 
+// Fonte única das abas do painel — usada pelo menu lateral, pelo rodapé de
+// navegação e pela tela que configura quais abas aparecem no rodapé.
+const ADMIN_TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
+  { key: 'hoje',          label: 'Agenda',       icon: CalendarDays },
+  { key: 'fila',          label: 'Fila',         icon: Clock },
+  { key: 'configuracoes', label: 'Preferências', icon: Settings2 },
+  { key: 'servicos',      label: 'Catálogo',     icon: Scissors },
+  { key: 'barbeiros',     label: 'Barbeiros',    icon: Users },
+  { key: 'galeria',       label: 'Galeria',      icon: Images },
+  { key: 'produtos',      label: 'Loja',         icon: Package },
+  { key: 'financeiro',    label: 'Financeiro',   icon: DollarSign },
+  { key: 'clientes',      label: 'Clientes',     icon: UserCheck },
+  { key: 'admins',        label: 'Segurança',    icon: ShieldCheck },
+]
+
+/** Abas do rodapé: "Agenda" é fixa; as 3 seguintes vêm da configuração. */
+const FIXED_NAV_TAB: Tab = 'hoje'
+const DEFAULT_NAV_TABS = ['fila', 'financeiro', 'clientes']
+
 interface Props {
   config: BusinessConfig
   appointments: Appointment[]
@@ -149,6 +168,14 @@ export function AdminDashboard({
 }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('hoje')
+  // Abas configuráveis do rodapé (3), vindas de Preferências. Filtra chaves
+  // desconhecidas e completa com o padrão se vier incompleto/vazio.
+  const navTabs = (() => {
+    const valid = (config.admin_nav_tabs ?? [])
+      .filter(k => k !== FIXED_NAV_TAB && ADMIN_TABS.some(t => t.key === k))
+    const filled = [...valid, ...DEFAULT_NAV_TABS.filter(k => !valid.includes(k))]
+    return filled.slice(0, 3) as Tab[]
+  })()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const requestRefresh = React.useCallback(() => {
@@ -357,7 +384,7 @@ export function AdminDashboard({
   ]
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-950 text-[#f4f4f5] font-sans selection:bg-white/20">
+    <div className="min-h-screen flex flex-col bg-neutral-950 text-[#f4f4f5] font-sans selection:bg-white/20 pb-[68px]">
       {/* Drawer Overlay */}
       {isDrawerOpen && (
         <div
@@ -398,18 +425,7 @@ export function AdminDashboard({
 
         {/* Itens de navegação */}
         <nav className="flex-1 flex flex-col gap-1 p-3 overflow-y-auto">
-          {([
-            { key: 'hoje',          label: 'Agenda',      icon: CalendarDays },
-            { key: 'fila',          label: 'Fila',        icon: Clock },
-            { key: 'configuracoes', label: 'Preferências', icon: Settings2 },
-            { key: 'servicos',      label: 'Catálogo',    icon: Scissors },
-            { key: 'barbeiros',     label: 'Barbeiros',   icon: Users },
-            { key: 'galeria',       label: 'Galeria',     icon: Images },
-            { key: 'produtos',      label: 'Loja',        icon: Package },
-            { key: 'financeiro',    label: 'Financeiro',  icon: DollarSign },
-            { key: 'clientes',      label: 'Clientes',    icon: UserCheck },
-            { key: 'admins',        label: 'Segurança',   icon: ShieldCheck },
-          ] as { key: Tab; label: string; icon: React.ElementType }[]).map(({ key, label, icon: Icon }) => (
+          {ADMIN_TABS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => { setTab(key); setIsDrawerOpen(false) }}
@@ -572,6 +588,31 @@ export function AdminDashboard({
         )}
         </div>
       </main>
+
+      {/* ── Rodapé de navegação (abas fixas na tela) ──
+          "Agenda" é sempre a primeira; as outras 3 vêm de Preferências.
+          Muito mais descobrível que o menu hambúrguer para uso no dia a dia. */}
+      <nav className="fixed bottom-0 left-0 right-0 z-30 bg-neutral-950/95 backdrop-blur-xl border-t border-white/10 flex items-stretch safe-bottom">
+        {[FIXED_NAV_TAB, ...navTabs].map((key) => {
+          const item = ADMIN_TABS.find(t => t.key === key)
+          if (!item) return null
+          const Icon = item.icon
+          const active = tab === item.key
+          return (
+            <button
+              key={item.key}
+              onClick={() => setTab(item.key)}
+              className={[
+                'flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 py-2.5 transition-colors',
+                active ? 'text-blue-400' : 'text-zinc-500 hover:text-zinc-300',
+              ].join(' ')}
+            >
+              <Icon size={19} className="shrink-0" />
+              <span className="text-[10px] font-bold truncate max-w-full px-1">{item.label}</span>
+            </button>
+          )
+        })}
+      </nav>
 
       {/* Rodapé da agência */}
       <footer className="py-5 flex flex-col items-center gap-1.5">
@@ -1783,7 +1824,7 @@ function TabHoje({
     {selectedDay && (
       <button
         onClick={openNewAppt}
-        className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 inline-flex items-center justify-center gap-2 px-6 h-12 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-sm shadow-[0_8px_30px_rgba(0,0,0,0.6),0_4px_20px_rgba(59,130,246,0.45)] active:scale-95 transition-all"
+        className="fixed bottom-[84px] left-1/2 -translate-x-1/2 z-40 inline-flex items-center justify-center gap-2 px-6 h-12 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-sm shadow-[0_8px_30px_rgba(0,0,0,0.6),0_4px_20px_rgba(59,130,246,0.45)] active:scale-95 transition-all"
       >
         <Plus size={18} />
         <span>Novo agendamento</span>
@@ -2770,6 +2811,11 @@ function TabConfiguracoes({
   const [enableGallery, setEnableGallery] = useState(config.enable_gallery)
   const [allowClientUploads, setAllowClientUploads] = useState(config.allow_client_uploads)
   const [showToleranceModal, setShowToleranceModal] = useState(config.show_tolerance_modal ?? false)
+  // Abas do rodapé (3 configuráveis; "Agenda" é fixa e não entra aqui)
+  const savedNavTabs = (config.admin_nav_tabs ?? DEFAULT_NAV_TABS).filter(k => k !== FIXED_NAV_TAB)
+  const [navTab1, setNavTab1] = useState(savedNavTabs[0] ?? DEFAULT_NAV_TABS[0])
+  const [navTab2, setNavTab2] = useState(savedNavTabs[1] ?? DEFAULT_NAV_TABS[1])
+  const [navTab3, setNavTab3] = useState(savedNavTabs[2] ?? DEFAULT_NAV_TABS[2])
   const [savingConfig, setSavingConfig] = useState(false)
 
   // Fase 2: Controles de Agenda
@@ -2907,6 +2953,10 @@ function TabConfiguracoes({
       toast.error('Janela de cancelamento invalida.')
       return
     }
+    if (new Set([navTab1, navTab2, navTab3]).size < 3) {
+      toast.error('As 3 abas do rodapé precisam ser diferentes entre si.')
+      return
+    }
     setSavingConfig(true)
     const result = await saveBusinessConfig({
       require_google_login: requireGoogle,
@@ -2915,6 +2965,7 @@ function TabConfiguracoes({
       enable_gallery: enableGallery,
       allow_client_uploads: allowClientUploads,
       show_tolerance_modal: showToleranceModal,
+      admin_nav_tabs: [navTab1, navTab2, navTab3],
     })
     setSavingConfig(false)
     if (result.success) {
@@ -3220,6 +3271,36 @@ function TabConfiguracoes({
                 </div>
                 <Switch checked={showToleranceModal} onCheckedChange={setShowToleranceModal} />
               </div>
+
+              {/* Abas do rodapé do painel */}
+              <div className="flex flex-col gap-2 border-t border-white/5 pt-4">
+                <Label className="text-xs text-muted-foreground">Abas do rodapé do painel</Label>
+                <p className="text-[11px] text-muted-foreground/70">
+                  A aba <span className="text-foreground font-semibold">Agenda</span> é fixa. Escolha as outras 3 que aparecem na barra de baixo — as demais continuam no menu ☰.
+                </p>
+                <div className="flex flex-col gap-2 mt-1">
+                  {([[navTab1, setNavTab1], [navTab2, setNavTab2], [navTab3, setNavTab3]] as const).map(([value, setValue], i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground w-14 shrink-0">Aba {i + 2}</span>
+                      <select
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
+                        className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring"
+                      >
+                        {ADMIN_TABS.filter(t => t.key !== FIXED_NAV_TAB).map(t => (
+                          <option key={t.key} value={t.key}>{t.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                {new Set([navTab1, navTab2, navTab3]).size < 3 && (
+                  <p className="text-[11px] text-amber-400 font-semibold">
+                    Escolha 3 abas diferentes — há uma repetida.
+                  </p>
+                )}
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs text-muted-foreground">Prazo mínimo para cancelamento</Label>
                 <p className="text-[11px] text-muted-foreground/70">Tempo mínimo de antecedência para o cliente conseguir cancelar sozinho pelo app.</p>
