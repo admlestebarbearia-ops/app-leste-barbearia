@@ -296,7 +296,22 @@ export async function createAppointment(data: {
     .single()
   const dailyLimit = agendaConfig?.max_appointments_per_day ?? 3
 
+  // Admin não tem bloqueios de limite — pode agendar livremente (é o dono da agenda).
+  // Cliente continua com as regras normais.
+  let isAdmin = false
   if (signedInWithGoogle) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin, is_blocked')
+      .eq('id', user.id)
+      .single()
+    isAdmin = profile?.is_admin === true
+    if (!isAdmin && profile?.is_blocked) {
+      return { success: false, error: 'Seu acesso esta suspenso. Entre em contato com a barbearia.' }
+    }
+  }
+
+  if (!isAdmin && signedInWithGoogle) {
     const { count } = await supabase
       .from('appointments')
       .select('*', { count: 'exact', head: true })
@@ -307,18 +322,7 @@ export async function createAppointment(data: {
     if (count !== null && count >= dailyLimit) {
       return { success: false, error: `Limite de ${dailyLimit} agendamento${dailyLimit !== 1 ? 's' : ''} por dia atingido.` }
     }
-
-    // Verifica se cliente está bloqueado
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_blocked')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.is_blocked) {
-      return { success: false, error: 'Seu acesso esta suspenso. Entre em contato com a barbearia.' }
-    }
-  } else if (effectivePhone) {
+  } else if (!isAdmin && effectivePhone) {
     const { count } = await supabase
       .from('appointments')
       .select('*', { count: 'exact', head: true })
@@ -334,8 +338,8 @@ export async function createAppointment(data: {
   // ─── Regras de agenda (Fase 2) ────────────────────────────────────────────
 
   if (agendaConfig) {
-    // 2. Bloquear agendamento multi-dia (cliente com confirmado em outra data)
-    if (agendaConfig.block_multi_day_booking && signedInWithGoogle) {
+    // 2. Bloquear agendamento multi-dia (cliente com confirmado em outra data) — admin isento
+    if (agendaConfig.block_multi_day_booking && signedInWithGoogle && !isAdmin) {
       const { data: otherDayAppt } = await supabase
         .from('appointments')
         .select('id')
@@ -349,21 +353,23 @@ export async function createAppointment(data: {
       }
     }
 
-    // 3. Validar data dentro da janela permitida
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const requestedDate = new Date(data.date + 'T00:00:00')
+    // 3. Validar data dentro da janela permitida (admin pode agendar em qualquer data)
+    if (!isAdmin) {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const requestedDate = new Date(data.date + 'T00:00:00')
 
-    if (agendaConfig.calendar_open_until_date) {
-      const limitDate = new Date(agendaConfig.calendar_open_until_date + 'T00:00:00')
-      if (requestedDate > limitDate) {
-        return { success: false, error: 'Esta data está fora do período de agendamento disponível.' }
-      }
-    } else {
-      const maxDate = new Date(today)
-      maxDate.setDate(maxDate.getDate() + (agendaConfig.calendar_max_days_ahead ?? 30))
-      if (requestedDate > maxDate) {
-        return { success: false, error: 'Esta data está fora do período de agendamento disponível.' }
+      if (agendaConfig.calendar_open_until_date) {
+        const limitDate = new Date(agendaConfig.calendar_open_until_date + 'T00:00:00')
+        if (requestedDate > limitDate) {
+          return { success: false, error: 'Esta data está fora do período de agendamento disponível.' }
+        }
+      } else {
+        const maxDate = new Date(today)
+        maxDate.setDate(maxDate.getDate() + (agendaConfig.calendar_max_days_ahead ?? 30))
+        if (requestedDate > maxDate) {
+          return { success: false, error: 'Esta data está fora do período de agendamento disponível.' }
+        }
       }
     }
   }
@@ -375,7 +381,7 @@ export async function createAppointment(data: {
   })
 
   let blockedMatch: { id: string } | null = null
-  if (blockedLookup.kind !== 'none') {
+  if (!isAdmin && blockedLookup.kind !== 'none') {
     const blockedQuery = supabase
       .from('blocked_devices')
       .select('id')
