@@ -703,6 +703,10 @@ function TabHoje({
   const [newApptName, setNewApptName] = useState('')
   const [newApptPhone, setNewApptPhone] = useState('')
   const [newApptSaving, setNewApptSaving] = useState(false)
+  // Pré-carregamento dos horários/barbeiros do dia: evita o delay ao abrir a
+  // Grade ou o modal de novo agendamento (os dados já chegam prontos).
+  const [dayTimelineSlots, setDayTimelineSlots] = useState<string[] | null>(null)
+  const [dayBarbers, setDayBarbers] = useState<Array<{ id: string; name: string; nickname: string | null }> | null>(null)
   // Modal Concluir Agendamento
   const [concludeAppt, setConcludeAppt] = useState<Appointment | null>(null)
   const [concludeLoading, setConcludeLoading] = useState(false)
@@ -1038,6 +1042,28 @@ function TabHoje({
   const getDisplayName = (appt: Appointment) =>
     appt.profiles?.display_name ?? appt.client_name ?? 'Cliente'
 
+  // Pré-carrega horários e barbeiros assim que o dia muda — em segundo plano,
+  // sem travar a tela. Assim, trocar para a Grade ou abrir "Novo agendamento"
+  // não precisa esperar ida ao servidor.
+  useEffect(() => {
+    if (!selectedDay) return
+    let cancelled = false
+    setDayTimelineSlots(null)
+    setDayBarbers(null)
+    Promise.all([getAdminDayTimeline(selectedDay), listActiveBarbers()])
+      .then(([timeline, barbersRes]) => {
+        if (cancelled) return
+        setDayTimelineSlots(timeline.allSlots ?? [])
+        setDayBarbers(barbersRes.barbers ?? [])
+      })
+      .catch(() => {
+        if (cancelled) return
+        setDayTimelineSlots([])
+        setDayBarbers([])
+      })
+    return () => { cancelled = true }
+  }, [selectedDay])
+
   // ── "Novo agendamento": abre o modal já com os horários livres do dia ──────
   const openNewAppt = async () => {
     if (!selectedDay) return
@@ -1046,18 +1072,28 @@ function TabHoje({
     setNewApptName('')
     setNewApptPhone('')
     setNewApptServiceId(services.find(s => s.is_active)?.id ?? '')
+
+    // Remove os horários que já têm agendamento ativo no dia.
+    const taken = new Set(
+      dayAppts
+        .filter(a => a.status === 'confirmado' || a.status === 'aguardando_pagamento')
+        .map(a => (a.start_time ?? '').slice(0, 5))
+    )
+
+    // Caminho rápido: dados já pré-carregados.
+    if (dayTimelineSlots && dayBarbers) {
+      setNewApptSlots(dayTimelineSlots.filter(t => !taken.has(t.slice(0, 5))))
+      setNewApptBarberId(dayBarbers[0]?.id ?? '')
+      setNewApptLoadingSlots(false)
+      return
+    }
+
     setNewApptLoadingSlots(true)
     try {
       const [timeline, barbersRes] = await Promise.all([
         getAdminDayTimeline(selectedDay),
         listActiveBarbers(),
       ])
-      // Remove os horários que já têm agendamento ativo no dia.
-      const taken = new Set(
-        dayAppts
-          .filter(a => a.status === 'confirmado' || a.status === 'aguardando_pagamento')
-          .map(a => (a.start_time ?? '').slice(0, 5))
-      )
       setNewApptSlots((timeline.allSlots ?? []).filter(t => !taken.has(t.slice(0, 5))))
       setNewApptBarberId(barbersRes.barbers?.[0]?.id ?? '')
     } catch {
@@ -1356,57 +1392,57 @@ function TabHoje({
       {/* ── LISTA / GRADE DO DIA ── */}
       {selectedDay && (
         <div className="flex flex-col gap-3 w-full">
-          {/* Cabeçalho com toggle Lista ↔ Grade */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full">
-            <p suppressHydrationWarning className="text-[10px] font-black tracking-[0.15em] text-zinc-500 uppercase shrink-0">
+          {/* Cabeçalho do dia */}
+          <div className="flex items-center justify-between gap-2 w-full">
+            <p suppressHydrationWarning className="text-[10px] font-black tracking-[0.15em] text-zinc-500 uppercase">
               Agendamentos — {formatSelectedDay(selectedDay)}
             </p>
-            <div className="flex items-center gap-1.5 flex-wrap max-w-full">
-              {isMounted && bulkEligibleCount > 0 && (
-                <button
-                  onClick={() => { setBulkConcludeOpen(true); setBulkConcludePayment(''); setBulkConcludeIsPending(false); setBulkConcludePendingDate('') }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50 transition-all shadow-sm shrink-0"
-                  title={`Concluir ${bulkEligibleCount} atendimento(s) passado(s)`}
-                >
-                  <CheckCircle2 size={13} />
-                  <span>Concluir ({bulkEligibleCount})</span>
-                </button>
-              )}
+            <span className="text-[10px] font-bold text-zinc-400 bg-white/5 border border-white/10 px-2.5 py-1 rounded-full shrink-0">
+              Total: {dayAppts.length}
+            </span>
+          </div>
+
+          {/* Barra unificada: Concluir · Lista · Resumo · Grade — todos no mesmo
+              container, mesma altura e largura igual (como no layout enviado) */}
+          <div className="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10 w-full">
+            {isMounted && bulkEligibleCount > 0 && (
               <button
-                onClick={() => setShowDayReport(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-white/10 bg-white/5 text-xs font-semibold text-zinc-300 hover:text-white hover:border-white/20 transition-all shrink-0"
-                title="Resumo do dia"
+                onClick={() => { setBulkConcludeOpen(true); setBulkConcludePayment(''); setBulkConcludeIsPending(false); setBulkConcludePendingDate('') }}
+                className="flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[11px] font-bold text-emerald-400 hover:bg-emerald-500/15 transition-all"
+                title={`Concluir ${bulkEligibleCount} atendimento(s) passado(s)`}
               >
-                <BarChart3 size={13} />
-                <span>Resumo</span>
+                <CheckCircle2 size={13} className="shrink-0" />
+                <span className="truncate">Concluir ({bulkEligibleCount})</span>
               </button>
-              <div className="flex gap-0.5 bg-white/5 p-0.5 rounded-md border border-white/10 shrink-0">
-                {(['lista', 'grade'] as const).map(mode => (
-                  <button
-                    key={mode}
-                    onClick={() => setViewMode(mode)}
-                    className={[
-                      'flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold transition-all',
-                      viewMode === mode
-                        ? 'bg-white text-black shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200',
-                    ].join(' ')}
-                  >
-                    {mode === 'lista' ? (
-                      <>
-                        <List size={12} />
-                        <span>Lista</span>
-                      </>
-                    ) : (
-                      <>
-                        <Grid size={12} />
-                        <span>Grade</span>
-                      </>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
+            <button
+              onClick={() => setViewMode('lista')}
+              className={[
+                'flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[11px] font-bold transition-all',
+                viewMode === 'lista' ? 'bg-blue-500 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200',
+              ].join(' ')}
+            >
+              <List size={13} className="shrink-0" />
+              <span className="truncate">Lista</span>
+            </button>
+            <button
+              onClick={() => setShowDayReport(true)}
+              className="flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[11px] font-bold text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all"
+              title="Resumo do dia"
+            >
+              <BarChart3 size={13} className="shrink-0" />
+              <span className="truncate">Resumo</span>
+            </button>
+            <button
+              onClick={() => setViewMode('grade')}
+              className={[
+                'flex-1 min-w-0 flex items-center justify-center gap-1 px-2 py-2 rounded-md text-[11px] font-bold transition-all',
+                viewMode === 'grade' ? 'bg-blue-500 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200',
+              ].join(' ')}
+            >
+              <Grid size={13} className="shrink-0" />
+              <span className="truncate">Grade</span>
+            </button>
           </div>
 
           {/* Modo GRADE */}
@@ -1416,6 +1452,8 @@ function TabHoje({
               dayAppts={dayAppts}
               services={services}
               config={config}
+              prefetchedSlots={dayTimelineSlots}
+              prefetchedBarbers={dayBarbers}
               onRefresh={onRefresh}
               onConclude={(appt) => {
                 setConcludeAppt(appt)
@@ -1523,10 +1561,12 @@ function TabHoje({
                       )}
                     </div>
 
-                    {/* Lado direito — status empilhado: agendamento + pagamento, sempre juntos */}
-                    <div className="flex flex-col items-end gap-1 shrink-0">
+                    {/* Lado direito — status empilhado: agendamento + pagamento.
+                        items-stretch faz os dois badges terem EXATAMENTE a mesma
+                        largura (a do mais largo), como no layout de referência. */}
+                    <div className="flex flex-col items-stretch gap-1 shrink-0">
                       <span className={[
-                        'text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border whitespace-nowrap',
+                        'text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border whitespace-nowrap text-center',
                         appt.status === 'confirmado' ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' :
                         appt.status === 'cancelado'  ? 'text-zinc-500 border-white/10 bg-white/5' :
                         appt.status === 'concluido'  ? 'text-blue-400 border-blue-500/20 bg-blue-500/10' :
@@ -1535,9 +1575,11 @@ function TabHoje({
                         {appt.status}
                       </span>
                       {(() => {
+                        const badgeBase = 'inline-flex items-center justify-center gap-1 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border whitespace-nowrap'
                         if (refundedApptIds.has(appt.id)) {
                           return (
-                            <span className="text-[9px] font-black text-orange-400 border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                            <span className={`${badgeBase} text-orange-400 border-orange-500/20 bg-orange-500/10`}>
+                              <CreditCard size={10} className="shrink-0" />
                               ESTORNADO
                             </span>
                           )
@@ -1545,14 +1587,16 @@ function TabHoje({
                         const isPaid = Boolean(paymentMethodByApptId[appt.id]) || onlineMpApptIds.has(appt.id)
                         if (isPaid) {
                           return (
-                            <span className="text-[9px] font-black text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                            <span className={`${badgeBase} text-emerald-400 border-emerald-500/20 bg-emerald-500/10`}>
+                              <CreditCard size={10} className="shrink-0" />
                               PAGO
                             </span>
                           )
                         }
                         if (appt.status === 'confirmado') {
                           return (
-                            <span className="text-[9px] font-black text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                            <span className={`${badgeBase} text-amber-400 border-amber-500/20 bg-amber-500/10`}>
+                              <CreditCard size={10} className="shrink-0" />
                               A PAGAR
                             </span>
                           )

@@ -100,6 +100,10 @@ interface DailyAdminGridProps {
   onCancel: (appt: Appointment) => void
   /** Abre o modal de exclusão permanente no pai */
   onHardDelete?: (appt: Appointment) => void
+  /** Horários do dia já carregados pelo pai — evita o delay ao trocar para a Grade */
+  prefetchedSlots?: string[] | null
+  /** Barbeiros já carregados pelo pai */
+  prefetchedBarbers?: Array<{ id: string; name: string; nickname: string | null }> | null
 }
 
 // ── Componente principal ───────────────────────────────────────────────────────
@@ -113,6 +117,8 @@ export function DailyAdminGrid({
   onConclude,
   onCancel,
   onHardDelete,
+  prefetchedSlots,
+  prefetchedBarbers,
 }: DailyAdminGridProps) {
   // ── Dados da grade ──────────────────────────────────────────────────────────
   const [rawSlots, setRawSlots] = useState<string[]>([])
@@ -144,6 +150,21 @@ export function DailyAdminGrid({
   // ── Busca slots e barbeiros ao montar / quando o dia muda ───────────────────
   useEffect(() => {
     if (!selectedDay) return
+
+    // Se o pai já carregou os dados deste dia, usa direto: a troca
+    // Lista → Grade fica instantânea (sem ida ao servidor).
+    if (prefetchedSlots && prefetchedBarbers) {
+      setRawSlots(prefetchedSlots)
+      setBarbers(prefetchedBarbers)
+      if (prefetchedBarbers.length === 1) setFormBarberId(prefetchedBarbers[0].id)
+      else {
+        const barbFromExisting = dayAppts.find(a => a.barber_id)?.barber_id
+        setFormBarberId(barbFromExisting ?? prefetchedBarbers[0]?.id ?? '')
+      }
+      setSlotsLoading(false)
+      return
+    }
+
     setSlotsLoading(true)
     Promise.all([
       getAdminDayTimeline(selectedDay),
@@ -164,7 +185,7 @@ export function DailyAdminGrid({
       setBarbers([])
     }).finally(() => setSlotsLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDay])
+  }, [selectedDay, prefetchedSlots, prefetchedBarbers])
 
   const timeline = buildAdminTimeline(rawSlots, dayAppts)
   const activeServices = services.filter(s => s.is_active)
