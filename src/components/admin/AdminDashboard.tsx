@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck, CheckCircle2, BarChart3, ShoppingBag, CreditCard, Check, List, Grid, AlertTriangle, Clock, UserX, XCircle, MessageCircle, Phone, Lock } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck, CheckCircle2, BarChart3, ShoppingBag, CreditCard, Check, List, Grid, AlertTriangle, Clock, UserX, XCircle, MessageCircle, Phone, Lock, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -1677,6 +1677,17 @@ function TabHoje({
               })}
             </div>
           ) : null}
+
+          {/* CTA principal — leva ao fluxo onde o admin agenda para o cliente
+              (serviço → data → horário → "Agendar cliente", com nome opcional).
+              Deixa a ação de agendar visível sem precisar achar a aba "Grade". */}
+          <a
+            href="/agendar"
+            className="mt-1 inline-flex items-center justify-center gap-2 w-full h-12 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-extrabold text-sm shadow-[0_4px_20px_rgba(59,130,246,0.35)] active:scale-[0.99] transition-all"
+          >
+            <Plus size={18} />
+            <span>Novo agendamento</span>
+          </a>
         </div>
       )}
 
