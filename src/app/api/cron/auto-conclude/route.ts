@@ -23,16 +23,15 @@ export async function GET(request: NextRequest) {
   try {
     const admin = createAdminClient()
 
-    // Trava: só executa se o barbeiro ativou a funcionalidade.
+    // Pagos online SEMPRE concluem (dinheiro já entrou, é seguro).
+    // Presenciais só concluem se o barbeiro ativou o auto-concluir.
     const { data: config } = await admin
       .from('business_config')
       .select('auto_conclude_enabled')
       .eq('id', 1)
       .maybeSingle()
 
-    if (!config?.auto_conclude_enabled) {
-      return NextResponse.json({ skipped: true, reason: 'auto_conclude_disabled' })
-    }
+    const presencialEnabled = config?.auto_conclude_enabled === true
 
     // Hoje em BRT (UTC-3, sem horário de verão no Brasil).
     const todayBRT = new Date(Date.now() - 3 * 60 * 60 * 1000)
@@ -74,6 +73,10 @@ export async function GET(request: NextRequest) {
 
       const onlinePaid = pi?.status === 'approved' && !pi?.refunded_at
       const resolvedMethod = onlinePaid ? (pi?.payment_method ?? 'mercado_pago') : null
+
+      // Presencial (sem pagamento online) só conclui se o barbeiro ativou.
+      // Pagos online concluem sempre (dinheiro já entrou).
+      if (!onlinePaid && !presencialEnabled) { skipped++; continue }
 
       // Atualiza status com optimistic lock — só se ainda estiver confirmado.
       const { data: updated, error: updErr } = await admin

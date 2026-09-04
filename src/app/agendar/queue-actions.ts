@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { firePushToUser, firePushToAdmins } from '@/app/api/push/actions'
+import { firePushToAdmins } from '@/app/api/push/actions'
+import { notifyClient } from '@/lib/notify/dispatch'
 import {
   computePosition,
   computeEstimateMinutes,
@@ -329,12 +330,12 @@ export async function advanceQueue(date: string): Promise<{ success: boolean; er
 
     const { data: rows } = await supabase
       .from('queue_entries')
-      .select('id, client_id, notify_user_id, joined_at, status')
+      .select('id, client_id, notify_user_id, client_phone, joined_at, status')
       .eq('date', date)
       .in('status', ['aguardando', 'chamado'])
       .order('joined_at', { ascending: true })
 
-    const active = (rows ?? []) as Array<{ id: string; client_id: string | null; notify_user_id: string | null; joined_at: string; status: string }>
+    const active = (rows ?? []) as Array<{ id: string; client_id: string | null; notify_user_id: string | null; client_phone: string | null; joined_at: string; status: string }>
 
     const pushTarget = (r: { client_id: string | null; notify_user_id: string | null }) =>
       r.notify_user_id ?? r.client_id
@@ -355,24 +356,20 @@ export async function advanceQueue(date: string): Promise<{ success: boolean; er
         .from('queue_entries')
         .update({ status: 'chamado', called_at: now })
         .eq('id', next.id)
-      const nextTarget = pushTarget(next)
-      if (nextTarget) {
-        void firePushToUser(nextTarget, {
-          title: '💈 É a sua vez!',
-          body: 'Se você está na barbearia, pode sentar na cadeira.',
-          url: '/agendar',
-          tag: `queue-called-${next.id}`,
-        })
-      }
+      void notifyClient({ userId: pushTarget(next), phone: next.client_phone }, {
+        title: '💈 É a sua vez!',
+        body: 'Se você está na barbearia, pode sentar na cadeira.',
+        url: '/agendar',
+        tag: `queue-called-${next.id}`,
+      })
       // Avisa o novo "próximo" (segundo da fila) — com antecedência.
       const following = active.find((r) => r.status === 'aguardando' && r.id !== next.id)
-      const followingTarget = following ? pushTarget(following) : null
-      if (followingTarget) {
-        void firePushToUser(followingTarget, {
+      if (following) {
+        void notifyClient({ userId: pushTarget(following), phone: following.client_phone }, {
           title: '⏳ Você é o próximo!',
           body: 'Venha para a barbearia com antecedência. Esteja aqui quando for sua vez, ou perde a vaga e vai para o fim da fila.',
           url: '/agendar',
-          tag: `queue-next-${following!.id}`,
+          tag: `queue-next-${following.id}`,
         })
       }
     }
