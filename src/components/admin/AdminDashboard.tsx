@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient as createSupabaseBrowser } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck, CheckCircle2, BarChart3, ShoppingBag, CreditCard, Check, List, Grid, AlertTriangle, Clock, UserX, XCircle, MessageCircle } from 'lucide-react'
+import { Camera, LogOut, Pause, Play, Menu, X, CalendarDays, Settings2, Scissors, Users, Images, ShieldCheck, ChevronDown, ChevronLeft, ChevronRight, Package, Trash2, Eye, DollarSign, Star, TrendingUp, UserCheck, CheckCircle2, BarChart3, ShoppingBag, CreditCard, Check, List, Grid, AlertTriangle, Clock, UserX, XCircle, MessageCircle, Phone, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { compressImageToWebP } from '@/lib/image-utils'
 import { Input } from '@/components/ui/input'
@@ -1415,7 +1415,8 @@ function TabHoje({
                         {appt.start_time?.slice(0, 5)}
                       </span>
                       {appt.services?.duration_minutes && (
-                        <span className="text-[9px] text-zinc-500 mt-0.5 font-medium">
+                        <span className="inline-flex items-center gap-0.5 text-[9px] text-zinc-500 mt-0.5 font-medium">
+                          <Clock size={9} />
                           {appt.services.duration_minutes}min
                         </span>
                       )}
@@ -1439,7 +1440,10 @@ function TabHoje({
                         )}
                       </div>
                       {appt.services && (
-                        <span className="text-xs text-zinc-400">{appt.services.name}</span>
+                        <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+                          <Scissors size={11} className="shrink-0" />
+                          <span className="truncate">{appt.services.name}</span>
+                        </span>
                       )}
                       {(appt.client_email || appt.profiles?.email) && (
                         <span className="text-[10px] text-zinc-600 truncate">
@@ -1447,7 +1451,8 @@ function TabHoje({
                         </span>
                       )}
                       {(appt.client_phone || appt.profiles?.phone) && (
-                        <span className="text-[10px] text-zinc-600">
+                        <span className="inline-flex items-center gap-1 text-[10px] text-zinc-600">
+                          <Phone size={10} className="shrink-0" />
                           {appt.client_phone ?? appt.profiles?.phone}
                         </span>
                       )}
@@ -1507,20 +1512,25 @@ function TabHoje({
                     </div>
                   </div>
 
-                  {/* Rodapé — botões de ação */}
-                  <div className="flex gap-2 flex-wrap items-center pt-2 border-t border-white/5">
+                  {/* Rodapé — botões de ação.
+                      Grid de 2 colunas: os botões sempre ficam em pares alinhados;
+                      se sobrar um número ímpar, o último ocupa a linha inteira
+                      (em vez de "flutuar" sozinho e pequeno, como acontecia com
+                      largura automática + flex-wrap). */}
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/5 [&>*:last-child:nth-child(odd)]:col-span-2">
                     {appt.status === 'aguardando_pagamento' && (
                       <>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-300/80 self-center">
+                        <span className="col-span-2 inline-flex items-center gap-1 text-[10px] font-bold text-amber-300/80 self-center">
                           <CreditCard size={12} />
                           <span>Aguardando pagamento MP</span>
                         </span>
                         <button
                           disabled={!!loading}
                           onClick={() => { setCancelAppt(appt); setCancelReason(''); setCancelWithRefund(false); setCancelCanRefund(false) }}
-                          className="text-xs font-semibold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg hover:text-white transition-all disabled:opacity-40"
+                          className="col-span-2 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg hover:text-white transition-all disabled:opacity-40"
                         >
-                          Cancelar
+                          <XCircle size={13} />
+                          <span>Cancelar</span>
                         </button>
                       </>
                     )}
@@ -1532,51 +1542,56 @@ function TabHoje({
                             href={`https://wa.me/55${(appt.profiles?.phone ?? appt.client_phone ?? '').replace(/\D/g, '')}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 transition-all"
+                            className="inline-flex items-center justify-center gap-1.5 text-xs font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 rounded-lg hover:bg-emerald-500/20 transition-all"
                           >
                             <MessageCircle size={13} />
                             <span>WhatsApp</span>
                           </a>
                         )}
-                        <button
-                          suppressHydrationWarning
-                          disabled={!!loading}
-                          onClick={() => { setConcludeAppt(appt); setConcludeIsPending(false); setConcludePendingDate(''); setRatingScore(0); setRatingNote('') }}
-                          className={`inline-flex items-center gap-1.5 text-xs font-bold text-white bg-blue-500 border border-blue-400 px-3 py-1.5 rounded-lg shadow-[0_2px_10px_rgba(59,130,246,0.35)] hover:bg-blue-400 transition-all disabled:opacity-40${isMounted && isAppointmentPast(appt.date, appt.start_time) ? '' : ' hidden'}`}
-                        >
-                          <Check size={14} />
-                          <span>Concluir</span>
-                        </button>
+                        {isMounted && isAppointmentPast(appt.date, appt.start_time) && (
+                          <button
+                            disabled={!!loading}
+                            onClick={() => { setConcludeAppt(appt); setConcludeIsPending(false); setConcludePendingDate(''); setRatingScore(0); setRatingNote('') }}
+                            className="inline-flex items-center justify-center gap-1.5 text-xs font-bold text-white bg-blue-500 border border-blue-400 px-3 py-1.5 rounded-lg shadow-[0_2px_10px_rgba(59,130,246,0.35)] hover:bg-blue-400 transition-all disabled:opacity-40"
+                          >
+                            <Check size={14} />
+                            <span>Concluir</span>
+                          </button>
+                        )}
                         <button
                           disabled={!!loading}
                           onClick={() => handleStatus(appt.id, 'faltou')}
-                          className="text-xs font-semibold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 rounded-lg hover:bg-amber-500/20 transition-all disabled:opacity-40"
+                          className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-400 border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 rounded-lg hover:bg-amber-500/20 transition-all disabled:opacity-40"
                         >
-                          Faltou
+                          <UserX size={13} />
+                          <span>Faltou</span>
                         </button>
                         <button
                           disabled={!!loading}
                           onClick={() => { setCancelAppt(appt); setCancelReason(''); setCancelWithRefund(false); setCancelCanRefund(canRefund) }}
-                          className="text-xs font-semibold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg hover:text-white transition-all disabled:opacity-40"
+                          className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg hover:text-white transition-all disabled:opacity-40"
                         >
-                          Cancelar
+                          <XCircle size={13} />
+                          <span>Cancelar</span>
                         </button>
                         {appt.client_id && !appt.profiles?.is_blocked && (
                           <button
                             disabled={!!loading}
                             onClick={() => handleBlock(appt.client_id, true)}
-                            className="text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all disabled:opacity-40"
+                            className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all disabled:opacity-40"
                           >
-                            Bloquear
+                            <Lock size={13} />
+                            <span>Bloquear</span>
                           </button>
                         )}
                         {appt.client_id && appt.profiles?.is_blocked && (
                           <button
                             disabled={!!loading}
                             onClick={() => handleBlock(appt.client_id, false)}
-                            className="text-xs font-semibold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-40"
+                            className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-40"
                           >
-                            Desbloquear
+                            <ShieldCheck size={13} />
+                            <span>Desbloquear</span>
                           </button>
                         )}
                       </>
@@ -1588,18 +1603,18 @@ function TabHoje({
                           <button
                             disabled={estornoLoading === appt.id}
                             onClick={() => handleEstorno(appt.id)}
-                            className="text-xs font-semibold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg disabled:opacity-40"
+                            className="inline-flex items-center justify-center text-xs font-semibold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg disabled:opacity-40"
                           >
                             {estornoLoading === appt.id ? '...' : 'Estornar'}
                           </button>
                         ) : refundedApptIds.has(appt.id) ? (
-                          <span className="text-xs font-semibold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg">
+                          <span className="inline-flex items-center justify-center text-xs font-semibold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg">
                             Estornado
                           </span>
                         ) : null}
                         <button
                           onClick={() => { setHardDeleteAppt(appt); setHardDeleteText('') }}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all"
+                          className="inline-flex items-center justify-center gap-1 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all"
                         >
                           <Trash2 size={13} />
                           <span>Apagar</span>
@@ -1613,28 +1628,28 @@ function TabHoje({
                           <button
                             disabled={estornoLoading === appt.id}
                             onClick={() => handleEstorno(appt.id)}
-                            className="text-xs font-semibold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg disabled:opacity-40"
+                            className="inline-flex items-center justify-center text-xs font-semibold text-orange-400 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg disabled:opacity-40"
                           >
                             {estornoLoading === appt.id ? '...' : 'Estornar'}
                           </button>
                         ) : refundedApptIds.has(appt.id) ? (
-                          <span className="text-xs font-semibold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg">
+                          <span className="inline-flex items-center justify-center text-xs font-semibold text-orange-300 border border-orange-500/20 bg-orange-500/10 px-3 py-1.5 rounded-lg">
                             Estornado
                           </span>
                         ) : null}
                         {deleteConfirm === appt.id ? (
                           <>
-                            <span className="text-xs text-zinc-400 self-center">Confirmar?</span>
+                            <span className="col-span-2 text-xs text-zinc-400 self-center text-center">Confirmar?</span>
                             <button
                               disabled={loading === 'del' + appt.id}
                               onClick={() => handleDelete(appt.id)}
-                              className="text-xs font-bold text-white bg-red-600 border border-red-500 px-3 py-1.5 rounded-lg disabled:opacity-40"
+                              className="inline-flex items-center justify-center text-xs font-bold text-white bg-red-600 border border-red-500 px-3 py-1.5 rounded-lg disabled:opacity-40"
                             >
                               {loading === 'del' + appt.id ? '...' : 'Excluir'}
                             </button>
                             <button
                               onClick={() => setDeleteConfirm(null)}
-                              className="text-xs font-semibold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg"
+                              className="inline-flex items-center justify-center text-xs font-semibold text-zinc-400 border border-white/10 bg-white/5 px-3 py-1.5 rounded-lg"
                             >
                               Não
                             </button>
@@ -1642,14 +1657,14 @@ function TabHoje({
                         ) : (
                           <button
                             onClick={() => setDeleteConfirm(appt.id)}
-                            className="text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg"
+                            className="inline-flex items-center justify-center text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg"
                           >
                             Excluir
                           </button>
                         )}
                         <button
                           onClick={() => { setHardDeleteAppt(appt); setHardDeleteText('') }}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all"
+                          className="inline-flex items-center justify-center gap-1 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-all"
                         >
                           <Trash2 size={13} />
                           <span>Apagar</span>
