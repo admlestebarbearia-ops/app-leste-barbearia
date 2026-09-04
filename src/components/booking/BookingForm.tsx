@@ -1215,8 +1215,8 @@ const handleConfirm = async () => {
             SELECIONE O SERVIÇO
           </h1>
           {isAuthenticatedUser && isAdmin && (
-            <a href="/admin" className="text-[10px] text-amber-400 font-bold mt-3 tracking-widest uppercase py-1 px-3 bg-amber-500/10 border border-amber-500/30 rounded-full hover:bg-amber-500/20 transition-all">
-              Painel Admin
+            <a href="/admin" className="mt-4 inline-flex items-center gap-2 text-sm font-extrabold uppercase tracking-widest text-black bg-amber-400 hover:bg-amber-300 py-2.5 px-5 rounded-full shadow-[0_6px_24px_rgba(251,191,36,0.4)] active:scale-95 transition-all">
+              <Shield size={16} /> Painel Admin
             </a>
           )}
         </header>
