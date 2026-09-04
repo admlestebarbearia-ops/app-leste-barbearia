@@ -1406,11 +1406,11 @@ function TabHoje({
                 >
                   {/* Corpo do card — clicável para abrir modal */}
                   <div
-                    className="flex items-start gap-4 cursor-pointer hover:opacity-80 transition-opacity"
+                    className="flex items-center gap-4 cursor-pointer hover:opacity-80 transition-opacity"
                     onClick={() => setSelectedAppt(appt)}
                   >
                     {/* Lado esquerdo — hora em destaque */}
-                    <div className="flex flex-col items-center justify-center bg-white/5 rounded-xl px-3 py-2 min-w-[56px]">
+                    <div className="flex flex-col items-center justify-center bg-white/5 rounded-xl px-3 py-2 min-w-[56px] self-center">
                       <span className="text-2xl font-black text-white leading-none tabular-nums">
                         {appt.start_time?.slice(0, 5)}
                       </span>
@@ -1421,7 +1421,7 @@ function TabHoje({
                       )}
                     </div>
 
-                    {/* Lado direito — detalhes */}
+                    {/* Meio — detalhes */}
                     <div className="flex-1 flex flex-col gap-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-sm font-semibold text-white truncate">
@@ -1437,31 +1437,6 @@ function TabHoje({
                             Bloqueado
                           </span>
                         )}
-                        {(() => {
-                          if (refundedApptIds.has(appt.id)) {
-                            return (
-                              <span className="text-[9px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded-full shrink-0">
-                                ESTORNADO
-                              </span>
-                            )
-                          }
-                          const isPaid = Boolean(paymentMethodByApptId[appt.id]) || onlineMpApptIds.has(appt.id)
-                          if (isPaid) {
-                            return (
-                              <span className="text-[9px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded-full shrink-0">
-                                PAGO
-                              </span>
-                            )
-                          }
-                          if (appt.status === 'confirmado') {
-                            return (
-                              <span className="text-[9px] font-black bg-amber-500/20 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded-full shrink-0">
-                                A PAGAR
-                              </span>
-                            )
-                          }
-                          return null
-                        })()}
                       </div>
                       {appt.services && (
                         <span className="text-xs text-zinc-400">{appt.services.name}</span>
@@ -1493,10 +1468,10 @@ function TabHoje({
                       )}
                     </div>
 
-                    {/* Badge de status */}
-                    <div className="shrink-0">
+                    {/* Lado direito — status empilhado: agendamento + pagamento, sempre juntos */}
+                    <div className="flex flex-col items-end gap-1 shrink-0">
                       <span className={[
-                        'text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border',
+                        'text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border whitespace-nowrap',
                         appt.status === 'confirmado' ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' :
                         appt.status === 'cancelado'  ? 'text-zinc-500 border-white/10 bg-white/5' :
                         appt.status === 'concluido'  ? 'text-blue-400 border-blue-500/20 bg-blue-500/10' :
@@ -1504,6 +1479,31 @@ function TabHoje({
                       ].join(' ')}>
                         {appt.status}
                       </span>
+                      {(() => {
+                        if (refundedApptIds.has(appt.id)) {
+                          return (
+                            <span className="text-[9px] font-black text-orange-400 border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              ESTORNADO
+                            </span>
+                          )
+                        }
+                        const isPaid = Boolean(paymentMethodByApptId[appt.id]) || onlineMpApptIds.has(appt.id)
+                        if (isPaid) {
+                          return (
+                            <span className="text-[9px] font-black text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              PAGO
+                            </span>
+                          )
+                        }
+                        if (appt.status === 'confirmado') {
+                          return (
+                            <span className="text-[9px] font-black text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              A PAGAR
+                            </span>
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
                   </div>
 
@@ -1542,7 +1542,7 @@ function TabHoje({
                           suppressHydrationWarning
                           disabled={!!loading}
                           onClick={() => { setConcludeAppt(appt); setConcludeIsPending(false); setConcludePendingDate(''); setRatingScore(0); setRatingNote('') }}
-                          className={`inline-flex items-center gap-1.5 text-xs font-bold text-blue-400 border border-blue-500/20 bg-blue-500/10 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-40${isMounted && isAppointmentPast(appt.date, appt.start_time) ? '' : ' hidden'}`}
+                          className={`inline-flex items-center gap-1.5 text-xs font-bold text-white bg-blue-500 border border-blue-400 px-3 py-1.5 rounded-lg shadow-[0_2px_10px_rgba(59,130,246,0.35)] hover:bg-blue-400 transition-all disabled:opacity-40${isMounted && isAppointmentPast(appt.date, appt.start_time) ? '' : ' hidden'}`}
                         >
                           <Check size={14} />
                           <span>Concluir</span>
