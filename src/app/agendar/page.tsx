@@ -61,6 +61,10 @@ export default async function AgendarPage({ searchParams }: { searchParams?: Pro
   const canViewAppointments = signedInWithGoogle || !!guestBookingPhone || !!user
   const setupPhone = resolvedParams['setup_phone'] === '1' && signedInWithGoogle && !userPhone
 
+  // Visitante digita nome e telefone SEMPRE (userPhone = null abaixo).
+  // Reaproveitar o telefone da reserva anterior foi o que fez o barbeiro marcar
+  // 50 clientes com o numero de um cliente so: o campo ja vinha preenchido e ele
+  // confirmava sem reparar. Quem entra com o Google segue com o telefone do perfil.
   return (
     <main className="min-h-screen bg-background pb-32">
       <BookingForm
@@ -71,7 +75,7 @@ export default async function AgendarPage({ searchParams }: { searchParams?: Pro
         config={typedConfig}
         userEmail={signedInWithGoogle ? user.email ?? null : null}
         userId={signedInWithGoogle ? user.id : null}
-        userPhone={signedInWithGoogle ? userPhone : guestBookingPhone}
+        userPhone={signedInWithGoogle ? userPhone : null}
         isAdmin={isAdmin}
         isAuthenticatedUser={signedInWithGoogle}
         canViewAppointments={canViewAppointments}

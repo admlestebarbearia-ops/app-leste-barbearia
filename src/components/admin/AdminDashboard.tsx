@@ -80,6 +80,7 @@ import {
   createAdminAppointment,
 } from '@/app/admin/actions'
 import type { AuditEntry } from '@/app/admin/actions'
+import { formatPhone as formatarTelefone, getPhoneError } from '@/lib/booking/phone'
 
 // Rótulos em português para a trilha de auditoria.
 const AUDIT_LABELS: Record<string, string> = {
@@ -2067,11 +2068,16 @@ function TabHoje({
               <Label className="text-xs text-muted-foreground">Telefone (opcional)</Label>
               <Input
                 value={newApptPhone}
-                onChange={(e) => setNewApptPhone(e.target.value)}
+                onChange={(e) => setNewApptPhone(formatarTelefone(e.target.value))}
                 placeholder="(11) 99999-9999"
                 inputMode="numeric"
                 className="h-10"
               />
+              {/* Opcional, mas se digitar tem que estar completo: telefone pela
+                  metade quebra o botao de WhatsApp e o lembrete nao chega. */}
+              {newApptPhone.trim() !== '' && getPhoneError(newApptPhone) && (
+                <span className="text-[11px] text-red-400">{getPhoneError(newApptPhone)}</span>
+              )}
             </div>
           </div>
         )}
@@ -2080,7 +2086,7 @@ function TabHoje({
           <DialogFooter>
             <Button
               onClick={submitNewAppt}
-              disabled={newApptSaving || !newApptServiceId || !newApptBarberId}
+              disabled={newApptSaving || !newApptServiceId || !newApptBarberId || (newApptPhone.trim() !== '' && !!getPhoneError(newApptPhone))}
               className="w-full h-11 bg-blue-500 hover:bg-blue-400 text-white font-extrabold"
             >
               {newApptSaving ? 'Agendando…' : 'Confirmar agendamento'}

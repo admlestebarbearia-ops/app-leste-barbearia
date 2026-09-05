@@ -260,14 +260,10 @@ export function BookingForm({
   const [nameError, setNameError] = useState('')
   const [phoneError, setPhoneError] = useState('')
 
-  // Pré-preenche nome salvo localmente (só visitante, nunca dados sensíveis)
-  useEffect(() => {
-    if (isAuthenticatedUser) return
-    try {
-      const saved = sessionStorage.getItem('guest_name')
-      if (saved) setClientName(saved)
-    } catch {}
-  }, [isAuthenticatedUser])
+  // O nome NAO e mais pre-preenchido. Junto com o telefone, o campo herdado da
+  // reserva anterior fazia o agendamento sair no nome/numero de outra pessoa
+  // quando o mesmo aparelho era usado para varios clientes (caso do balcao da
+  // barbearia). Cada reserva agora exige nome e telefone digitados.
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -278,7 +274,6 @@ export function BookingForm({
     }
     const sanitized = value.replace(/\d/g, '')
     setClientName(sanitized)
-    try { if (!isAuthenticatedUser) sessionStorage.setItem('guest_name', sanitized) } catch {}
   }
 
   const formatPhone = (raw: string) => {

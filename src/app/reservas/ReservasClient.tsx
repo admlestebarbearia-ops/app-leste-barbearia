@@ -9,6 +9,10 @@ import { ptBR } from 'date-fns/locale'
 import { CalendarDays, Clock, Scissors, ChevronLeft, RefreshCw, ShoppingBag, AlertTriangle, MessageCircle, X, Check, QrCode } from 'lucide-react'
 import { cancelMyAppointment, cancelPendingPayment, dismissCancelledAppointment, createFiadoPaymentLink } from '@/app/agendar/actions'
 import { DayPicker } from 'react-day-picker'
+// Sem esta folha o calendario renderiza SEM ESTILO: os dias da semana saem
+// grudados ("domsegterquaquisexsab") e a grade de numeros embaralha. So o
+// BookingForm importava, e esta tela nao carrega o BookingForm.
+import 'react-day-picker/style.css'
 import { getReservationHistoryCalendarMeta } from '@/lib/booking/reservation-history'
 import type { ProductReservation, ProductReservationStatus } from '@/lib/supabase/types'
 import { PushNotificationToggle } from '@/components/booking/PushNotificationToggle'
