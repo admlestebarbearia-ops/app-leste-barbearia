@@ -55,10 +55,14 @@ export function buildAdminTimeline(
   rawSlots: string[],
   bookedAppointments: Appointment[],
 ): TimelineSlot[] {
-  // Monta mapa de horários ocupados (inclui confirmado, aguardando_pagamento, concluido e faltou)
+  // Monta mapa de horários ocupados (inclui confirmado, aguardando_pagamento, concluido e faltou).
+  // Os dois tipos de cancelamento liberam o horário e NÃO podem ocupar a grade:
+  // 'cancelado_falta_pagamento' (expirou sem pagar) fazia o slot parecer tomado
+  // mesmo estando livre — e, se outro cliente pegasse a vaga, um dos dois sumia
+  // da grade porque o mapa é por horário e o último sobrescrevia o anterior.
   const bookedMap = new Map<string, Appointment>()
   for (const appt of bookedAppointments) {
-    if (appt.status === 'cancelado') continue
+    if (appt.status === 'cancelado' || appt.status === 'cancelado_falta_pagamento') continue
     const t = appt.start_time?.slice(0, 5)
     if (t) bookedMap.set(t, appt)
   }

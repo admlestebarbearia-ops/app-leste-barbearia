@@ -741,6 +741,8 @@ function TabHoje({
   const isMounted = useSyncExternalStore(_subNoop, _getTrue, _getFalse)
   // Grade interativa (Epic 1)
   const [viewMode, setViewMode] = useState<'lista' | 'grade'>('lista')
+  // Cancelados do dia ficam recolhidos por padrão (ver dayApptsCancelados)
+  const [showCancelados, setShowCancelados] = useState(false)
   // ── Modal "Novo agendamento" (atalho rápido do botão flutuante) ──────────
   const [newApptOpen, setNewApptOpen] = useState(false)
   const [newApptSlots, setNewApptSlots] = useState<string[]>([])
@@ -1086,6 +1088,16 @@ function TabHoje({
   })
 
   const dayAppts = selectedDay ? (apptByDate[selectedDay] ?? []).slice().sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? '')) : []
+
+  // Um horário cancelado volta a ficar livre e pode ser reservado por outro
+  // cliente — então é NORMAL existirem dois registros no mesmo horário, um
+  // cancelado e um confirmado. Misturados na mesma lista, porém, o barbeiro lê
+  // isso como "dois clientes marcaram no mesmo horário". Separamos: a lista
+  // principal mostra só o que está de pé, e os cancelados ficam recolhidos.
+  const ehCancelado = (a: Appointment) =>
+    a.status === 'cancelado' || a.status === 'cancelado_falta_pagamento'
+  const dayApptsAtivos = dayAppts.filter(a => !ehCancelado(a))
+  const dayApptsCancelados = dayAppts.filter(ehCancelado)
 
   const getDisplayName = (appt: Appointment) =>
     appt.profiles?.display_name ?? appt.client_name ?? 'Cliente'
@@ -1466,7 +1478,7 @@ function TabHoje({
               Agendamentos — {formatSelectedDay(selectedDay)}
             </p>
             <span className="text-[10px] font-bold text-zinc-400 bg-white/5 border border-white/10 px-2.5 py-1 rounded-full shrink-0">
-              Total: {dayAppts.length}
+              Total: {dayApptsAtivos.length}
             </span>
           </div>
 
@@ -1548,7 +1560,15 @@ function TabHoje({
             </div>
           ) : viewMode === 'lista' ? (
             <div className="flex flex-col gap-3">
-              {dayAppts.map((appt) => {
+              {dayApptsAtivos.length === 0 && dayApptsCancelados.length > 0 && (
+                <div className="text-center py-8 bg-neutral-900 rounded-2xl border border-white/5">
+                  <p className="text-zinc-500 text-sm">Nenhum agendamento de pé neste dia.</p>
+                  <p className="text-zinc-600 text-xs mt-1">
+                    Só {dayApptsCancelados.length} cancelado{dayApptsCancelados.length !== 1 ? 's' : ''}, logo abaixo.
+                  </p>
+                </div>
+              )}
+              {dayApptsAtivos.map((appt) => {
                 const canRefund = !refundedApptIds.has(appt.id) && (Boolean(paymentMethodByApptId[appt.id]) || onlineMpApptIds.has(appt.id))
 
                 return (
@@ -1821,6 +1841,56 @@ function TabHoje({
               })}
             </div>
           ) : null}
+
+          {/* ── Cancelados do dia (recolhidos) ──
+              Ficam fora da lista principal de propósito: quando um cliente
+              cancela, o horário volta a ficar livre e OUTRO cliente pode
+              reservá-lo. Os dois registros existem no mesmo horário, o que é
+              correto — mas lado a lado davam a impressão de agendamento
+              duplicado. Aqui o barbeiro ainda consegue vê-los quando quiser. */}
+          {viewMode === 'lista' && dayApptsCancelados.length > 0 && (
+            <div className="bg-neutral-900 rounded-xl border border-white/5 overflow-hidden">
+              <button
+                onClick={() => setShowCancelados(v => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/[0.02] transition-colors"
+              >
+                <div className="flex items-center gap-2.5">
+                  <XCircle size={14} className="text-zinc-600 shrink-0" />
+                  <span className="text-xs font-semibold text-zinc-400">
+                    {dayApptsCancelados.length} cancelado{dayApptsCancelados.length !== 1 ? 's' : ''} neste dia
+                  </span>
+                </div>
+                <span className="text-[10px] text-zinc-600 uppercase tracking-wider shrink-0">
+                  {showCancelados ? 'Fechar' : 'Ver'}
+                </span>
+              </button>
+              {showCancelados && (
+                <div className="border-t border-white/5 flex flex-col">
+                  <p className="px-4 pt-3 text-[10px] text-zinc-600 leading-relaxed">
+                    Estes horários voltaram a ficar livres. Se aparecer o mesmo horário
+                    na lista de cima, não é agendamento duplicado — é outro cliente que
+                    pegou a vaga que abriu.
+                  </p>
+                  {dayApptsCancelados.map((appt) => (
+                    <div key={appt.id} className="flex items-center gap-3 px-4 py-3 border-b border-white/5 last:border-0">
+                      <span className="text-base font-bold text-zinc-600 tabular-nums line-through shrink-0 min-w-[48px]">
+                        {appt.start_time?.slice(0, 5)}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-zinc-500 truncate">{getDisplayName(appt)}</p>
+                        <p className="text-[10px] text-zinc-700 truncate">
+                          {appt.services?.name ?? appt.service_name_snapshot ?? '—'}
+                        </p>
+                      </div>
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 border border-white/5 bg-white/[0.03] px-2 py-1 rounded-full shrink-0">
+                        {appt.status === 'cancelado_falta_pagamento' ? 'Não pagou' : 'Cancelado'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Espaço para o botão flutuante não cobrir o último card */}
           <div className="h-16 shrink-0" aria-hidden="true" />
