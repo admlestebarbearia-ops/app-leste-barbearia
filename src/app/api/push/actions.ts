@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cookies } from 'next/headers'
-import { GUEST_BOOKING_PHONE_COOKIE, normalizePhoneLookup } from '@/lib/auth/session-state'
+import { GUEST_BOOKING_IDS_COOKIE, parseGuestIds } from '@/lib/auth/guest-ownership'
 import webpush from 'web-push'
 
 // ─── Configurar VAPID ────────────────────────────────────────────────────
@@ -49,18 +49,24 @@ function resolvePushSessionOwner(user: { id?: string; is_anonymous?: boolean } |
   }
 }
 
+// Vincula ao dono da inscricao de push os agendamentos que ESTE APARELHO criou.
+//
+// A versao anterior vinculava por TELEFONE, o que era mais grave que a falha de
+// leitura: alem de exibir, ela GRAVAVA client_id, transferindo a posse de forma
+// permanente. Quem digitasse o numero de outra pessoa e ativasse as notificacoes
+// se tornaria dono dos agendamentos dela no banco.
 async function linkGuestAppointmentsToPushOwner(userId: string) {
   const cookieStore = await cookies()
-  const guestPhone = normalizePhoneLookup(cookieStore.get(GUEST_BOOKING_PHONE_COOKIE)?.value)
+  const guestAppointmentIds = await parseGuestIds(cookieStore.get(GUEST_BOOKING_IDS_COOKIE)?.value)
 
-  if (!guestPhone) return 0
+  if (guestAppointmentIds.length === 0) return 0
 
   const adminSupabase = createAdminClient()
   const { data, error } = await adminSupabase
     .from('appointments')
     .update({ client_id: userId })
     .is('client_id', null)
-    .eq('client_phone', guestPhone)
+    .in('id', guestAppointmentIds)
     .in('status', ['confirmado', 'aguardando_pagamento'])
     .select('id')
 

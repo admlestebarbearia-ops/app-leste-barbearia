@@ -210,6 +210,11 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
       .sort((a, b) => a.start_time.localeCompare(b.start_time))
   }, [historyAppts, selectedHistoryDate])
 
+  // Aviso de cancelamento fora do prazo (abre o WhatsApp do barbeiro).
+  const [lateCancel, setLateCancel] = useState<
+    { motivo: string; info: NonNullable<Awaited<ReturnType<typeof cancelMyAppointment>>['appointmentInfo']> } | null
+  >(null)
+
   const handleCancel = async (id: string) => {
     setCancelling(id)
     const result = await cancelMyAppointment(id)
@@ -218,6 +223,12 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
       toast.success('Reserva cancelada.')
       setConfirmId(null)
       router.refresh()
+    } else if (result.outOfWindow && result.appointmentInfo) {
+      // Fora do prazo: em vez de um beco sem saida, abre o caminho de avisar
+      // o barbeiro. Se ele nao conseguir avisar, simplesmente nao aparece —
+      // e o horario fica preso do mesmo jeito, sem o barbeiro saber.
+      setConfirmId(null)
+      setLateCancel({ motivo: result.error ?? '', info: result.appointmentInfo })
     } else {
       toast.error(result.error ?? 'Erro ao cancelar.')
     }
@@ -717,6 +728,66 @@ export function ReservasClient({ appointments: initial, cancelledByAdmin, cancel
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+      {/* ── Cancelamento fora do prazo: avisar o barbeiro pelo WhatsApp ──
+          O objetivo do prazo nunca foi impedir o cancelamento — foi dar tempo
+          ao barbeiro de encaixar outra pessoa. Bloquear e calar seria pior:
+          o cliente nao vem, o horario fica preso e ninguem fica sabendo. */}
+      {lateCancel && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setLateCancel(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-neutral-900 border border-white/10 rounded-2xl p-5 flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col gap-1.5">
+              <h2 className="text-base font-bold text-white">Não dá mais para cancelar pelo app</h2>
+              <p className="text-xs text-zinc-400 leading-relaxed">{lateCancel.motivo}</p>
+            </div>
+
+            <div className="bg-white/5 rounded-xl px-4 py-3 flex flex-col gap-0.5">
+              <span className="text-sm font-bold text-white tabular-nums">
+                {lateCancel.info.date.split('-').reverse().join('/')} às {lateCancel.info.startTime}
+              </span>
+              <span className="text-xs text-zinc-400">{lateCancel.info.serviceName ?? 'Serviço'}</span>
+            </div>
+
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Avise o barbeiro pelo WhatsApp para ele liberar seu horário para outra
+              pessoa. A mensagem já vai escrita — é só enviar.
+            </p>
+
+            <div className="flex flex-col gap-2">
+              {whatsappNumber ? (
+                <a
+                  href={`https://wa.me/55${whatsappNumber.replace(/\D/g, '')}?text=${encodeURIComponent(
+                    `Olá! Preciso cancelar meu agendamento de ${lateCancel.info.date.split('-').reverse().join('/')} às ${lateCancel.info.startTime}` +
+                    `${lateCancel.info.serviceName ? ` (${lateCancel.info.serviceName})` : ''}` +
+                    `${lateCancel.info.clientName ? `, em nome de ${lateCancel.info.clientName}` : ''}. Motivo: `
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setLateCancel(null)}
+                  className="inline-flex items-center justify-center gap-2 h-12 rounded-xl bg-[#25D366] text-black font-extrabold text-sm active:scale-95 transition-all"
+                >
+                  Avisar pelo WhatsApp
+                </a>
+              ) : (
+                <p className="text-xs text-amber-400 text-center">
+                  Entre em contato com a barbearia para cancelar.
+                </p>
+              )}
+              <button
+                onClick={() => setLateCancel(null)}
+                className="h-11 rounded-xl border border-white/10 bg-white/5 text-zinc-300 font-semibold text-sm"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}

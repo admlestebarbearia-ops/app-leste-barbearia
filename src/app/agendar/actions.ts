@@ -3,6 +3,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { audit, describeAppointment } from '@/lib/audit/log'
+import {
+  GUEST_BOOKING_IDS_COOKIE,
+  GUEST_IDS_COOKIE_OPTIONS,
+  appendGuestId,
+  buildOwnershipFilter,
+  parseGuestIds,
+} from '@/lib/auth/guest-ownership'
 import { cookies, headers } from 'next/headers'
 import { createMpCheckoutPreference } from '@/lib/mercadopago/create-preference'
 import { normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
@@ -34,12 +41,10 @@ import type { WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
 import { isPaymentIntentExpired, shouldReuseMercadoPagoPayment } from '@/lib/mercadopago/payment-flow'
 import { buildPaymentExpirationIso } from '@/lib/mercadopago/payment-policy'
 
-function buildOwnershipFilter(userId: string | null, lookupPhones: string[]) {
-  return [
-    ...(userId ? [`client_id.eq.${userId}`] : []),
-    ...lookupPhones.map((phone) => `client_phone.eq.${phone}`),
-  ].join(',')
-}
+// buildOwnershipFilter agora vem de @/lib/auth/guest-ownership.
+// A versao antiga conferia posse pelo TELEFONE escrito no agendamento — falha
+// de seguranca: bastava digitar o numero de outra pessoa uma vez para ver e
+// cancelar tudo dela. Ver o comentario do modulo para o historico completo.
 
 async function expirePendingAppointmentPayment(adminClient: ReturnType<typeof createAdminClient>, appointmentId: string) {
   const nowIso = new Date().toISOString()
@@ -77,24 +82,19 @@ async function getAppointmentLookupContext() {
   const cookieStore = await cookies()
   const { data: { user } } = await supabase.auth.getUser()
   const signedInWithGoogle = isAuthenticatedUser(user)
+  // Posse do visitante: IDs assinados gravados por ESTE aparelho.
+  const guestAppointmentIds = await parseGuestIds(cookieStore.get(GUEST_BOOKING_IDS_COOKIE)?.value)
+
+  // O telefone continua sendo lido, mas SO para preencher formulario e contato.
+  // Ele nao confere mais posse de agendamento nenhum.
   const guestPhone = normalizePhoneLookup(cookieStore.get(GUEST_BOOKING_PHONE_COOKIE)?.value)
-
-  let profilePhone: string | null = null
-  if (signedInWithGoogle) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('phone')
-      .eq('id', user.id)
-      .single()
-
-    profilePhone = normalizePhoneLookup(profile?.phone)
-  }
 
   return {
     supabase,
     userId: user?.id ?? null,
     signedInWithGoogle,
-    lookupPhones: [...new Set([guestPhone, profilePhone].filter((phone): phone is string => Boolean(phone)))],
+    guestAppointmentIds,
+    guestPhone,
   }
 }
 
@@ -581,6 +581,24 @@ export async function createAppointment(data: {
     },
   })
 
+  // POSSE: grava o ID deste agendamento, assinado, no aparelho que o criou.
+  // E isto — e so isto — que da direito de ver e cancelar depois.
+  if (!signedInWithGoogle) {
+    try {
+      const cookieStore = await cookies()
+      const atualizado = await appendGuestId(
+        cookieStore.get(GUEST_BOOKING_IDS_COOKIE)?.value,
+        appointment.id
+      )
+      if (atualizado) {
+        cookieStore.set(GUEST_BOOKING_IDS_COOKIE, atualizado, GUEST_IDS_COOKIE_OPTIONS)
+      }
+    } catch {
+      // Nunca derruba o agendamento por causa do cookie: o agendamento ja existe.
+    }
+  }
+
+  // O telefone segue guardado apenas para preencher o formulario na proxima vez.
   if (!signedInWithGoogle && effectivePhone) {
     const cookieStore = await cookies()
     cookieStore.set(GUEST_BOOKING_PHONE_COOKIE, effectivePhone, {
@@ -688,11 +706,24 @@ export async function createAppointment(data: {
 }
 
 // ─── Cancelar agendamento (cliente) ────────────────────────────────────────
+export interface CancelOutOfWindowInfo {
+  date: string
+  startTime: string
+  serviceName: string | null
+  clientName: string | null
+}
+
 export async function cancelMyAppointment(
   appointmentId: string
-): Promise<{ success: boolean; error?: string }> {
-  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
-  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+): Promise<{
+  success: boolean
+  error?: string
+  /** true quando a recusa foi por prazo — a tela oferece avisar por WhatsApp. */
+  outOfWindow?: boolean
+  appointmentInfo?: CancelOutOfWindowInfo
+}> {
+  const { supabase, userId, guestAppointmentIds, guestPhone } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { success: false, error: 'Identificacao da reserva nao encontrada neste aparelho.' }
 
@@ -726,9 +757,23 @@ export async function cancelMyAppointment(
   })
 
   if (cancellationError) {
+    // Fora do prazo NAO deve virar um beco sem saida: se o cliente nao consegue
+    // cancelar, ele simplesmente nao aparece e o horario fica preso do mesmo
+    // jeito — pior para o barbeiro, que so descobre esperando. Devolvemos os
+    // dados para a tela oferecer o aviso pelo WhatsApp.
+    const foraDoPrazo = appt.status === 'confirmado'
     return {
       success: false,
       error: cancellationError,
+      outOfWindow: foraDoPrazo,
+      appointmentInfo: foraDoPrazo
+        ? {
+            date: appt.date,
+            startTime: String(appt.start_time).slice(0, 5),
+            serviceName: appt.service_name_snapshot ?? null,
+            clientName: appt.client_name ?? null,
+          }
+        : undefined,
     }
   }
 
@@ -748,7 +793,7 @@ export async function cancelMyAppointment(
   audit({
     actor: userId
       ? { type: 'cliente', id: userId, label: appt.client_name ?? null }
-      : { type: 'convidado', id: null, label: appt.client_name ?? lookupPhones[0] ?? null },
+      : { type: 'convidado', id: null, label: appt.client_name ?? guestPhone ?? null },
     action: 'agendamento.cancelou',
     entityId: appointmentId,
     summary: describeAppointment(appt),
@@ -772,8 +817,8 @@ export async function cancelMyAppointment(
 
 // ─── Buscar meus agendamentos futuros ──────────────────────────────────────
 export async function getMyAppointments() {
-  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
-  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { appointments: [] }
 
@@ -809,8 +854,8 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
   }
   error?: string
 }> {
-  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
-  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { error: 'Identificacao da reserva nao encontrada neste aparelho.' }
 
@@ -876,8 +921,8 @@ export async function getPendingPaymentStatus(appointmentId: string): Promise<{
   expiresAt?: string | null
   error?: string
 }> {
-  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
-  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) {
     return { error: 'Identificacao da reserva nao encontrada neste aparelho.' }
@@ -1018,8 +1063,10 @@ export async function createProductReservation(data: {
   const guestPhone = normalizePhoneLookup(
     data.clientPhone ?? cookieStore.get(GUEST_BOOKING_PHONE_COOKIE)?.value
   )
+  // Posse vem dos IDs assinados deste aparelho, nao do telefone.
+  const guestAppointmentIds = await parseGuestIds(cookieStore.get(GUEST_BOOKING_IDS_COOKIE)?.value)
 
-  // RN: deve haver identidade (login ou telefone)
+  // RN: deve haver identidade (login ou telefone para contato)
   if (!signedInWithGoogle && !guestPhone) {
     return { success: false, error: 'Identidade nao verificada. Informe seu telefone.' }
   }
@@ -1027,7 +1074,7 @@ export async function createProductReservation(data: {
   // RN: valida que o agendamento pertence ao solicitante
   const ownershipFilter = buildOwnershipFilter(
     signedInWithGoogle ? user.id : null,
-    guestPhone ? [guestPhone] : []
+    guestAppointmentIds
   )
   if (!ownershipFilter) return { success: false, error: 'Acesso negado.' }
 
@@ -1116,8 +1163,8 @@ export async function createProductReservation(data: {
 export async function cancelPendingPayment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
-  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { success: false, error: 'Identificacao nao encontrada.' }
 
@@ -1160,8 +1207,8 @@ export async function createFiadoPaymentLink(appointmentId: string): Promise<{
   error?: string
 }> {
   try {
-    const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
-    const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+    const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+    const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
     if (!ownershipFilter) {
       return { error: 'Identificação da reserva não encontrada neste aparelho.' }
@@ -1244,8 +1291,8 @@ export async function createFiadoPaymentLink(appointmentId: string): Promise<{
 // ─── Resumo de dívidas pendentes do cliente (para alerta na Home) ─────────────
 export async function getMyPendingFiadoSummary(): Promise<{ count: number; total: number }> {
   try {
-    const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
-    const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+    const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+    const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
     if (!ownershipFilter) return { count: 0, total: 0 }
 
     // Agendamentos concluídos com promessa de pagamento pendente
@@ -1279,8 +1326,8 @@ export async function getMyPendingFiadoSummary(): Promise<{ count: number; total
 export async function dismissCancelledAppointment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { supabase, userId, lookupPhones } = await getAppointmentLookupContext()
-  const ownershipFilter = buildOwnershipFilter(userId, lookupPhones)
+  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { success: false, error: 'Identificacao nao encontrada.' }
 

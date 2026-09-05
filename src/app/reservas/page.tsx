@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { ReservasClient } from './ReservasClient'
 import { dedupeById, GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
+import { GUEST_BOOKING_IDS_COOKIE, buildOwnershipFilter, parseGuestIds } from '@/lib/auth/guest-ownership'
 import type { AppointmentStatus, BusinessConfig, ProductReservation } from '@/lib/supabase/types'
 import { getAppointmentPaymentSummaryMap } from '@/lib/booking/appointment-payment-context'
 import type { AppointmentPaymentContext } from '@/lib/booking/appointment-payment-context'
@@ -57,23 +58,11 @@ export default async function ReservasPage({ searchParams }: Props) {
   const signedInWithGoogle = isAuthenticatedUser(user)
   const guestPhone = normalizePhoneLookup(cookieStore.get(GUEST_BOOKING_PHONE_COOKIE)?.value)
 
-  let lookupPhones = guestPhone ? [guestPhone] : []
+  // POSSE: IDs assinados gravados por ESTE aparelho ao agendar. O telefone
+  // deixou de conferir posse — ver o comentario de @/lib/auth/guest-ownership.
+  const guestAppointmentIds = await parseGuestIds(cookieStore.get(GUEST_BOOKING_IDS_COOKIE)?.value)
 
-  if (signedInWithGoogle) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('phone')
-      .eq('id', user.id)
-      .single()
-
-    const profilePhone = normalizePhoneLookup(profile?.phone)
-    lookupPhones = [...new Set([guestPhone, profilePhone].filter((phone): phone is string => Boolean(phone)))]
-  }
-
-  const ownershipFilter = [
-    ...(user ? [`client_id.eq.${user.id}`] : []),
-    ...lookupPhones.map((phone) => `client_phone.eq.${phone}`),
-  ].join(',')
+  const ownershipFilter = buildOwnershipFilter(user?.id ?? null, guestAppointmentIds)
 
   if (!ownershipFilter) redirect('/?next=/reservas')
 
@@ -84,9 +73,10 @@ export default async function ReservasPage({ searchParams }: Props) {
   // Usa adminClient para buscar reservas de produtos (evita complexidade de RLS com visitantes)
   const adminClient = createAdminClient()
 
+  // Reservas de produto seguem a posse do agendamento a que pertencem.
   const productOwnershipOrClauses = [
     ...(user ? [`client_id.eq.${user.id}`] : []),
-    ...lookupPhones.map((phone) => `client_phone.eq.${phone}`),
+    ...(guestAppointmentIds.length > 0 ? [`appointment_id.in.(${guestAppointmentIds.join(',')})`] : []),
   ].join(',')
 
   const [{ data: appointments }, { data: cancelledByAdmin }, { data: configRaw }, { data: productReservationsRaw }, { data: historyApptsRaw }] = await Promise.all([
