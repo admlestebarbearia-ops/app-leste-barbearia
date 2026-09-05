@@ -15,9 +15,12 @@
  *     ficava sem nenhum caminho. O banner global de instalar existe, mas some
  *     para sempre depois de dispensado uma vez.
  *
- *  2. Visitante sem login. Desde a correcao de posse (05/09/2026) a reserva de
- *     quem nao entra com o Google vive so naquele aparelho. Isso e verdade
- *     tecnica, nao argumento de marketing — e vale dizer com todas as letras.
+ *  2. Visitante sem login. O argumento NAO e "acessar de outro aparelho": para
+ *     quem vai cortar o cabelo hoje, reserva antiga nao vale nada e esse apelo
+ *     nao convence ninguem. O beneficio real e concreto: showFreeMode em
+ *     BookingForm.tsx e `!isAuthenticatedUser`, ou seja, quem entra com o
+ *     Google NAO ve os campos de nome e telefone. Nao digita nada da proxima
+ *     vez. E isso que vale dizer.
  *
  * Quando nenhum dos dois se aplica, nao renderiza nada.
  */
@@ -58,14 +61,15 @@ export function ConviteAcesso({ isGuest }: { isGuest: boolean }) {
       <div className="flex items-center gap-2">
         <Bell size={15} className="text-primary shrink-0" />
         <span className="text-xs font-bold uppercase tracking-wider text-primary">
-          Para não perder sua vez
+          {precisaInstalar ? 'Não perca sua vez' : 'Fica mais rápido'}
         </span>
       </div>
 
       {precisaInstalar && (
         <div className="flex flex-col gap-2">
           <p className="text-xs text-zinc-300 leading-relaxed">
-            No iPhone, o aviso do seu horário só chega com o app instalado na tela de início.
+            Instale o app e a barbearia te avisa quando estiver perto da sua vez.
+            <span className="text-zinc-500"> No iPhone, o aviso só funciona com o app instalado.</span>
           </p>
           <div className="flex flex-col gap-1.5 bg-black/25 rounded-lg px-3 py-2.5">
             <span className="inline-flex items-center gap-2 text-[11px] text-zinc-300">
@@ -84,8 +88,9 @@ export function ConviteAcesso({ isGuest }: { isGuest: boolean }) {
         <div className="flex flex-col gap-2.5">
           {precisaInstalar && <div className="h-px bg-white/10" />}
           <p className="text-xs text-zinc-300 leading-relaxed">
-            Sua reserva está guardada <strong className="text-white">neste aparelho</strong>.
-            Entre com o Google para acessá-la também de outro celular.
+            <strong className="text-white">Da próxima vez, não digite nada.</strong>{' '}
+            Entrando com o Google, seu nome e telefone já vêm preenchidos — é só
+            escolher o horário.
           </p>
           <LoginButton nextPath="/reservas" />
         </div>
