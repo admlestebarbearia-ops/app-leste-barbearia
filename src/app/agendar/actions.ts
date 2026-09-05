@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { audit, describeAppointment } from '@/lib/audit/log'
 import { cookies, headers } from 'next/headers'
 import { createMpCheckoutPreference } from '@/lib/mercadopago/create-preference'
 import { normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
@@ -49,11 +50,26 @@ async function expirePendingAppointmentPayment(adminClient: ReturnType<typeof cr
     .eq('appointment_id', appointmentId)
     .eq('status', 'pending')
 
-  await adminClient
+  const { data: expirados } = await adminClient
     .from('appointments')
     .update({ status: 'cancelado_falta_pagamento' })
     .eq('id', appointmentId)
     .eq('status', 'aguardando_pagamento')
+    .select('id, date, start_time, service_name_snapshot, client_name, client_phone')
+
+  // Só registra se realmente cancelou algo. Este cancelamento é do SISTEMA —
+  // sem a trilha, ele fica indistinguível de um cancelamento feito pelo cliente,
+  // porque cancelled_by_admin também é false nos dois casos.
+  const expirado = expirados?.[0]
+  if (expirado) {
+    audit({
+      actor: { type: 'sistema', label: 'expiracao de pagamento' },
+      action: 'pagamento.expirou',
+      entityId: appointmentId,
+      summary: describeAppointment(expirado),
+      details: { de: 'aguardando_pagamento', para: 'cancelado_falta_pagamento' },
+    })
+  }
 }
 
 async function getAppointmentLookupContext() {
@@ -545,6 +561,26 @@ export async function createAppointment(data: {
     return { success: false, error: 'Erro ao confirmar agendamento: resposta invalida do banco.' }
   }
 
+  audit({
+    actor: signedInWithGoogle
+      ? { type: 'cliente', id: user.id, label: user.email ?? null }
+      : { type: 'convidado', id: rawUserId ?? null, label: data.clientName ?? effectivePhone ?? null },
+    action: 'agendamento.criou',
+    entityId: appointment.id,
+    summary: describeAppointment({
+      date: data.date,
+      start_time: data.startTime,
+      service_name_snapshot: serviceSnapshot.name,
+      client_name: appointmentData.client_name,
+      client_phone: effectivePhone,
+    }),
+    details: {
+      origem: 'pagina_publica',
+      status_inicial: appointmentStatus,
+      valor: serviceSnapshot.price,
+    },
+  })
+
   if (!signedInWithGoogle && effectivePhone) {
     const cookieStore = await cookies()
     cookieStore.set(GUEST_BOOKING_PHONE_COOKIE, effectivePhone, {
@@ -706,6 +742,18 @@ export async function cancelMyAppointment(
     .eq('id', appointmentId)
 
   if (error) return { success: false, error: 'Erro ao cancelar. Tente novamente.' }
+
+  // Registra QUEM cancelou. Sem isto, cancelled_by_admin=false não distingue
+  // "o cliente cancelou" de "o sistema cancelou", e não há data nenhuma.
+  audit({
+    actor: userId
+      ? { type: 'cliente', id: userId, label: appt.client_name ?? null }
+      : { type: 'convidado', id: null, label: appt.client_name ?? lookupPhones[0] ?? null },
+    action: 'agendamento.cancelou',
+    entityId: appointmentId,
+    summary: describeAppointment(appt),
+    details: { de: appt.status, para: 'cancelado', origem: 'pagina_publica' },
+  })
 
   // Notifica admins: cliente cancelou
   await firePushToAdmins({

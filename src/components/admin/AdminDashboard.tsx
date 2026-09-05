@@ -40,6 +40,7 @@ import {
   deleteGalleryPhoto,
   approveGalleryPhoto,
   uploadAdminGalleryPhoto,
+  listAppointmentHistory,
   listBarbers,
   upsertBarber,
   toggleBarberActive,
@@ -78,6 +79,30 @@ import {
   listActiveBarbers,
   createAdminAppointment,
 } from '@/app/admin/actions'
+import type { AuditEntry } from '@/app/admin/actions'
+
+// Rótulos em português para a trilha de auditoria.
+const AUDIT_LABELS: Record<string, string> = {
+  'agendamento.criou': 'Agendamento criado',
+  'agendamento.cancelou': 'Cancelado',
+  'agendamento.concluiu': 'Concluído',
+  'agendamento.marcou_falta': 'Marcado como falta',
+  'agendamento.reativou': 'Reativado',
+  'agendamento.ocultou': 'Ocultado do painel',
+  'agendamento.apagou': 'Apagado permanentemente',
+  'agendamento.estornou': 'Estornado',
+  'pagamento.aprovado': 'Pagamento aprovado',
+  'pagamento.expirou': 'Cancelado por falta de pagamento',
+  'cliente.bloqueou': 'Cliente bloqueado',
+  'cliente.desbloqueou': 'Cliente desbloqueado',
+  'config.alterou': 'Configuração alterada',
+}
+const AUDIT_ATOR: Record<string, string> = {
+  admin: 'pelo painel',
+  cliente: 'pelo cliente (logado)',
+  convidado: 'pelo cliente (sem login)',
+  sistema: 'automático',
+}
 import {
   listQueueForDay,
   activateQueueDay,
@@ -795,6 +820,17 @@ function TabHoje({
   const [selectedDay, setSelectedDay] = useState<string | null>(todayStr)
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
   const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null)
+  // Histórico do agendamento aberto. Carrega em segundo plano e falha em
+  // silêncio: se a trilha não responder, o modal funciona igual.
+  const [apptHistory, setApptHistory] = useState<AuditEntry[]>([])
+  useEffect(() => {
+    if (!selectedAppt) { setApptHistory([]); return }
+    let cancelado = false
+    listAppointmentHistory(selectedAppt.id)
+      .then(r => { if (!cancelado) setApptHistory(r.entries) })
+      .catch(() => { if (!cancelado) setApptHistory([]) })
+    return () => { cancelado = true }
+  }, [selectedAppt])
   const [fiadoPaymentMethod, setFiadoPaymentMethod] = useState<PaymentMethod | null>(null)
   const [confirmingFiado, setConfirmingFiado] = useState(false)
   const [pendingAppts, setPendingAppts] = useState<Appointment[]>([])
@@ -2186,6 +2222,32 @@ function TabHoje({
                 </span>
               )}
             </div>
+
+            {/* ── Histórico do agendamento ──
+                Responde "quem mexeu nisso e quando". Se a trilha estiver vazia
+                (agendamento anterior a ela), não aparece nada — sem alarde. */}
+            {apptHistory.length > 0 && (
+              <div className="bg-white/5 rounded-xl px-4 py-3 flex flex-col gap-2.5">
+                <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Histórico</span>
+                {apptHistory.map((h) => (
+                  <div key={h.id} className="flex gap-2.5">
+                    <div className="w-1 rounded-full bg-white/10 shrink-0" />
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-xs text-white">
+                        {AUDIT_LABELS[h.action] ?? h.action}
+                        <span className="text-zinc-500 font-normal"> · {AUDIT_ATOR[h.actor_type] ?? h.actor_type}</span>
+                      </span>
+                      {h.actor_label && (
+                        <span className="text-[10px] text-zinc-500 truncate">{h.actor_label}</span>
+                      )}
+                      <span className="text-[10px] text-zinc-600 tabular-nums">
+                        {new Date(h.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Produtos reservados */}
             {(productReservationsByAppt[selectedAppt.id] ?? []).length > 0 && (

@@ -11,6 +11,7 @@ import { getAppointmentPaymentSummaryMap } from '@/lib/booking/appointment-payme
 import { getAppointmentOperationalStatus, isAppointmentPast } from '@/lib/booking/appointment-visibility'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { audit, describeAppointment } from '@/lib/audit/log'
 import { firePushToUser, firePushToAdmins } from '@/app/api/push/actions'
 import { revalidatePath } from 'next/cache'
 import { MAX_PAYMENT_EXPIRY_MINUTES, normalizePaymentExpiryMinutes } from '@/lib/mercadopago/payment-policy'
@@ -160,12 +161,12 @@ export async function updateAppointmentStatus(
   reason?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { supabase } = await requireAdmin()
+    const { supabase, user } = await requireAdmin()
 
     // Busca detalhes antes de atualizar (para push notification)
     const { data: appt } = await supabase
       .from('appointments')
-      .select('client_id, client_name, service_name_snapshot, date, start_time')
+      .select('client_id, client_name, client_phone, service_name_snapshot, date, start_time, status')
       .eq('id', appointmentId)
       .single()
 
@@ -178,6 +179,14 @@ export async function updateAppointmentStatus(
       })
       .eq('id', appointmentId)
     if (error) throw error
+
+    audit({
+      actor: { type: 'admin', id: user.id, label: user.email ?? null },
+      action: status === 'cancelado' ? 'agendamento.cancelou' : 'agendamento.marcou_falta',
+      entityId: appointmentId,
+      summary: appt ? describeAppointment(appt) : null,
+      details: { de: appt?.status ?? null, para: status, motivo: reason ?? null },
+    })
 
     // Notifica cliente: admin cancelou o agendamento
     if (status === 'cancelado' && appt?.client_id) {
@@ -1135,12 +1144,12 @@ export async function concludeAppointment(
   isAlreadyOnlinePaid?: boolean
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { supabase } = await requireAdmin()
+    const { supabase, user } = await requireAdmin()
     const today = new Date().toISOString().split('T')[0]
 
     const { data: appt, error: fetchError } = await supabase
       .from('appointments')
-      .select('id, date, start_time, status, client_id, service_name_snapshot, service_price_snapshot')
+      .select('id, date, start_time, status, client_id, client_name, client_phone, service_name_snapshot, service_price_snapshot')
       .eq('id', appointmentId)
       .single()
 
@@ -1230,6 +1239,18 @@ export async function concludeAppointment(
         note: rating.note?.trim() || null,
       })
     }
+
+    audit({
+      actor: { type: 'admin', id: user.id, label: user.email ?? null },
+      action: 'agendamento.concluiu',
+      entityId: appointmentId,
+      summary: describeAppointment(appt),
+      details: {
+        forma_pagamento: resolvedPaymentMethod ?? null,
+        valor: appt.service_price_snapshot,
+        fiado_para: expectedPaymentDate ?? null,
+      },
+    })
 
     revalidatePath('/admin')
     revalidatePath('/reservas')
@@ -2503,6 +2524,20 @@ export async function createAdminAppointment(data: {
       throw error
     }
 
+    audit({
+      actor: { type: 'admin', id: user.id, label: user.email ?? null },
+      action: 'agendamento.criou',
+      entityId: created?.id ?? null,
+      summary: describeAppointment({
+        date: data.date,
+        start_time: data.startTime,
+        service_name_snapshot: service.name,
+        client_name: finalClientName,
+        client_phone: data.clientPhone?.trim() || null,
+      }),
+      details: { origem: 'painel_admin', valor: service.price },
+    })
+
     revalidatePath('/admin')
     return { success: true, appointmentId: created?.id }
   } catch (e) {
@@ -2596,12 +2631,14 @@ export async function hardDeleteAppointment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await requireAdmin()
+    const { user } = await requireAdmin()
     const adminSb = createAdminClient()
 
+    // Campos extras aqui não são luxo: depois do DELETE a linha some para
+    // sempre, e o resumo gravado na trilha vira a única memória do que existiu.
     const { data: appt } = await adminSb
       .from('appointments')
-      .select('id, status')
+      .select('id, status, date, start_time, service_name_snapshot, service_price_snapshot, client_name, client_phone, client_id')
       .eq('id', appointmentId)
       .maybeSingle()
 
@@ -2617,6 +2654,19 @@ export async function hardDeleteAppointment(
 
     const { error } = await adminSb.from('appointments').delete().eq('id', appointmentId)
     if (error) throw error
+
+    audit({
+      actor: { type: 'admin', id: user.id, label: user.email ?? null },
+      action: 'agendamento.apagou',
+      entityId: appointmentId,
+      summary: describeAppointment(appt),
+      details: {
+        status_antes: appt.status,
+        valor: appt.service_price_snapshot,
+        cliente_logado: !!appt.client_id,
+        aviso: 'exclusao permanente — a linha do agendamento nao existe mais',
+      },
+    })
 
     revalidatePath('/admin')
     return { success: true }
@@ -2699,6 +2749,60 @@ export async function listClientsWithDebt(): Promise<{
 // RN-RP02: Apenas agendamentos com service_price_snapshot > 0.
 // RN-RP03: Inclui o dia de hoje (agendamentos de hoje que ainda não foram concluídos).
 // US-RP01: Admin quer ver a previsão de caixa da semana/mês com diferenciação pago vs. a receber.
+// ─── Trilha de auditoria (leitura) ───────────────────────────────────────────
+export interface AuditEntry {
+  id: number
+  created_at: string
+  actor_type: string
+  actor_label: string | null
+  action: string
+  entity_id: string | null
+  summary: string | null
+  details: Record<string, unknown> | null
+  ip: string | null
+}
+
+/** Histórico de um agendamento específico (mais recente primeiro). */
+export async function listAppointmentHistory(
+  appointmentId: string
+): Promise<{ entries: AuditEntry[]; error?: string }> {
+  try {
+    await requireAdmin()
+    const { data, error } = await createAdminClient()
+      .from('audit_log')
+      .select('id, created_at, actor_type, actor_label, action, entity_id, summary, details, ip')
+      .eq('entity_id', appointmentId)
+      .order('created_at', { ascending: false })
+      .limit(100)
+    if (error) throw error
+    return { entries: (data ?? []) as AuditEntry[] }
+  } catch (e) {
+    // A trilha nunca derruba a tela: sem tabela ou sem permissão, devolve vazio.
+    return { entries: [], error: (e as Error).message }
+  }
+}
+
+/** Trilha geral, para investigar algo amplo. */
+export async function listAuditLog(filters?: {
+  action?: string
+  limit?: number
+}): Promise<{ entries: AuditEntry[]; error?: string }> {
+  try {
+    await requireAdmin()
+    let q = createAdminClient()
+      .from('audit_log')
+      .select('id, created_at, actor_type, actor_label, action, entity_id, summary, details, ip')
+      .order('created_at', { ascending: false })
+      .limit(Math.min(filters?.limit ?? 200, 500))
+    if (filters?.action) q = q.eq('action', filters.action)
+    const { data, error } = await q
+    if (error) throw error
+    return { entries: (data ?? []) as AuditEntry[] }
+  } catch (e) {
+    return { entries: [], error: (e as Error).message }
+  }
+}
+
 export async function listUpcomingRevenue(dateFrom: string, dateTo: string): Promise<{
   appointments: Array<{
     id: string
