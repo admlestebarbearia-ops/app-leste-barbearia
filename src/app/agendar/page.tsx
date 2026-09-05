@@ -33,7 +33,7 @@ export default async function AgendarPage({ searchParams }: { searchParams?: Pro
     { data: specialSchedules },
   ] = await Promise.all([
     supabase.from('services').select('*').eq('is_active', true).order('name'),
-    supabase.from('barbers').select('*').eq('is_active', true).limit(1),
+    supabase.from('barbers').select('*').eq('is_active', true).order('name'),
     supabase.from('working_hours').select('*').order('day_of_week'),
     supabase
       .from('special_schedules')
@@ -41,7 +41,7 @@ export default async function AgendarPage({ searchParams }: { searchParams?: Pro
       .gte('date', new Date().toISOString().split('T')[0]),
   ])
 
-  const barber = (barbers as Barber[] | null)?.[0] ?? null
+  const activeBarbers = (barbers as Barber[] | null) ?? []
   const publicServices = ((services as Service[] | null) ?? []).filter(
     (service) => Number.isFinite(service.duration_minutes) && service.duration_minutes > 0
   )
@@ -65,7 +65,7 @@ export default async function AgendarPage({ searchParams }: { searchParams?: Pro
     <main className="min-h-screen bg-background pb-32">
       <BookingForm
         services={publicServices}
-        barber={barber}
+        barbers={activeBarbers}
         workingHours={(workingHours as WorkingHours[] | null) ?? []}
         specialSchedules={(specialSchedules as SpecialSchedule[] | null) ?? []}
         config={typedConfig}

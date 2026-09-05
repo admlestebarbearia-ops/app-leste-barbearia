@@ -1114,25 +1114,11 @@ function TabHoje({
     setNewApptPhone('')
     setNewApptServiceId(services.find(s => s.is_active)?.id ?? '')
 
-    // Remove horários já ocupados e, se for hoje, os que já passaram.
-    const taken = new Set(
-      dayAppts
-        .filter(a => a.status === 'confirmado' || a.status === 'aguardando_pagamento')
-        .map(a => (a.start_time ?? '').slice(0, 5))
-    )
-    const nowHM = new Date().toTimeString().slice(0, 5)
-    const isToday = selectedDay === todayStr
-    const usable = (slots: string[]) =>
-      slots.filter(t => {
-        const hm = t.slice(0, 5)
-        if (taken.has(hm)) return false
-        if (isToday && hm < nowHM) return false
-        return true
-      })
-
+    // Guarda a grade bruta do dia; o filtro de horários ocupados é feito em
+    // newApptFreeSlots, porque depende do barbeiro escolhido.
     // Caminho rápido: dados já pré-carregados.
     if (dayTimelineSlots && dayBarbers) {
-      setNewApptSlots(usable(dayTimelineSlots))
+      setNewApptSlots(dayTimelineSlots)
       setNewApptBarberId(dayBarbers[0]?.id ?? '')
       setNewApptLoadingSlots(false)
       return
@@ -1144,14 +1130,35 @@ function TabHoje({
         getAdminDayTimeline(selectedDay),
         listActiveBarbers(),
       ])
-      setNewApptSlots(usable(timeline.allSlots ?? []))
+      setNewApptSlots(timeline.allSlots ?? [])
       setNewApptBarberId(barbersRes.barbers?.[0]?.id ?? '')
+      if (!dayBarbers) setDayBarbers(barbersRes.barbers ?? [])
     } catch {
       setNewApptSlots([])
     } finally {
       setNewApptLoadingSlots(false)
     }
   }
+
+  // Horários realmente livres para o barbeiro escolhido: com 2+ barbeiros cada
+  // um tem a própria agenda, então um horário ocupado com o barbeiro A continua
+  // livre para o barbeiro B.
+  const newApptFreeSlots = useMemo(() => {
+    const taken = new Set(
+      dayAppts
+        .filter(a => a.status === 'confirmado' || a.status === 'aguardando_pagamento')
+        .filter(a => !newApptBarberId || a.barber_id === newApptBarberId)
+        .map(a => (a.start_time ?? '').slice(0, 5))
+    )
+    const nowHM = new Date().toTimeString().slice(0, 5)
+    const isToday = selectedDay === todayStr
+    return newApptSlots.filter(t => {
+      const hm = t.slice(0, 5)
+      if (taken.has(hm)) return false
+      if (isToday && hm < nowHM) return false
+      return true
+    })
+  }, [newApptSlots, dayAppts, newApptBarberId, selectedDay, todayStr])
 
   const submitNewAppt = async () => {
     if (!selectedDay || !newApptTime || !newApptServiceId || !newApptBarberId) return
@@ -1849,15 +1856,30 @@ function TabHoje({
         {/* Etapa 1 — escolher horário livre */}
         {!newApptTime && (
           <div className="flex flex-col gap-3 py-1">
+            {/* Só aparece quando a barbearia tem mais de um barbeiro ativo. */}
+            {dayBarbers && dayBarbers.length > 1 && (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">Barbeiro</Label>
+                <select
+                  value={newApptBarberId}
+                  onChange={(e) => setNewApptBarberId(e.target.value)}
+                  className="h-12 w-full rounded-lg border border-white/15 bg-background px-3 text-sm font-bold text-white outline-none focus:border-blue-400"
+                >
+                  {dayBarbers.map(b => (
+                    <option key={b.id} value={b.id}>{b.nickname?.trim() || b.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             {newApptLoadingSlots ? (
               <p className="text-center text-xs text-zinc-500 py-6">Carregando horários…</p>
-            ) : newApptSlots.length === 0 ? (
+            ) : newApptFreeSlots.length === 0 ? (
               <p className="text-center text-xs text-zinc-500 py-6">
                 Nenhum horário livre neste dia.
               </p>
             ) : (
               <div className="grid grid-cols-4 gap-2 max-h-[280px] overflow-y-auto">
-                {newApptSlots.map(t => (
+                {newApptFreeSlots.map(t => (
                   <button
                     key={t}
                     onClick={() => setNewApptTime(t)}
@@ -1878,6 +1900,15 @@ function TabHoje({
               <span suppressHydrationWarning className="text-sm font-bold text-white">
                 <span className="tabular-nums">{newApptTime.slice(0, 5)}</span>
                 <span className="text-zinc-400 font-medium"> · {formatSelectedDay(selectedDay!)}</span>
+                {dayBarbers && dayBarbers.length > 1 && (
+                  <span className="text-zinc-400 font-medium">
+                    {' · '}
+                    {(() => {
+                      const b = dayBarbers.find(x => x.id === newApptBarberId)
+                      return b ? (b.nickname?.trim() || b.name) : ''
+                    })()}
+                  </span>
+                )}
               </span>
               <button
                 onClick={() => setNewApptTime(null)}
@@ -5386,11 +5417,17 @@ function TabFinanceiro({
 }) {
   const today = new Date().toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' })
   const firstOfMonth = today.slice(0, 8) + '01'
+  // Último dia do mês corrente (dia 0 do mês seguinte).
+  const lastOfMonth =
+    today.slice(0, 8) +
+    String(new Date(parseInt(today.slice(0, 4)), parseInt(today.slice(5, 7)), 0).getDate()).padStart(2, '0')
 
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([])
   const [loadingEntries, setLoadingEntries] = useState(true)
+  // "Este mês" vai até o fim do mês, não até hoje: assim o período mostra
+  // também o previsto dos dias que ainda vão acontecer.
   const [dateFrom, setDateFrom] = useState(firstOfMonth)
-  const [dateTo, setDateTo] = useState(today)
+  const [dateTo, setDateTo] = useState(lastOfMonth)
 
   // Configurações de maquininha
   const [hasMachine, setHasMachine] = useState(config.has_card_machine ?? false)
@@ -5429,7 +5466,7 @@ function TabFinanceiro({
       const start = new Date(d); start.setDate(d.getDate() - d.getDay())
       setDateFrom(start.toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' })); setDateTo(today)
     } else if (preset === 'mes') {
-      setDateFrom(firstOfMonth); setDateTo(today)
+      setDateFrom(firstOfMonth); setDateTo(lastOfMonth)
     } else if (preset === 'mes_ant') {
       const firstThisMonth = new Date(d.getFullYear(), d.getMonth(), 1)
       const lastPrev = new Date(firstThisMonth); lastPrev.setDate(0)
@@ -5439,9 +5476,12 @@ function TabFinanceiro({
     }
   }
 
+  // Receita prevista = agendamentos do período que ainda NÃO foram concluídos.
+  // Carrega junto com o período: sem isso o mês aparece zerado até o barbeiro
+  // concluir os atendimentos, escondendo o que ele já tem agendado.
   type UpcomingAppt = Awaited<ReturnType<typeof listUpcomingRevenue>>['appointments'][number]
   const [showUpcoming, setShowUpcoming] = useState(false)
-  const [upcomingLoading, setUpcomingLoading] = useState(false)
+  const [upcomingLoading, setUpcomingLoading] = useState(true)
   const [upcomingAppts, setUpcomingAppts] = useState<UpcomingAppt[]>([])
 
   type DebtClient = Awaited<ReturnType<typeof listClientsWithDebt>>['clients'][number]
@@ -5457,12 +5497,22 @@ function TabFinanceiro({
     setLoadingEntries(false)
   }
 
-  useEffect(() => { loadEntries() }, [dateFrom, dateTo])
+  const loadUpcoming = async () => {
+    setUpcomingLoading(true)
+    const { appointments } = await listUpcomingRevenue(dateFrom, dateTo)
+    setUpcomingAppts(appointments)
+    setUpcomingLoading(false)
+  }
+
+  useEffect(() => { loadEntries(); loadUpcoming() }, [dateFrom, dateTo])
 
   const totalEntradas  = transactions.filter(t => t.type === 'IN'  && t.status === 'PAID').reduce((s, t) => s + t.amount, 0)
   const totalSaidas    = transactions.filter(t => t.type === 'OUT' && t.status === 'PAID').reduce((s, t) => s + t.amount, 0)
   const totalPendente  = transactions.filter(t => t.type === 'IN'  && t.status === 'PENDING').reduce((s, t) => s + t.amount, 0)
   const saldo = totalEntradas - totalSaidas
+
+  // Previsto: soma dos agendamentos do período ainda não concluídos.
+  const totalPrevisto = upcomingAppts.reduce((s, a) => s + (a.service_price_snapshot ?? 0), 0)
 
   const todayTransactions = transactions.filter(t => t.due_date === today)
   const todayEntradas = todayTransactions.filter(t => t.type === 'IN'  && t.status === 'PAID').reduce((s, t) => s + t.amount, 0)
@@ -5481,15 +5531,8 @@ function TabFinanceiro({
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date))
   }, [transactions])
 
-  const handleLoadUpcoming = async () => {
-    if (showUpcoming) { setShowUpcoming(false); return }
-    setShowUpcoming(true)
-    setUpcomingLoading(true)
-    const endOfMonth = today.slice(0, 8) + String(new Date(parseInt(today.slice(0,4)), parseInt(today.slice(5,7)), 0).getDate()).padStart(2,'0')
-    const { appointments } = await listUpcomingRevenue(today, endOfMonth)
-    setUpcomingAppts(appointments)
-    setUpcomingLoading(false)
-  }
+  // A lista já vem carregada com o período; o botão só abre/fecha os detalhes.
+  const handleLoadUpcoming = () => setShowUpcoming(v => !v)
 
   const handleLoadDebt = async () => {
     if (showDebt) { setShowDebt(false); return }
@@ -5657,6 +5700,25 @@ function TabFinanceiro({
         </p>
       </div>
 
+      {/* ── Previsto do período (agendado, ainda não concluído) ───── */}
+      {totalPrevisto > 0 && (
+        <div className="bg-sky-500/[0.06] border border-sky-500/20 rounded-xl p-4 flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-sky-600">Previsto no Período</span>
+            <p className="text-lg font-semibold tabular-nums text-sky-400 leading-tight">{brl(totalPrevisto)}</p>
+            <span className="text-[10px] text-zinc-600">
+              {upcomingAppts.length} agendamento{upcomingAppts.length !== 1 ? 's' : ''} ainda sem conclusão
+            </span>
+          </div>
+          <div className="flex flex-col items-end gap-0.5 shrink-0">
+            <span className="text-[9px] uppercase tracking-wider text-zinc-600">Recebido + previsto</span>
+            <span className="text-base font-semibold tabular-nums text-white leading-tight">
+              {brl(totalEntradas + totalPrevisto)}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* ── Cards Entradas / Saídas ───────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         {/* Entradas */}
@@ -5700,16 +5762,19 @@ function TabFinanceiro({
         >
           <div className="flex items-center gap-2.5">
             <div className="w-1.5 h-1.5 rounded-full shrink-0 bg-sky-500" />
-            <span className="text-sm text-zinc-300">Receita Prevista do Mês</span>
+            <span className="text-sm text-zinc-300">Receita Prevista do Período</span>
           </div>
-          <span className="text-[10px] text-zinc-600 uppercase tracking-wider">{showUpcoming ? 'Fechar' : 'Ver'}</span>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <span className="text-xs font-semibold tabular-nums text-sky-400">{brl(totalPrevisto)}</span>
+            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">{showUpcoming ? 'Fechar' : 'Ver'}</span>
+          </div>
         </button>
         {showUpcoming && (
           <div className="border-t border-[#262626]">
             {upcomingLoading ? (
               <div className="px-4 py-6 text-center text-xs text-zinc-600">Carregando…</div>
             ) : upcomingAppts.length === 0 ? (
-              <div className="px-4 py-6 text-center text-xs text-zinc-600">Nenhum agendamento futuro com pagamento pendente.</div>
+              <div className="px-4 py-6 text-center text-xs text-zinc-600">Nenhum agendamento pendente de conclusão neste período.</div>
             ) : (
               <div className="flex flex-col">
                 {/* Resumo */}

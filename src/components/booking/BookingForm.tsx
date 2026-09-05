@@ -45,7 +45,7 @@ const SERVICE_ICON_PATHS: Record<string, string> = {
 
 interface Props {
   services: Service[]
-  barber: Barber | null
+  barbers: Barber[]
   workingHours: WorkingHours[]
   specialSchedules: SpecialSchedule[]
   config: BusinessConfig | null
@@ -95,7 +95,7 @@ function CalendarMonthCaption({ calendarMonth }: { calendarMonth: CalendarMonth 
 
 export function BookingForm({
   services,
-  barber,
+  barbers,
   workingHours,
   specialSchedules,
   config,
@@ -110,6 +110,18 @@ export function BookingForm({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // ── Multi-barbeiro ────────────────────────────────────────────────────────
+  // Com apenas 1 barbeiro ativo (caso da Leste hoje), ele é escolhido
+  // automaticamente e nada muda para o cliente. Com 2 ou mais, aparece a
+  // etapa de escolha. Todo o resto do formulário continua usando `barber`.
+  const needsBarberChoice = barbers.length > 1
+  const [selectedBarberId, setSelectedBarberId] = useState<string | null>(null)
+  // Com 1 barbeiro usamos sempre barbers[0] (comportamento idêntico ao antigo,
+  // inclusive se o barbeiro for trocado no painel durante a sessão).
+  const barber = needsBarberChoice
+    ? (barbers.find(b => b.id === selectedBarberId) ?? null)
+    : (barbers[0] ?? null)
 
   // Refs de scroll para navegação automática entre etapas
   const barberSectionRef = useRef<HTMLElement>(null)
@@ -335,7 +347,7 @@ export function BookingForm({
   const refetchCurrentSlots = useCallback(async () => {
     if (!selectedDate || !selectedService) return
     const dateStr = format(selectedDate, 'yyyy-MM-dd')
-    const { slots, error } = await getAvailableSlots(dateStr, selectedService.id)
+    const { slots, error } = await getAvailableSlots(dateStr, selectedService.id, barber?.id ?? null)
     if (error) {
       setAvailableSlots([])
       setSelectedTime(null)
@@ -480,15 +492,28 @@ export function BookingForm({
   useEffect(() => {
     const currentBarberId = barber?.id ?? null
     const previousBarberId = prevBarberIdRef.current
+    prevBarberIdRef.current = currentBarberId
+
+    // Multi-barbeiro: trocar de barbeiro é uma ação do próprio cliente, não uma
+    // mudança de disponibilidade — o aviso abaixo só cabe no modo 1 barbeiro.
+    if (needsBarberChoice) {
+      // O barbeiro escolhido saiu da lista (desativado no painel enquanto o
+      // cliente estava na tela): volta para a etapa de escolha.
+      if (previousBarberId && !currentBarberId && selectedBarberId) {
+        setSelectedBarberId(null)
+        resetScheduleSelection({ clearDate: true })
+        toast.error('O barbeiro escolhido nao esta mais disponivel. Escolha outro.')
+      }
+      return
+    }
+
     const barberChangeMessage = getBarberAvailabilityChangeMessage(previousBarberId, currentBarberId)
 
     if (barberChangeMessage) {
       resetScheduleSelection({ clearDate: true })
       toast.error(barberChangeMessage)
     }
-
-    prevBarberIdRef.current = currentBarberId
-  }, [barber?.id, resetScheduleSelection])
+  }, [barber?.id, needsBarberChoice, selectedBarberId, resetScheduleSelection])
 
   useEffect(() => {
     const availabilityKey = buildAvailabilitySyncKey({
@@ -532,7 +557,7 @@ export function BookingForm({
       if (qday) { setQueueDay(qday); return }
 
       setLoadingSlots(true)
-      const { slots, error } = await getAvailableSlots(dateStr, selectedService.id)
+      const { slots, error } = await getAvailableSlots(dateStr, selectedService.id, barber?.id ?? null)
       setLoadingSlots(false)
 
       // Descarta resultado se o usuário já iniciou outro fetch (trocou serviço ou data)
@@ -1274,10 +1299,66 @@ const handleConfirm = async () => {
               </div>
               
               <h2 className="text-xs tracking-[0.2em] font-extrabold uppercase text-white mb-4 text-center">
-                BARBEIRO SELECIONADO
+                {needsBarberChoice ? 'ESCOLHA O BARBEIRO' : 'BARBEIRO SELECIONADO'}
               </h2>
-              
-              <div className="w-full flex justify-center">
+
+              {/* 2+ barbeiros: cliente escolhe. Cada barbeiro tem a própria
+                  agenda, então trocar limpa a data/horário já selecionados. */}
+              {needsBarberChoice && (
+                <div className="grid grid-cols-2 gap-2.5 w-full max-w-[340px] mx-auto">
+                  {barbers.map((b) => {
+                    const isSelected = b.id === selectedBarberId
+                    const name = b.nickname?.trim() || b.name
+                    return (
+                      <button
+                        key={b.id}
+                        onClick={() => {
+                          if (b.id === selectedBarberId) return
+                          setSelectedBarberId(b.id)
+                          setSelectedDate(undefined)
+                          setSelectedTime(null)
+                          setAvailableSlots([])
+                          setQueueDay(null)
+                          scrollToRef(calendarSectionRef)
+                        }}
+                        className={[
+                          'flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all',
+                          isSelected
+                            ? 'bg-[#141418] border-primary/60 ring-1 ring-primary/30 shadow-[0_8px_24px_rgba(0,0,0,0.6)]'
+                            : 'bg-[#141418] border-white/10 hover:border-white/25',
+                        ].join(' ')}
+                      >
+                        <div className="relative">
+                          <Image
+                            src={b.photo_url ?? config?.barber_photo_url ?? '/barbearialeste.png'}
+                            alt={name}
+                            width={56}
+                            height={56}
+                            className={[
+                              'w-14 h-14 rounded-full object-cover border-2',
+                              isSelected ? 'border-primary' : 'border-white/15',
+                            ].join(' ')}
+                            unoptimized
+                          />
+                          {isSelected && (
+                            <div className="absolute -bottom-1 -right-1 bg-primary rounded-full p-1 border-2 border-[#141418]">
+                              <Check size={9} className="text-white" strokeWidth={4} />
+                            </div>
+                          )}
+                        </div>
+                        <span className={[
+                          'text-[11px] font-extrabold uppercase tracking-wide text-center leading-tight',
+                          isSelected ? 'text-white' : 'text-zinc-400',
+                        ].join(' ')}>
+                          {name}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              <div className={needsBarberChoice ? 'hidden' : 'w-full flex justify-center'}>
                 <div className="flex items-center gap-4 bg-[#141418] py-3.5 px-5 rounded-2xl border border-primary/40 shadow-[0_8px_24px_rgba(0,0,0,0.6)] ring-1 ring-primary/20 w-fit cursor-default">
                   <div className="relative">
                     <div className="absolute inset-0 rounded-full bg-primary/30 blur-md"></div>
@@ -1310,8 +1391,9 @@ const handleConfirm = async () => {
             </section>
           )}
 
-          {/* Secao 3: Data */}
-          {selectedService && (
+          {/* Secao 3: Data — com 2+ barbeiros, só aparece depois da escolha,
+              porque a agenda disponível depende de qual barbeiro foi escolhido. */}
+          {selectedService && barber && (
             <section ref={calendarSectionRef} className="mt-1 animate-in fade-in slide-in-from-bottom-4 duration-500">
                <div className="flex items-center gap-4 w-full mb-6 max-w-[250px] mx-auto opacity-40">
                  <div className="h-[1px] flex-1 bg-white/20"></div>
