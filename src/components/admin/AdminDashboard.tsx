@@ -250,7 +250,13 @@ export function AdminDashboard({
   const [pauseMessage, setPauseMessage] = useState(config.pause_message || '')
   const [pauseReturnTime, setPauseReturnTime] = useState(() => {
     if (!config.pause_return_time) return ''
-    try { return new Date(config.pause_return_time).toTimeString().slice(0, 5) } catch { return '' }
+    // Mesmo motivo do todayStr: toTimeString() usa o fuso de quem executa, então
+    // o servidor (UTC) mostrava 3 horas a mais que o celular do barbeiro.
+    try {
+      return new Date(config.pause_return_time).toLocaleTimeString('pt-BR', {
+        timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false,
+      })
+    } catch { return '' }
   })
 
   // Upload de logo direto do header
@@ -719,13 +725,14 @@ function TabHoje({
   refundedApptIds?: Set<string>
   onStandaloneUpdated?: (id: string, newStatus: 'reservado' | 'retirado' | 'cancelado' | 'deleted') => void
 }) {
-  const getLocalTodayStr = () => {
-    const d = new Date()
-    const year = d.getFullYear()
-    const month = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  }
+  // A data DEVE ser fixada em America/Sao_Paulo, nunca no fuso de quem executa.
+  // Sem isso o servidor (Vercel roda em UTC) e o celular do barbeiro (BRT, UTC-3)
+  // discordam entre 21h e meia-noite: o servidor já virou o dia e renderiza a
+  // agenda de amanhã, o celular renderiza a de hoje. Isso produzia o erro de
+  // hidratação #418 do React e fazia o painel abrir no dia errado à noite.
+  // 'sv' é o truque padrão para obter YYYY-MM-DD (mesmo idioma usado no financeiro).
+  const getLocalTodayStr = () =>
+    new Date().toLocaleDateString('sv', { timeZone: 'America/Sao_Paulo' })
   const todayStr = getLocalTodayStr()
   const [loading, setLoading] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
@@ -1150,7 +1157,11 @@ function TabHoje({
         .filter(a => !newApptBarberId || a.barber_id === newApptBarberId)
         .map(a => (a.start_time ?? '').slice(0, 5))
     )
-    const nowHM = new Date().toTimeString().slice(0, 5)
+    // Fixado em São Paulo pelo mesmo motivo do todayStr: comparar um horário de
+    // Brasília com o relógio local de quem executa daria diferença de fuso.
+    const nowHM = new Date().toLocaleTimeString('pt-BR', {
+      timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false,
+    })
     const isToday = selectedDay === todayStr
     return newApptSlots.filter(t => {
       const hm = t.slice(0, 5)
