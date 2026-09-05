@@ -125,3 +125,70 @@ export const GUEST_IDS_COOKIE_OPTIONS = {
   path: '/',
   maxAge: 60 * 60 * 24 * 180,
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// IDENTIFICADOR DO APARELHO (para a trilha de auditoria).
+//
+// Sem login, a trilha so conseguia dizer "convidado" — o que nao identifica
+// ninguem. Este id e um numero aleatorio, gerado no primeiro agendamento e
+// assinado, que acompanha o aparelho. Ele NAO da acesso a nada: quem manda na
+// posse continua sendo a lista assinada de IDs acima. Serve so para responder
+// "estes tres cancelamentos vieram do mesmo celular?".
+//
+// Nao contem dado pessoal: e um numero aleatorio, nao deriva do aparelho.
+// ────────────────────────────────────────────────────────────────────────────
+
+export const GUEST_DEVICE_COOKIE = 'guest_device'
+
+export async function serializeDeviceId(id: string): Promise<string> {
+  const key = signingKey()
+  if (!key || !UUID_RE.test(id)) return ''
+  return `${id}.${await sign(id, key)}`
+}
+
+/** Devolve o id do aparelho, ou null se ausente/adulterado. */
+export async function parseDeviceId(raw: string | undefined | null): Promise<string | null> {
+  if (!raw) return null
+  const key = signingKey()
+  if (!key) return null
+  const corte = raw.lastIndexOf('.')
+  if (corte <= 0) return null
+  const id = raw.slice(0, corte)
+  if (!UUID_RE.test(id)) return null
+  if (!safeEqual(raw.slice(corte + 1), await sign(id, key))) return null
+  return id
+}
+
+export function newDeviceId(): string {
+  return crypto.randomUUID()
+}
+
+/** Lê o cabeçalho do navegador e devolve algo legível: "iPhone · Safari". */
+export function describeDevice(userAgent: string | null | undefined): string | null {
+  if (!userAgent) return null
+  const ua = userAgent
+  const aparelho =
+    /iPhone/i.test(ua) ? 'iPhone' :
+    /iPad/i.test(ua) ? 'iPad' :
+    /Android/i.test(ua) ? 'Android' :
+    /Macintosh/i.test(ua) ? 'Mac' :
+    /Windows/i.test(ua) ? 'Windows' :
+    /Linux/i.test(ua) ? 'Linux' : 'desconhecido'
+  // A ordem importa: Chrome e Edge tambem dizem "Safari" no proprio cabecalho.
+  const navegador =
+    /Edg\//i.test(ua) ? 'Edge' :
+    /OPR\/|Opera/i.test(ua) ? 'Opera' :
+    /SamsungBrowser/i.test(ua) ? 'Samsung Internet' :
+    /CriOS|Chrome/i.test(ua) ? 'Chrome' :
+    /FxiOS|Firefox/i.test(ua) ? 'Firefox' :
+    /Safari/i.test(ua) ? 'Safari' : 'desconhecido'
+  return `${aparelho} · ${navegador}`
+}
+
+export const GUEST_DEVICE_COOKIE_OPTIONS = {
+  httpOnly: true as const,
+  sameSite: 'lax' as const,
+  secure: process.env.NODE_ENV === 'production',
+  path: '/',
+  maxAge: 60 * 60 * 24 * 365,
+}

@@ -2760,6 +2760,9 @@ export interface AuditEntry {
   summary: string | null
   details: Record<string, unknown> | null
   ip: string | null
+  /** Identifica o navegador de origem mesmo sem login. Ver guest-ownership.ts */
+  device_id: string | null
+  device_desc: string | null
 }
 
 /** Histórico de um agendamento específico (mais recente primeiro). */
@@ -2770,7 +2773,7 @@ export async function listAppointmentHistory(
     await requireAdmin()
     const { data, error } = await createAdminClient()
       .from('audit_log')
-      .select('id, created_at, actor_type, actor_label, action, entity_id, summary, details, ip')
+      .select('id, created_at, actor_type, actor_label, action, entity_id, summary, details, ip, device_id, device_desc')
       .eq('entity_id', appointmentId)
       .order('created_at', { ascending: false })
       .limit(100)
@@ -2791,7 +2794,7 @@ export async function listAuditLog(filters?: {
     await requireAdmin()
     let q = createAdminClient()
       .from('audit_log')
-      .select('id, created_at, actor_type, actor_label, action, entity_id, summary, details, ip')
+      .select('id, created_at, actor_type, actor_label, action, entity_id, summary, details, ip, device_id, device_desc')
       .order('created_at', { ascending: false })
       .limit(Math.min(filters?.limit ?? 200, 500))
     if (filters?.action) q = q.eq('action', filters.action)

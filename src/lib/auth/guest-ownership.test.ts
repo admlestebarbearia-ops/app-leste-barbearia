@@ -6,6 +6,7 @@ process.env.GUEST_COOKIE_SECRET = 'segredo-de-teste-nao-usado-em-producao'
 
 import {
   serializeGuestIds, parseGuestIds, appendGuestId, buildOwnershipFilter,
+  serializeDeviceId, parseDeviceId, newDeviceId, describeDevice,
 } from './guest-ownership'
 
 const A = '11111111-1111-4111-8111-111111111111'
@@ -84,5 +85,49 @@ describe('filtro de posse', () => {
   test('telefone NAO confere mais posse', async () => {
     const f = buildOwnershipFilter(null, [A]) ?? ''
     assert.ok(!f.includes('client_phone'))
+  })
+})
+
+describe('identificador do aparelho', () => {
+  const D = '33333333-3333-4333-8333-333333333333'
+
+  test('ida e volta preserva o id', async () => {
+    assert.equal(await parseDeviceId(await serializeDeviceId(D)), D)
+  })
+
+  test('id adulterado é rejeitado', async () => {
+    const bom = await serializeDeviceId(D)
+    const outro = '44444444-4444-4444-8444-444444444444'
+    assert.equal(await parseDeviceId(bom.replace(D, outro)), null)
+  })
+
+  test('sem assinatura é rejeitado', async () => {
+    assert.equal(await parseDeviceId(D), null)
+  })
+
+  test('lixo não derruba nada', async () => {
+    for (const v of ['', null, undefined, '.', 'abc']) {
+      assert.equal(await parseDeviceId(v as string), null)
+    }
+  })
+
+  test('newDeviceId gera UUID válido e diferente a cada vez', () => {
+    const a = newDeviceId()
+    const b = newDeviceId()
+    assert.notEqual(a, b)
+    assert.match(a, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+  })
+
+  test('descreve o aparelho a partir do navegador', () => {
+    assert.equal(
+      describeDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 15_8 like Mac OS X) AppleWebKit/605.1.15 Version/15.6 Mobile Safari/604.1'),
+      'iPhone · Safari'
+    )
+    // Chrome no Android tambem diz "Safari" no cabecalho — a ordem do teste importa
+    assert.equal(
+      describeDevice('Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36'),
+      'Android · Chrome'
+    )
+    assert.equal(describeDevice(null), null)
   })
 })

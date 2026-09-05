@@ -2246,6 +2246,18 @@ function TabHoje({
                       {h.actor_label && (
                         <span className="text-[10px] text-zinc-500 truncate">{h.actor_label}</span>
                       )}
+                      {/* Identifica a origem mesmo sem login: os 8 primeiros
+                          caracteres bastam para comparar duas ações e ver se
+                          saíram do mesmo celular. */}
+                      {(h.device_desc || h.device_id) && (
+                        <span className="text-[10px] text-zinc-600 truncate">
+                          {h.device_desc ?? 'aparelho'}
+                          {h.device_id && (
+                            <span className="text-zinc-700"> · {h.device_id.slice(0, 8)}</span>
+                          )}
+                          {h.ip && <span className="text-zinc-700"> · {h.ip}</span>}
+                        </span>
+                      )}
                       <span className="text-[10px] text-zinc-600 tabular-nums">
                         {new Date(h.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
                       </span>

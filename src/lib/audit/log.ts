@@ -1,5 +1,13 @@
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  GUEST_DEVICE_COOKIE,
+  GUEST_DEVICE_COOKIE_OPTIONS,
+  describeDevice,
+  newDeviceId,
+  parseDeviceId,
+  serializeDeviceId,
+} from '@/lib/auth/guest-ownership'
 
 // ────────────────────────────────────────────────────────────────────────────
 // Trilha de auditoria.
@@ -43,18 +51,50 @@ export interface AuditInput {
   details?: Record<string, unknown> | null
 }
 
-/** Lê IP e navegador do request atual. Nunca lança. */
-async function readRequestContext(): Promise<{ ip: string | null; userAgent: string | null }> {
+/** Lê IP, navegador e id do aparelho. Nunca lança. */
+async function readRequestContext(): Promise<{
+  ip: string | null
+  userAgent: string | null
+  deviceId: string | null
+  deviceDesc: string | null
+}> {
+  let ip: string | null = null
+  let userAgent: string | null = null
   try {
     const h = await headers()
     // A Vercel entrega a cadeia de proxies; o primeiro item é o cliente real.
     const forwarded = h.get('x-forwarded-for')
-    const ip = forwarded?.split(',')[0]?.trim() || h.get('x-real-ip') || null
-    const userAgent = h.get('user-agent')
-    return { ip, userAgent: userAgent ? userAgent.slice(0, 400) : null }
+    ip = forwarded?.split(',')[0]?.trim() || h.get('x-real-ip') || null
+    const ua = h.get('user-agent')
+    userAgent = ua ? ua.slice(0, 400) : null
   } catch {
     // Fora de um request (cron, webhook, script) não há cabeçalhos.
-    return { ip: null, userAgent: null }
+  }
+
+  // Lê o id do aparelho e cria na primeira vez. Fora de Server Action o Next
+  // recusa gravar cookie — aí seguimos sem id, nunca quebrando a operação.
+  const deviceId = await ensureGuestDevice()
+
+  return { ip, userAgent, deviceId, deviceDesc: describeDevice(userAgent) }
+}
+
+/**
+ * Garante que este navegador tenha um id de aparelho, criando na primeira vez.
+ * Só funciona dentro de Server Action (onde dá para gravar cookie) — em render
+ * de página o Next recusa, e aí seguimos sem id em vez de quebrar a tela.
+ */
+export async function ensureGuestDevice(): Promise<string | null> {
+  try {
+    const jar = await cookies()
+    const atual = await parseDeviceId(jar.get(GUEST_DEVICE_COOKIE)?.value)
+    if (atual) return atual
+    const novo = newDeviceId()
+    const assinado = await serializeDeviceId(novo)
+    if (!assinado) return null
+    jar.set(GUEST_DEVICE_COOKIE, assinado, GUEST_DEVICE_COOKIE_OPTIONS)
+    return novo
+  } catch {
+    return null
   }
 }
 
@@ -64,7 +104,7 @@ async function readRequestContext(): Promise<{ ip: string | null; userAgent: str
  */
 export async function recordAudit(input: AuditInput): Promise<void> {
   try {
-    const { ip, userAgent } = await readRequestContext()
+    const { ip, userAgent, deviceId, deviceDesc } = await readRequestContext()
     const admin = createAdminClient()
     await admin.from('audit_log').insert({
       actor_type: input.actor.type,
@@ -77,6 +117,8 @@ export async function recordAudit(input: AuditInput): Promise<void> {
       details: input.details ?? null,
       ip,
       user_agent: userAgent,
+      device_id: deviceId,
+      device_desc: deviceDesc,
     })
   } catch {
     // Silêncio proposital: a trilha é para investigação, não para o fluxo.
