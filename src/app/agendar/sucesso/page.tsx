@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Image from 'next/image'
+import { Banknote } from 'lucide-react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { ProductVitrine } from './ProductVitrine'
@@ -91,11 +92,13 @@ export default async function SucessoPage({ searchParams }: Props) {
           </p>
         </div>
 
+        <ConviteAcesso isGuest={isGuest} />
+
         {/* Aviso de pagamento em dinheiro */}
         {isCashPayment && service && (
           <div className="w-full overflow-hidden rounded-2xl border-2 border-amber-500/60 bg-amber-500/10">
             <div className="flex items-center gap-2.5 bg-amber-500/20 px-4 py-3 border-b border-amber-500/30">
-              <span className="text-xl">💵</span>
+              <Banknote size={18} className="text-amber-300 shrink-0" />
               <p className="text-sm font-black text-amber-300 uppercase tracking-[0.1em]">Pagamento na barbearia</p>
             </div>
             <div className="px-4 py-4 flex flex-col gap-1.5">
@@ -132,7 +135,7 @@ export default async function SucessoPage({ searchParams }: Props) {
           <div className="h-px bg-border" />
           <div className="flex justify-between items-start">
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Valor</span>
-            <span className="text-sm font-semibold text-primary">
+            <span className="text-sm font-bold text-foreground">
               R$ {service?.price.toFixed(2).replace('.', ',')}
             </span>
           </div>
@@ -143,8 +146,6 @@ export default async function SucessoPage({ searchParams }: Props) {
           label="Ver minhas reservas"
           className="w-full h-12 flex items-center justify-center rounded-xl bg-primary text-primary-foreground text-sm font-bold tracking-wide hover:bg-primary/90 transition-colors"
         />
-
-        <ConviteAcesso isGuest={isGuest} />
 
         {products.length > 0 && (
           <ProductVitrine

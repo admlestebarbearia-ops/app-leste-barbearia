@@ -228,3 +228,56 @@ button * {
   0% { transform: translateX(-110%); }
   55%, 100% { transform: translateX(220%); }
 }
+
+/* ── Correção de opacidade para Safari < 16.2 (iPhone 6s/7/7 Plus/SE 1ª ger.) ──
+   O Tailwind v4 escreve as cores translúcidas com color-mix(). Quando a cor vem
+   de uma variável de tema (--primary e cia.), ele NÃO consegue pré-calcular um
+   hex de fallback — e o que sobra para o navegador antigo é a COR CHEIA:
+
+     .bg-primary/10 { background-color: var(--primary) }            ← 100%, não 10%
+     @supports (color-mix…) { .bg-primary/10 { …10%, transparent } }
+
+   Resultado no iPhone 7: todo fundo translúcido virava um bloco de cor sólida.
+   Foi isso que transformou o círculo do "check" da tela de sucesso numa bolinha
+   azul chapada (o ícone é da mesma cor do fundo e sumia dentro dela).
+
+   Só entra em navegador SEM color-mix; os modernos não são tocados. Como está
+   fora de @layer, ganha das utilidades do Tailwind sem precisar de !important.
+   Gerado a partir do CSS compilado — reexecutar se a paleta mudar. */
+@supports not (color: color-mix(in lab, red, red)) {
+  .bg-background\/50{background-color:#16161680}
+  .bg-background\/90{background-color:#161616e6}
+  .bg-card\/50{background-color:#22222280}
+  .bg-card\/95{background-color:#222222f2}
+  .bg-destructive\/10{background-color:#df3b3d1a}
+  .bg-destructive\/15{background-color:#df3b3d26}
+  .bg-destructive\/20{background-color:#df3b3d33}
+  .bg-muted\/40{background-color:#29292966}
+  .bg-muted\/50{background-color:#29292980}
+  .bg-primary\/10{background-color:#0b41961a}
+  .bg-primary\/15{background-color:#0b419626}
+  .bg-primary\/20{background-color:#0b419633}
+  .bg-primary\/30{background-color:#0b41964d}
+  .bg-primary\/5{background-color:#0b41960d}
+  .border-border\/50{border-color:#2e2e2e80}
+  .border-border\/60{border-color:#2e2e2e99}
+  .border-destructive\/30{border-color:#df3b3d4d}
+  .border-primary-foreground\/30{border-color:#fafafa4d}
+  .border-primary\/20{border-color:#0b419633}
+  .border-primary\/25{border-color:#0b419640}
+  .border-primary\/30{border-color:#0b41964d}
+  .border-primary\/40{border-color:#0b419666}
+  .border-primary\/50{border-color:#0b419680}
+  .border-primary\/60{border-color:#0b419699}
+  .ring-foreground\/10{--tw-ring-color:#f8f8f81a}
+  .ring-primary\/20{--tw-ring-color:#0b419633}
+  .ring-primary\/30{--tw-ring-color:#0b41964d}
+  .ring-primary\/40{--tw-ring-color:#0b419666}
+  .text-destructive\/70{color:#df3b3db3}
+  .text-foreground\/80{color:#f8f8f8cc}
+  .text-muted-foreground\/30{color:#9e9e9e4d}
+  .text-muted-foreground\/40{color:#9e9e9e66}
+  .text-muted-foreground\/60{color:#9e9e9e99}
+  .text-muted-foreground\/70{color:#9e9e9eb3}
+  .text-primary\/70{color:#0b4196b3}
+}
