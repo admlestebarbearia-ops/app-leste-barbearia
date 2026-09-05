@@ -3,8 +3,10 @@
 /**
  * GlobalPushModal — modal indutivo de ativação de push/PWA.
  *
- * Exibido globalmente em qualquer rota de cliente (exceto /admin e /agendar/sucesso,
- * que já tem seu próprio modal agressivo pós-agendamento).
+ * Exibido globalmente em qualquer rota de cliente, exceto /admin e
+ * /agendar/sucesso — nessa última o PushGateButton já pede a permissão dentro
+ * do gesto do clique (taxa de aceite bem maior) e o ConviteAcesso cobre o
+ * iPhone sem o app instalado. Dois pedidos na mesma tela só cansariam.
  *
  * Regras de exibição:
  *   - Notification.permission === 'default' (não decidido ainda)
@@ -24,7 +26,7 @@ const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
 const DISMISSED_KEY = 'push_prompt_dismissed_v1'
 const DISMISS_DAYS = 3
 
-// Rotas que já têm seu próprio modal de push — evitar duplicata
+// Rotas que já pedem push do seu próprio jeito — evitar pedido duplicado
 const SKIP_PATHS = ['/agendar/sucesso']
 const SKIP_PREFIXES = ['/admin']
 

@@ -6,8 +6,9 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { ProductVitrine } from './ProductVitrine'
 import { getActiveProducts } from '@/app/agendar/actions'
-import { GUEST_BOOKING_PHONE_COOKIE, normalizePhoneLookup } from '@/lib/auth/session-state'
+import { GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
 import { PushGateButton } from './PushGateButton'
+import { ConviteAcesso } from './ConviteAcesso'
 import type { BusinessConfig } from '@/lib/supabase/types'
 
 interface Props {
@@ -45,6 +46,10 @@ export default async function SucessoPage({ searchParams }: Props) {
   const guestPhone = normalizePhoneLookup(
     cookieStore.get(GUEST_BOOKING_PHONE_COOKIE)?.value
   )
+
+  // Visitante = sem conta Google. A reserva dele vive so no aparelho que a criou.
+  const { data: { user } } = await supabase.auth.getUser()
+  const isGuest = !isAuthenticatedUser(user)
 
   const typedConfig = config as Pick<
     BusinessConfig,
@@ -138,6 +143,8 @@ export default async function SucessoPage({ searchParams }: Props) {
           label="Ver minhas reservas"
           className="w-full h-12 flex items-center justify-center rounded-xl bg-primary text-primary-foreground text-sm font-bold tracking-wide hover:bg-primary/90 transition-colors"
         />
+
+        <ConviteAcesso isGuest={isGuest} />
 
         {products.length > 0 && (
           <ProductVitrine
