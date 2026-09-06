@@ -4,6 +4,11 @@
 > que continua **em aberto** nas sessões de planejamento.
 > Cada decisão traz a data e o **porquê** — porque daqui a três meses o motivo
 > vale mais que a decisão.
+>
+> **Fase atual: REFINAMENTO.** Isto NÃO é o plano final. São reuniões de
+> refinamento — mudanças de ideia são bem-vindas agora, de propósito, para
+> não termos que mudar no meio do desenvolvimento. O plano final só é escrito
+> quando o dono disser "pode escrever o plano completo".
 
 Última atualização: **06/09/2026**
 
@@ -38,15 +43,46 @@ parte da cobrança do SaaS.
 R$ 37,90 sem, R$ 67,90 com. É exatamente a estrutura que o Nilson tinha
 imaginado antes da pesquisa (R$ 49 depois R$ 80 com WhatsApp).
 
-### Tamanho do concorrente
+### Tamanho do concorrente — e por que o número não importa
 
-O site do Agendei Fácil declara **"centenas de estabelecimentos"** e "milhares de
-agendamentos por mês". A ~R$ 50 médio, isso dá ~R$ 15 mil/mês. Não é verificável
-publicamente. Sinal indireto: a URL pública `/booking/4353` sugere identificadores
-sequenciais na casa dos 4 mil **emitidos** — compatível com centenas ativos
-depois do churn.
+A home do Agendei Fácil declara **"Centenas de estabelecimentos"** e "Milhares de
+agendamentos por mês" (verificado no HTML: a palavra "Centenas" aparece 2x; a
+string "3 mil" / "3000" **não existe** na home nem na página de cadastro —
+06/09). O dono relatou ter visto "mais de 3 mil clientes" em algum lugar; a
+conferir onde (app? Instagram?).
 
-**Conclusão:** a barra é alcançável. O líder do bairro é um negócio pequeno.
+**A lição estratégica vale mais que o número:** claim de marketing é
+**inverificável e inflável**. Qualquer um coloca "+3000 clientes" no próprio
+site — nós inclusive. Portanto:
+1. Não basear nenhuma decisão nesse número.
+2. Nós também podemos exibir prova social (com honestidade — ex.: agendamentos
+   reais processados, que é auditável no nosso banco).
+3. Tentar "verificar" contando o banco do concorrente foi barrado, e com razão —
+   não se sonda infraestrutura de terceiro. Fica a regra.
+
+**Conclusão que importa:** um negócio de agendamento para barbearia de bairro é
+sustentável em escala pequena. A barra é alcançável.
+
+### Achado técnico: o concorrente usa a MESMA stack que nós
+
+Inspecionando as requisições de rede do Agendei Fácil (06/09): eles rodam
+**Supabase + PostgREST** (`/rest/v1/...`) e **Netlify Functions** para o Mercado
+Pago (`/.netlify/functions/mercadopago-reconcile-pending-appointments`). Tabelas
+observadas: `establishments`, `service_categories`, `service_subcategories`,
+`subscriptions`, `establishment_reviews`, `establishment_products`,
+`appointments` (com `status=pending_payment`, `payment_transaction_id`).
+
+**O que isso nos diz:**
+- Nossa escolha de stack (Next + Supabase + Mercado Pago) é a mesma de um
+  concorrente que já fatura. Não estamos em caminho exótico.
+- O modelo de dados deles confirma o nosso inventário: eles têm `subscriptions`
+  (clube de assinatura), `establishment_products` (estoque), reviews. Valida as
+  prioridades da seção 3.
+- **Alerta de segurança que herdamos como lição:** o PostgREST deles expõe
+  `/rest/v1/` publicamente. Se o RLS não estiver rígido, dá para ler dados de
+  outros estabelecimentos. No nosso multi-tenant, RLS por `establishment_id` é
+  inegociável desde o dia 1 (o dono já havia exigido "segurança nível NASA" para
+  isolar tenants). Ver seção 9.
 
 ### Como a Barbearia Corleone opera
 
@@ -65,6 +101,12 @@ navegável na prática, publicando sob a conta da plataforma.
 Tudo que a Leste já tem entra. O que a pesquisa mostrou que **falta**:
 
 ### Prioridade alta
+- [ ] **Painel do OPERADOR (nós, donos do SaaS).** Distinto do painel do
+      barbeiro. É de onde NÓS gerenciamos o negócio: quais barbearias estão
+      ativas/inadimplentes, receita total (MRR), quem está em teste, quem
+      cancelou e por quê, criar/suspender uma barbearia, ver a saúde do sistema.
+      Sem isto não há como operar nem cobrar. **Nunca foi citado até 06/09 —
+      lacuna do próprio planejamento.**
 - [ ] **Clube de assinatura.** Cliente paga valor fixo mensal no cartão e tem
       direito a X serviços. **Todos** os concorrentes têm. Transforma renda
       imprevisível em faturamento garantido no dia 1º. É o argumento de venda
@@ -189,9 +231,30 @@ centralizado.
 
 ---
 
-## 8. Qualidade e manutenção
+## 8. Qualidade e manutenção — e o objetivo de APRENDIZADO
 
-Exigências do dono, que é QA e quer usar o projeto como validação profissional:
+**Reframe importante (06/09):** o dono é QA (formado, mas parado, sem prática
+recente e com conteúdo enferrujado). O objetivo dele com esta esteira **não é só
+ter CI/CD no produto — é APRENDER de verdade** a lógica e a teoria por trás, para
+poder explicar numa entrevista.
+
+Consequência direta no meu papel:
+- **Os 191 testes atuais foram gerados por IA.** O dono é honesto: não os
+  escreveu, não pode reivindicá-los como experiência sem entender a lógica. Isso
+  é intelectualmente correto e deve ser respeitado — nada de inflar currículo.
+- **Portanto não basta eu construir. Preciso ENSINAR enquanto construímos.**
+  Cada ferramenta nova (Playwright, GitHub Actions, etc.) entra com: o que é, por
+  que existe, a teoria por trás, e como explicar numa entrevista. Ritmo de quem
+  aprende, não de quem só entrega.
+- **Não começar CI/CD agora** (decisão do dono): não há produto novo ainda. CI
+  sem produto é vazio. A ordem é: primeiro o esqueleto do produto, depois a
+  esteira — e a esteira construída como material de estudo, passo a passo.
+- Caminho de aprendizado a montar (rascunho): teoria de testes (pirâmide:
+  unitário → integração → e2e) → ler e ENTENDER os testes que já existem →
+  reescrever alguns à mão → Playwright do zero com explicação → GitHub Actions →
+  versionamento. Um assunto por vez, com o "porquê" antes do "como".
+
+### Exigências de engenharia para o produto:
 
 - [ ] **Esteira de testes automatizados** (a Leste já tem 191 testes em `node:test`)
 - [ ] **CI/CD** — rodar build e testes a cada push, bloquear merge que quebra
@@ -236,5 +299,11 @@ barbearia nº 2 a partir do repositório, e o repositório não reconstrói o ba
 - [ ] Preço final
 - [ ] Provedor de VPS para o WhatsApp
 - [ ] Ferramenta de CI/CD
-- [ ] Vale a pena estudar engenharia de dados? (pergunta de 06/09)
+- [ ] Vale a pena estudar engenharia de dados? (pergunta de 06/09 — resposta
+      preliminar: não agora, foco na trilha de QA + produto; a própria trilha de
+      auditoria já vira base de análise de dados depois)
 - [ ] Redesenho da tela de checkout — o incômodo é **aparência**, não função
+- [ ] Onde o dono viu "+3 mil clientes" do Agendei Fácil (home só diz "Centenas")
+- [ ] Montar o caminho de estudo de QA em detalhe (ver seção 8)
+- [ ] Verificar se este doc cobre TUDO discutido desde o início do projeto, não
+      só a partir de 06/09 (pedido do dono)
