@@ -217,6 +217,42 @@ centralizado.
 
 ---
 
+## 6.1. Veredito do negócio (06/09) — vale a pena?
+
+**Sim.** Com a meta ancorada no que muda a vida do dono, não no sonho:
+
+```
+R$  5.000/mês  =   63 barbearias
+R$ 10.000/mês  =  127 barbearias
+```
+
+**Cerca de cem clientes**, não três mil. O Brasil tem 500 mil+ barbearias e
+salões — 100 é **0,02% do mercado**. A escada é: 10 → 100 → 300.
+
+**O argumento decisivo (risco assimétrico):** o dono é QA buscando recolocação.
+
+- SaaS vende → renda recorrente.
+- SaaS **não** vende → sobra um sistema multi-tenant com esteira de testes,
+  CI/CD, segurança auditada e um incidente real investigado: **exatamente o
+  portfólio que destrava vaga de R$ 13–24k.**
+
+**Não existe cenário de perda total**, desde que ele construa *aprendendo* em vez
+de só gerar com IA. Por isso o investimento se justifica.
+
+### O que o concorrente erra (levantado pelo dono testando o Agendei Fácil)
+
+Lista de especificação — cada item é algo a fazer melhor:
+
+| Falha deles | Nossa resposta |
+|---|---|
+| **Produto cadastrado como serviço** (Pomada R$ 20 · "30 min") | Separar produto de serviço no modelo de dados |
+| Campo de telefone aceita `12 3 456789 10` | Já corrigido na Leste — validação com DDD (`src/lib/booking/phone.ts`) |
+| Galeria de 7 fotos que não carrega | Testar o que renderiza imagem |
+| Horário fantasma (domingo 18:30) | Nosso motor valida contra `working_hours` |
+| Fluxo de chat com muitos toques | Manter o fluxo direto da Leste |
+
+---
+
 ## 7. Infraestrutura e contas a criar
 
 - [ ] **Nome do negócio** — ainda não existe
@@ -253,6 +289,54 @@ Consequência direta no meu papel:
   unitário → integração → e2e) → ler e ENTENDER os testes que já existem →
   reescrever alguns à mão → Playwright do zero com explicação → GitHub Actions →
   versionamento. Um assunto por vez, com o "porquê" antes do "como".
+
+### TRILHA DE QA — estado atual
+
+> **RETOMAR AQUI.** Onde paramos em 06/09/2026.
+
+Objetivo do dono: **SDET** (Software Development Engineer in Test) — o QA que
+programa a esteira. R$ 13–24k CLT contra R$ 8–17k de QA Automation.
+
+**Ordem acordada:**
+1. ✅ **Sessão 1 — feita.** Destrinchamos `src/lib/scheduling/availability-engine.test.ts`
+   (o teste de `calculateAvailableSlots`, o cérebro da agenda). Três conceitos
+   entregues, todos a partir de código real:
+   - **Análise de valor limite** — o teste checa `slots.at(0)` e `slots.at(-1)`,
+     não os casos do meio. Bug mora na borda. Ex.: fecha 21:00, serviço de 30
+     min ⇒ último horário é 20:30.
+   - **Injeção de dependência para determinismo** — o motor recebe `now` de
+     fora em vez de chamar `new Date()`. É o que evita **teste flaky**. Ligado a
+     um erro real: eu reportei horários em UTC como se fossem BRT e o dono
+     pegou ("como? se agora são 12:40").
+   - **Test fixture / factory** — `makeWorkingHours({ ...overrides })` deixa
+     visível só o que cada caso tem de diferente.
+   - Frase de entrevista entregue: *"foco em valor limite em vez de casos do
+     meio, porque bug mora na borda; e injeto tempo como dependência em vez de
+     ler o relógio dentro do código, senão o teste vira flaky."*
+
+2. ⏳ **Exercício pendente — o dono ainda não respondeu:**
+   Mesma barbearia (09:00–21:00), mas serviço de **60 minutos**. Qual o último
+   horário oferecido? E por que esse teste protege justamente o problema real da
+   Leste (os 12 serviços cadastrados com 30 min)?
+   *(Resposta esperada: 20:00.)*
+
+3. ⬜ Reescrever alguns testes existentes à mão (para deixarem de ser só gerados)
+4. ⬜ **Playwright** na Leste — fluxo real: agendar sem login, cancelar, tentar
+      horário ocupado. É o que o mercado mais pede em vaga.
+5. ⬜ Teste de API (ele já fez sem saber: as consultas de perícia na produção)
+6. ⬜ CI/CD (GitHub Actions) — **só quando houver produto novo**; CI sem produto
+      é vazio (decisão do dono)
+7. ⬜ Docker — **raso de propósito**: subir banco de teste, ler um
+      `docker-compose.yml`, saber que o CI roda em container. 2 semanas, não 2 meses.
+
+**Também combinado:** ajudar a montar o LinkedIn e uma rotina de conteúdo. A
+estratégia não é postar "hoje aprendi Playwright" (ruído), e sim **os achados
+dele**: a falha de segurança, os 5 defeitos que encontrou no concorrente em 10
+minutos, o app que não abria no iPhone 7. Conteúdo de SDET, não de estudante.
+
+**Shift-left:** o dono já pratica sem nomear — furou a ideia do rodapé, achou a
+lacuna do painel do operador, questionou se as dores eram vendáveis. QA entrando
+no refinamento, antes do código existir. É argumento forte de entrevista.
 
 ### Exigências de engenharia para o produto:
 
