@@ -93,12 +93,27 @@ export async function processMercadoPagoWebhook(
         signatureInput.secret
       ))
 
-    signatureValidator({
+    // O retorno ERA IGNORADO: a validação HMAC rodava e o booleano era
+    // descartado, então notificação com assinatura inválida seguia adiante.
+    // Na prática a re-consulta do pagamento na API do MP (mais abaixo) evitava
+    // forjar um "aprovado", mas a primeira linha de defesa estava desligada.
+    const signatureIsValid = signatureValidator({
       xSignature: input.headers.xSignature,
       xRequestId: input.headers.xRequestId,
       dataId: dataId ?? paymentId,
       secret: webhookSecret,
     })
+
+    if (!signatureIsValid) {
+      // 401 (e não 200) de propósito: o Mercado Pago reenvia em não-2xx, então
+      // um problema transitório não perde a notificação legítima.
+      console.warn('[MP Webhook] assinatura invalida — notificacao rejeitada', {
+        temSignature: !!input.headers.xSignature,
+        temRequestId: !!input.headers.xRequestId,
+        paymentId,
+      })
+      return { status: 401, body: { error: 'Assinatura invalida.' } }
+    }
   }
 
   try {

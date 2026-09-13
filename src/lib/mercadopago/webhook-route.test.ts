@@ -248,3 +248,61 @@ describe('mercadopago webhook route logic', () => {
     ])
   })
 })
+// ─── Regressão de segurança (13/09/2026) ───────────────────────────────────
+// O resultado da validação HMAC era calculado e DESCARTADO: notificação com
+// assinatura inválida seguia adiante e alterava estado de pagamento.
+describe('webhook: assinatura invalida deve ser rejeitada', () => {
+  it('rejeita com 401 e NAO altera nada quando a assinatura e invalida', async () => {
+    const { deps, paymentIntentUpdates, appointmentUpdates } = createDeps({
+      validateSignature: () => false,
+    })
+
+    const result = await processMercadoPagoWebhook(
+      {
+        url: 'https://barbearia-leste.vercel.app/api/webhooks/mercadopago?type=payment&data.id=123',
+        headers: { xSignature: 'ts=1,v1=deadbeef', xRequestId: 'req-1' },
+        body: { type: 'payment', data: { id: '123' } },
+      },
+      deps
+    )
+
+    assert.equal(result.status, 401)
+    // O essencial: nenhum efeito colateral no banco.
+    assert.equal(paymentIntentUpdates.length, 0, 'nao deve tocar em payment_intents')
+    assert.equal(appointmentUpdates.length, 0, 'nao deve confirmar agendamento')
+  })
+
+  it('processa normalmente quando a assinatura e valida', async () => {
+    const { deps, appointmentUpdates } = createDeps({ validateSignature: () => true })
+
+    const result = await processMercadoPagoWebhook(
+      {
+        url: 'https://barbearia-leste.vercel.app/api/webhooks/mercadopago?type=payment&data.id=123',
+        headers: { xSignature: 'ts=1,v1=abc', xRequestId: 'req-1' },
+        body: { type: 'payment', data: { id: '123' } },
+      },
+      deps
+    )
+
+    assert.notEqual(result.status, 401)
+    assert.equal(appointmentUpdates.length, 1, 'fluxo legitimo deve continuar funcionando')
+  })
+
+  // Sem segredo configurado o bloco de assinatura nem roda — garante que a
+  // mudanca nao quebrou ambientes sem MERCADOPAGO_WEBHOOK_SECRET.
+  it('sem webhookSecret, nao rejeita (continua dependendo da re-consulta ao MP)', async () => {
+    const { deps, appointmentUpdates } = createDeps({ webhookSecret: null })
+
+    const result = await processMercadoPagoWebhook(
+      {
+        url: 'https://barbearia-leste.vercel.app/api/webhooks/mercadopago?type=payment&data.id=123',
+        headers: { xSignature: null, xRequestId: null },
+        body: { type: 'payment', data: { id: '123' } },
+      },
+      deps
+    )
+
+    assert.notEqual(result.status, 401)
+    assert.equal(appointmentUpdates.length, 1)
+  })
+})
