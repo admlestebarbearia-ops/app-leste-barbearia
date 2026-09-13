@@ -308,7 +308,11 @@ export async function createAppointment(data: {
   // Busca configs de agenda (limite diário + controles) em uma única query
   const { data: agendaConfig } = await supabase
     .from('business_config')
-    .select('max_appointments_per_day, block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date, payment_mode, aceita_dinheiro, mp_access_token, payment_expiry_minutes')
+    // SEGURANÇA: mp_access_token NÃO entra aqui. Este `supabase` é o cliente
+    // anônimo (RLS), e ler o token por ele obrigava a RLS a expor a coluna
+    // publicamente — qualquer um lia o token do Mercado Pago via REST. O token
+    // é lido abaixo com service_role, só quando o fluxo de pagamento precisa.
+    .select('max_appointments_per_day, block_multi_day_booking, calendar_max_days_ahead, calendar_open_until_date, payment_mode, aceita_dinheiro, payment_expiry_minutes')
     .single()
   const dailyLimit = agendaConfig?.max_appointments_per_day ?? 3
 
@@ -461,8 +465,20 @@ export async function createAppointment(data: {
 
   // ─── Determinar status inicial baseado no modo de pagamento ──────────────
   const paymentMode = agendaConfig?.payment_mode ?? 'presencial'
-  const mpToken = agendaConfig?.mp_access_token ?? null
   const aceitaDinheiroConfig = agendaConfig?.aceita_dinheiro ?? true
+
+  // Token do Mercado Pago lido com service_role (nunca pelo cliente anônimo).
+  // Só é necessário quando o modo é pagamento online — evitamos a leitura fora
+  // disso. createAdminClient roda apenas no servidor (Server Action).
+  // `const` (não `let`) para o TypeScript conseguir estreitar o tipo em
+  // isOnlinePayment mais abaixo (`!!mpToken`).
+  const mpToken: string | null = paymentMode === 'online_obrigatorio'
+    ? (await createAdminClient()
+        .from('business_config')
+        .select('mp_access_token')
+        .single()
+      ).data?.mp_access_token ?? null
+    : null
 
   // Guarda: se o admin configurou pagamento online obrigatório mas não vinculou
   // o Mercado Pago, o agendamento NÃO deve ser confirmado silenciosamente.
