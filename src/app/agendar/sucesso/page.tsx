@@ -9,6 +9,7 @@ import { ProductVitrine } from './ProductVitrine'
 import { getActiveProducts } from '@/app/agendar/actions'
 import { GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
 import { PushGateButton } from './PushGateButton'
+import { getOwnedAppointment } from '@/lib/auth/appointment-access'
 import { ConviteAcesso } from './ConviteAcesso'
 import type { BusinessConfig } from '@/lib/supabase/types'
 
@@ -25,11 +26,9 @@ export default async function SucessoPage({ searchParams }: Props) {
   const supabase = await createClient()
   const cookieStore = await cookies()
 
-  const { data: appt } = await supabase
-    .from('appointments')
-    .select('*, services(name, price, duration_minutes)')
-    .eq('id', id)
-    .single()
+  // Posse exigida no servidor. Antes lia só pelo id da URL, sem checar quem
+  // pedia (IDOR): com o UUID em mãos qualquer um via nome/telefone do cliente.
+  const appt = await getOwnedAppointment(id) as Record<string, any> | null
 
   if (!appt) redirect('/agendar')
   if (appt.status === 'aguardando_pagamento') {

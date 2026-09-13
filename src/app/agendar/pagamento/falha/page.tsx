@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getOwnedAppointment } from '@/lib/auth/appointment-access'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { BusinessConfig } from '@/lib/supabase/types'
@@ -13,11 +14,8 @@ export default async function PagamentoFalhaPage({ searchParams }: Props) {
   if (!appt_id) return null
 
   const supabase = await createClient()
-  const { data: appt } = await supabase
-    .from('appointments')
-    .select('id, status')
-    .eq('id', appt_id)
-    .single()
+  // Posse exigida no servidor (antes lia so pelo id da URL).
+  const appt = await getOwnedAppointment(appt_id, 'id, status') as any
 
   if (appt?.status === 'confirmado') {
     return (

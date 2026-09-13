@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getOwnedAppointment } from '@/lib/auth/appointment-access'
 import { redirect } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -15,11 +16,8 @@ export default async function PagamentoPendentePage({ searchParams }: Props) {
 
   const supabase = await createClient()
 
-  const { data: appt } = await supabase
-    .from('appointments')
-    .select('status, date, start_time, services(name)')
-    .eq('id', appt_id)
-    .single()
+  // Posse exigida no servidor (antes lia so pelo id da URL).
+  const appt = await getOwnedAppointment(appt_id, 'status, date, start_time, services(name)') as any
 
   if (!appt) redirect('/agendar')
 

@@ -80,7 +80,7 @@ export default async function ReservasPage({ searchParams }: Props) {
   ].join(',')
 
   const [{ data: appointments }, { data: cancelledByAdmin }, { data: configRaw }, { data: productReservationsRaw }, { data: historyApptsRaw }] = await Promise.all([
-    supabase
+    adminClient
       .from('appointments')
       .select('*, services(name, price, duration_minutes)')
       .in('status', ['confirmado', 'aguardando_pagamento'])
@@ -89,7 +89,7 @@ export default async function ReservasPage({ searchParams }: Props) {
       .or(ownershipFilter)
       .order('date', { ascending: true })
       .order('start_time', { ascending: true }),
-    supabase
+    adminClient
       .from('appointments')
       .select('id, date, start_time, service_name_snapshot')
       .eq('status', 'cancelado')
@@ -107,7 +107,7 @@ export default async function ReservasPage({ searchParams }: Props) {
           .neq('status', 'cancelado')
           .order('created_at', { ascending: false })
       : Promise.resolve({ data: [] }),
-    supabase
+    adminClient
       .from('appointments')
       .select('id, date, start_time, status, service_name_snapshot, expected_payment_date, services(name)')
       .or(ownershipFilter)

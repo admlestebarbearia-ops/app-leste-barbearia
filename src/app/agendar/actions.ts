@@ -91,6 +91,24 @@ async function getAppointmentLookupContext() {
 
   return {
     supabase,
+    // Cliente service_role EXCLUSIVO para ler/alterar `appointments`.
+    //
+    // Por quê: a RLS não enxerga o cookie assinado, então ela não tem como
+    // distinguir "as reservas DESTE visitante" das de outro — todo visitante
+    // tem client_id NULL. A policy antiga permitia `client_id IS NULL`, o que
+    // deixava QUALQUER pessoa ler as 695 reservas de visitante (nome+telefone)
+    // indo direto no PostgREST com a anon key. IDOR confirmado em 13/09/2026.
+    //
+    // A autorização real destes fluxos é o filtro de posse (buildOwnershipFilter,
+    // sobre IDs assinados por HMAC). Isso roda SEMPRE no servidor (Server
+    // Action) e nunca é exposto ao navegador. Usar service_role aqui não
+    // enfraquece nada: apenas tira da RLS uma decisão que ela não pode tomar,
+    // permitindo fechar a policy para o anônimo.
+    //
+    // REGRA: toda query feita com `appointmentsDb` DEVE aplicar o
+    // ownershipFilter (ou um filtro equivalente por id/telefone do próprio
+    // solicitante). Nunca use sem filtro.
+    appointmentsDb: createAdminClient(),
     userId: user?.id ?? null,
     signedInWithGoogle,
     guestAppointmentIds,
@@ -316,6 +334,17 @@ export async function createAppointment(data: {
     .single()
   const dailyLimit = agendaConfig?.max_appointments_per_day ?? 3
 
+  // service_role para TUDO que toca `appointments` neste fluxo.
+  // Motivo 1 (segurança): os contadores de limite diário por telefone precisam
+  // enxergar agendamentos de visitante. Se ficassem no cliente anônimo, fechar a
+  // RLS zeraria a contagem e o limite viraria bypass.
+  // Motivo 2 (não quebrar): `insert(...).select('id')` exige permissão de SELECT
+  // na linha recém-criada; com a RLS fechada para anônimo, o insert passaria mas o
+  // `.select()` voltaria vazio e o agendamento falharia.
+  // A autorização deste fluxo é feita acima no próprio código (serviço/barbeiro
+  // ativos, slot livre, limites, bloqueios) — não pela RLS.
+  const apptDb = createAdminClient()
+
   // Admin não tem bloqueios de limite — pode agendar livremente (é o dono da agenda).
   // Cliente continua com as regras normais.
   let isAdmin = false
@@ -332,7 +361,7 @@ export async function createAppointment(data: {
   }
 
   if (!isAdmin && signedInWithGoogle) {
-    const { count } = await supabase
+    const { count } = await apptDb
       .from('appointments')
       .select('*', { count: 'exact', head: true })
       .eq('client_id', user.id)
@@ -343,7 +372,7 @@ export async function createAppointment(data: {
       return { success: false, error: `Limite de ${dailyLimit} agendamento${dailyLimit !== 1 ? 's' : ''} por dia atingido.` }
     }
   } else if (!isAdmin && effectivePhone) {
-    const { count } = await supabase
+    const { count } = await apptDb
       .from('appointments')
       .select('*', { count: 'exact', head: true })
       .eq('client_phone', effectivePhone)
@@ -360,7 +389,7 @@ export async function createAppointment(data: {
   if (agendaConfig) {
     // 2. Bloquear agendamento multi-dia (cliente com confirmado em outra data) — admin isento
     if (agendaConfig.block_multi_day_booking && signedInWithGoogle && !isAdmin) {
-      const { data: otherDayAppt } = await supabase
+      const { data: otherDayAppt } = await apptDb
         .from('appointments')
         .select('id')
         .eq('client_id', user.id)
@@ -538,7 +567,7 @@ export async function createAppointment(data: {
         status: appointmentStatus,
       }
 
-  let { data: appointment, error } = await supabase
+  let { data: appointment, error } = await apptDb
     .from('appointments')
     .insert(appointmentData)
     .select('id')
@@ -552,7 +581,7 @@ export async function createAppointment(data: {
       service_duration_minutes_snapshot: undefined,
     }
 
-    const legacyInsert = await supabase
+    const legacyInsert = await apptDb
       .from('appointments')
       .insert(legacyAppointmentData)
       .select('id')
@@ -738,13 +767,13 @@ export async function cancelMyAppointment(
   outOfWindow?: boolean
   appointmentInfo?: CancelOutOfWindowInfo
 }> {
-  const { supabase, userId, guestAppointmentIds, guestPhone } = await getAppointmentLookupContext()
+  const { supabase, appointmentsDb, userId, guestAppointmentIds, guestPhone } = await getAppointmentLookupContext()
   const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { success: false, error: 'Identificacao da reserva nao encontrada neste aparelho.' }
 
   // Busca o agendamento e valida a janela de cancelamento
-  const { data: appt } = await supabase
+  const { data: appt } = await appointmentsDb
     .from('appointments')
     .select('date, start_time, status, client_name, service_name_snapshot')
     .eq('id', appointmentId)
@@ -833,7 +862,7 @@ export async function cancelMyAppointment(
 
 // ─── Buscar meus agendamentos futuros ──────────────────────────────────────
 export async function getMyAppointments() {
-  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const { supabase, appointmentsDb, userId, guestAppointmentIds } = await getAppointmentLookupContext()
   const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { appointments: [] }
@@ -841,7 +870,7 @@ export async function getMyAppointments() {
   // BRT = UTC-3: garante que agendamentos de hoje não somem após 21h UTC
   const today = format(new Date(Date.now() - 3 * 60 * 60 * 1000), 'yyyy-MM-dd')
 
-  const { data } = await supabase
+  const { data } = await appointmentsDb
     .from('appointments')
     .select('*, services(name, price, duration_minutes)')
     .in('status', ['confirmado', 'aguardando_pagamento'])
@@ -870,12 +899,12 @@ export async function getPendingPaymentDetails(appointmentId: string): Promise<{
   }
   error?: string
 }> {
-  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const { supabase, appointmentsDb, userId, guestAppointmentIds } = await getAppointmentLookupContext()
   const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { error: 'Identificacao da reserva nao encontrada neste aparelho.' }
 
-  const { data: appt } = await supabase
+  const { data: appt } = await appointmentsDb
     .from('appointments')
     .select('id, date, start_time, status, service_name_snapshot, service_price_snapshot, services(name, price)')
     .eq('id', appointmentId)
@@ -937,14 +966,14 @@ export async function getPendingPaymentStatus(appointmentId: string): Promise<{
   expiresAt?: string | null
   error?: string
 }> {
-  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const { supabase, appointmentsDb, userId, guestAppointmentIds } = await getAppointmentLookupContext()
   const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) {
     return { error: 'Identificacao da reserva nao encontrada neste aparelho.' }
   }
 
-  const { data: appt } = await supabase
+  const { data: appt } = await appointmentsDb
     .from('appointments')
     .select('id, status')
     .eq('id', appointmentId)
@@ -1094,7 +1123,9 @@ export async function createProductReservation(data: {
   )
   if (!ownershipFilter) return { success: false, error: 'Acesso negado.' }
 
-  const { data: appt } = await supabase
+  // service_role + ownershipFilter: a RLS não consegue validar o cookie assinado,
+  // então a posse é garantida aqui pelo filtro (IDs assinados por HMAC).
+  const { data: appt } = await adminClient
     .from('appointments')
     .select('id, status')
     .eq('id', data.appointmentId)
@@ -1179,12 +1210,12 @@ export async function createProductReservation(data: {
 export async function cancelPendingPayment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const { supabase, appointmentsDb, userId, guestAppointmentIds } = await getAppointmentLookupContext()
   const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { success: false, error: 'Identificacao nao encontrada.' }
 
-  const { data: appt } = await supabase
+  const { data: appt } = await appointmentsDb
     .from('appointments')
     .select('id, status')
     .eq('id', appointmentId)
@@ -1223,7 +1254,7 @@ export async function createFiadoPaymentLink(appointmentId: string): Promise<{
   error?: string
 }> {
   try {
-    const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+    const { supabase, appointmentsDb, userId, guestAppointmentIds } = await getAppointmentLookupContext()
     const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
     if (!ownershipFilter) {
@@ -1231,7 +1262,7 @@ export async function createFiadoPaymentLink(appointmentId: string): Promise<{
     }
 
     // 1. Verificar propriedade e que o agendamento é concluído com fiado pendente
-    const { data: appt } = await supabase
+    const { data: appt } = await appointmentsDb
       .from('appointments')
       .select('id, service_name_snapshot, expected_payment_date, services(name, price)')
       .eq('id', appointmentId)
@@ -1307,12 +1338,12 @@ export async function createFiadoPaymentLink(appointmentId: string): Promise<{
 // ─── Resumo de dívidas pendentes do cliente (para alerta na Home) ─────────────
 export async function getMyPendingFiadoSummary(): Promise<{ count: number; total: number }> {
   try {
-    const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+    const { supabase, appointmentsDb, userId, guestAppointmentIds } = await getAppointmentLookupContext()
     const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
     if (!ownershipFilter) return { count: 0, total: 0 }
 
     // Agendamentos concluídos com promessa de pagamento pendente
-    const { data: appts } = await supabase
+    const { data: appts } = await appointmentsDb
       .from('appointments')
       .select('id')
       .eq('status', 'concluido')
@@ -1342,13 +1373,13 @@ export async function getMyPendingFiadoSummary(): Promise<{ count: number; total
 export async function dismissCancelledAppointment(
   appointmentId: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { supabase, userId, guestAppointmentIds } = await getAppointmentLookupContext()
+  const { supabase, appointmentsDb, userId, guestAppointmentIds } = await getAppointmentLookupContext()
   const ownershipFilter = buildOwnershipFilter(userId, guestAppointmentIds)
 
   if (!ownershipFilter) return { success: false, error: 'Identificacao nao encontrada.' }
 
   // Valida propriedade antes de usar admin client
-  const { data: appt } = await supabase
+  const { data: appt } = await appointmentsDb
     .from('appointments')
     .select('id, status')
     .eq('id', appointmentId)

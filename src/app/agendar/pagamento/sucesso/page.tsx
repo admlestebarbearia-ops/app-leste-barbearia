@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import Link from 'next/link'
 import type { BusinessConfig } from '@/lib/supabase/types'
+import { getOwnedAppointment } from '@/lib/auth/appointment-access'
 
 interface Props {
   searchParams: Promise<{ appt_id?: string; collection_id?: string; collection_status?: string }>
@@ -17,11 +18,8 @@ export default async function PagamentoSucessoPage({ searchParams }: Props) {
 
   const supabase = await createClient()
 
-  const { data: appt } = await supabase
-    .from('appointments')
-    .select('*, services(name, price, duration_minutes)')
-    .eq('id', appt_id)
-    .single()
+  // Posse exigida no servidor — antes lia so pelo id da URL (IDOR).
+  const appt = await getOwnedAppointment(appt_id) as any
 
   if (!appt) redirect('/agendar')
 
