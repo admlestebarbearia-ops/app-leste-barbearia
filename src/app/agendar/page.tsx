@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { BookingForm } from '@/components/booking/BookingForm'
 import { GUEST_BOOKING_PHONE_COOKIE, isAuthenticatedUser, normalizePhoneLookup } from '@/lib/auth/session-state'
 import type { BusinessConfig, Barber, Service, WorkingHours, SpecialSchedule } from '@/lib/supabase/types'
+import { PUBLIC_CONFIG_COLUMNS } from '@/lib/supabase/public-config-columns'
 
 export default async function AgendarPage({ searchParams }: { searchParams?: Promise<Record<string, string>> }) {
   const supabase = await createClient()
@@ -16,7 +17,7 @@ export default async function AgendarPage({ searchParams }: { searchParams?: Pro
 
   const { data: config } = await supabase
     .from('business_config')
-    .select('*')
+    .select(PUBLIC_CONFIG_COLUMNS)
     .single()
 
   const typedConfig = config as BusinessConfig | null

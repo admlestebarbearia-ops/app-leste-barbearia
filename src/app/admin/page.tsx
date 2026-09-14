@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { PUBLIC_CONFIG_COLUMNS } from '@/lib/supabase/public-config-columns'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { AdminDashboard } from '@/components/admin/AdminDashboard'
@@ -39,7 +40,10 @@ export default async function AdminPage({
     { data: specialSchedules },
     { data: products },
   ] = await Promise.all([
-    adminClient.from('business_config').select('*').single(),
+    // Sem select('*'): este config vai como prop para <AdminDashboard>, que e
+    // Client Component — props sao serializadas para o navegador. O token do MP
+    // nao precisa ir junto; o painel so precisa saber SE esta conectado.
+    adminClient.from('business_config').select(PUBLIC_CONFIG_COLUMNS).single(),
     adminClient.from('working_hours').select('*').order('day_of_week'),
     adminClient.from('services').select('*').order('name'),
     adminClient
@@ -184,10 +188,19 @@ export default async function AdminPage({
     }
   }
 
+  // Booleano derivado no SERVIDOR: o painel so precisa saber SE o Mercado Pago
+  // esta conectado. O token em si nunca vai para o navegador.
+  const { data: mpCfg } = await adminClient
+    .from('business_config')
+    .select('mp_access_token')
+    .single()
+  const mpConnected = !!mpCfg?.mp_access_token
+
   return (
     <main className="min-h-screen bg-background">
       <AdminDashboard
         config={typedConfig!}
+        mpConnected={mpConnected}
         workingHours={(workingHours as WorkingHours[]) ?? []}
         services={(services as Service[]) ?? []}
         specialSchedules={(specialSchedules as SpecialSchedule[]) ?? []}

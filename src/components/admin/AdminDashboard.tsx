@@ -161,6 +161,12 @@ const DEFAULT_NAV_TABS = ['configuracoes', 'servicos', 'financeiro']
 
 interface Props {
   config: BusinessConfig
+  /**
+   * Derivado no servidor. O painel só precisa saber SE o Mercado Pago está
+   * conectado — o mp_access_token nunca é enviado ao navegador, porque props
+   * de Client Component são serializadas no payload RSC.
+   */
+  mpConnected: boolean
   appointments: Appointment[]
   workingHours: WorkingHours[]
   specialSchedules: SpecialSchedule[]
@@ -178,6 +184,7 @@ interface Props {
 
 export function AdminDashboard({
   config,
+  mpConnected,
   appointments,
   workingHours,
   specialSchedules,
@@ -585,6 +592,7 @@ export function AdminDashboard({
         {tab === 'configuracoes' && (
           <TabConfiguracoes
             config={config}
+            mpConnected={mpConnected}
             workingHours={workingHours}
             specialSchedules={specialSchedules}
             onRefresh={requestRefresh}
@@ -2973,11 +2981,14 @@ function StandaloneReservasSection({
 // ------------------------------------------------------------------
 function TabConfiguracoes({
   config,
+  mpConnected: mpConnectedProp,
   workingHours,
   specialSchedules,
   onRefresh,
 }: {
   config: BusinessConfig
+  /** Derivado no servidor — o token do MP nunca chega ao navegador. */
+  mpConnected: boolean
   workingHours: WorkingHours[]
   specialSchedules: SpecialSchedule[]
   onRefresh: () => void
@@ -3009,9 +3020,9 @@ function TabConfiguracoes({
   const [savingAgenda, setSavingAgenda] = useState(false)
 
   // Fase 4: Mercado Pago — estado local do token para refletir connect/disconnect imediatamente
-  const [mpConnected, setMpConnected] = useState<boolean>(!!config.mp_access_token)
+  const [mpConnected, setMpConnected] = useState<boolean>(mpConnectedProp)
   // Sync quando config muda (ex: após router.refresh() pós-OAuth bem sucedido)
-  useEffect(() => { setMpConnected(!!config.mp_access_token) }, [config.mp_access_token])
+  useEffect(() => { setMpConnected(mpConnectedProp) }, [mpConnectedProp])
   const [paymentMode, setPaymentMode] = useState<'presencial' | 'online_obrigatorio'>(config.payment_mode ?? 'presencial')
   const [aceitaDinheiro, setAceitaDinheiro] = useState<boolean>(config.aceita_dinheiro ?? true)
   const [requireAdvancePayment, setRequireAdvancePayment] = useState<boolean>(config.require_advance_payment_distant_bookings ?? false)
