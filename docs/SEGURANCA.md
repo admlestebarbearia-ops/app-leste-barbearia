@@ -199,3 +199,74 @@ ar; é motivo para rodar o SQL hoje.
 Não afirmo que o sistema é "seguro" em absoluto — afirmo que os caminhos que
 testei estão fechados e que não encontrei via de escrita, escalada de privilégio
 ou tomada de conta.
+
+---
+
+# ADENDO — segunda rodada de validação (13/09/2026)
+
+## ✅ `appointments` — RLS validada no banco
+
+Teste do dono (`SET LOCAL ROLE anon; SELECT count(*) FROM appointments`) →
+**0 linhas**. Confirmado também por REST: `content-range: */0`.
+
+**Combinação de policies analisada e aprovada.** Existem duas PERMISSIVE
+(incluindo uma com `client_id IS NULL`, que era a origem do vazamento) e a nova
+`appointments_restrict_select_owner` RESTRICTIVE. Como RESTRICTIVE combina por
+**AND**, ela anula o efeito do `client_id IS NULL` das permissivas — o resultado
+final é correto **sem** precisar remover as antigas.
+
+> Observação: a policy permissiva `"Usuario ve agendamentos"` ainda contém
+> `OR client_id IS NULL`. Hoje é inofensiva (a RESTRICTIVE prevalece), mas é uma
+> armadilha: se alguém remover a RESTRICTIVE no futuro, o vazamento volta.
+> **Recomendação:** limpar essa cláusula numa janela tranquila. Não fiz agora
+> para não mexer em policy existente sem necessidade.
+
+### Regressões funcionais — verificadas
+Nenhum fluxo legítimo dependia de SELECT anônimo direto:
+
+| Fluxo | Como acessa hoje |
+|---|---|
+| Disponibilidade de horários | `service_role` (`adminForSlots`) — só lê horário/status, **sem PII** |
+| Criação de agendamento | `service_role` (`apptDb`) |
+| Prevenção de double booking | índice único + trigger no **banco** (independe de RLS) |
+| Limites diários / multi-dia | `service_role` — se ficasse no anon, fechar a RLS viraria **bypass do limite** |
+| "Minhas Reservas" visitante | `service_role` + ownershipFilter (IDs assinados HMAC) |
+| "Minhas Reservas" logado | idem, via `client_id` |
+| Telas de sucesso/pagamento | `getOwnedAppointment()` — exige posse |
+| Cancelamento | `service_role` + ownershipFilter |
+| Painel do barbeiro/admin | `requireAdmin()` + `is_admin()` na policy |
+| Crons e webhooks | `service_role` |
+
+Produção: `/`, `/agendar`, `/reservas`, `/admin`, `/loja` → **HTTP 200, sem erro**.
+
+## 🔴 CRÍTICO NOVO — tokens do MP no HTML **público** de `/agendar`
+
+**O achado mais grave de toda a auditoria. Nenhuma rodada anterior encontrou.**
+
+`/agendar/page.tsx` fazia `select('*')` em `business_config` e passava o objeto
+como prop para `<BookingForm>`, que é **Client Component**. O Next serializa
+props de Client Component no payload RSC → **`mp_access_token` e
+`mp_refresh_token` saíam no HTML de toda visita**. Não exigia nem a anon key:
+bastava ver o código-fonte da página.
+
+- **Confirmado em produção antes:** ambos presentes no HTML.
+- **Confirmado em produção depois:** ambos **ausentes**, página renderizando
+  normal (54.462 bytes).
+- **Correção:** `src/lib/supabase/public-config-columns.ts` com as **41 colunas
+  públicas derivadas do schema real** (não inventadas), usada em `/agendar` e
+  `/admin`. O painel admin passou a receber um booleano `mpConnected` derivado
+  no servidor em vez do token. 4 testes de regressão quebram se um segredo
+  entrar na lista.
+
+## ⚠️ Por que o primeiro REVOKE de colunas não funcionou
+
+Diagnóstico do dono: `has_column_privilege` → **TRUE** para os 3 segredos.
+
+**Causa:** no PostgreSQL, `GRANT SELECT` na **tabela** implica SELECT em todas as
+colunas, e um `REVOKE SELECT (coluna)` **não subtrai** de um grant de tabela. O
+REVOKE anterior foi, na prática, um **no-op**.
+
+**Solução correta (privilégio mínimo):** remover o SELECT de tabela de
+`anon`/`authenticated` e conceder SELECT **apenas nas 41 colunas públicas**.
+Só pôde ser aplicada depois da correção de código acima — antes, `select('*')`
+teria passado a falhar.
