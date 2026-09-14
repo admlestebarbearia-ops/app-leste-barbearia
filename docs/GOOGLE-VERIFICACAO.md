@@ -102,8 +102,11 @@ próprio, não uma versão maior da tela de login:
   `scroll-snap` (cartões); a partir de 640px vira grade de 3 colunas separadas
   por hairline.
 - **O aplicativo**: quatro capacidades numeradas + um **mock do app desenhado em
-  CSS** (chips de dia, grade de horários com um selecionado e um esgotado, card
-  "Confirmado"). É o que explica a funcionalidade sem parecer documentação.
+  CSS**, usando os tokens visuais do app de verdade (`#161616` de fundo, `#222`
+  nos cartões, azul `#0b4196` no selecionado) para ler como "este é o
+  aplicativo". Os chips de horário têm hover no desktop e press no mobile —
+  **demonstrativos, não funcionais**: o bloco inteiro é `aria-hidden`, então
+  nenhum leitor de tela anuncia um botão que não existe.
 - **Conta Google**: bloco de duas colunas — "O que recebemos" × "O que não
   acessamos" — e o botão isolado da landing (ver 4.4). Não compete com o CTA.
 - **Visite a Leste**: endereço, WhatsApp, Instagram e um bloco "Atendimento com
@@ -120,9 +123,13 @@ bloco que o explica.
 **Movimento** ([landing.module.css](../src/app/app/landing.module.css)): uma
 curva e duas durações para a página inteira; só `transform`/`opacity`; entrada
 por scroll com `animation-timeline: view()` — **sem JavaScript**, para nunca
-servir a página em `opacity: 0` a um rastreador sem JS. O único JS da landing é
-o [PointerParallax](../src/app/app/PointerParallax.tsx), que se desliga sozinho
-em aparelho sem ponteiro fino. `prefers-reduced-motion: reduce` para tudo.
+servir a página em `opacity: 0` a um rastreador sem JS.
+`prefers-reduced-motion: reduce` desliga tudo.
+
+O parallax de ponteiro no hero foi **removido**: no mobile não existe ponteiro e
+no desktop o movimento brigava com a leitura. Sobrou a respiração autônoma da
+foto (32s, amplitude de 2%). Com isso a landing não carrega **nenhum JavaScript
+próprio** além do botão do Google.
 
 ### 4.2 A rota `/` não foi tocada
 

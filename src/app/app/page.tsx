@@ -4,7 +4,6 @@ import type { Metadata } from 'next'
 import { Oswald } from 'next/font/google'
 import { createClient } from '@/lib/supabase/server'
 import type { BusinessConfig } from '@/lib/supabase/types'
-import { PointerParallax } from './PointerParallax'
 import { GoogleButton } from './GoogleButton'
 import styles from './landing.module.css'
 
@@ -68,9 +67,8 @@ export const metadata: Metadata = {
 const INK = '#0C0C0D'
 const INK_SOFT = '#141416'
 const PAPER = '#F4F1EC'
-const MUTED = '#8C8B90'
-const DIM = '#9D9BA0'
-const BLUE = '#2A6CB8'
+const MUTED = '#9A989E'
+const DIM = '#B0AEB3'
 
 const HOME_CONFIG_COLUMNS = 'logo_url, address, whatsapp_number, instagram_url'
 
@@ -180,16 +178,18 @@ export default async function LandingPage() {
           vez de ser esmagada em full-bleed. Mobile: foto ao fundo com scrim. */}
       <section className="relative lg:grid lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1.05fr_0.95fr]">
         <div className="absolute inset-0 overflow-hidden lg:relative lg:order-2 lg:inset-auto lg:h-full">
-          <PointerParallax className={`${styles.parallax} absolute inset-0`}>
-            <Image
-              src="/fundo.jpg"
-              alt="Salão da Leste Barbearia"
-              fill
-              priority
-              sizes="(max-width: 1024px) 100vw, 48vw"
-              className={`${styles.breathe} object-cover object-[55%_center]`}
-            />
-          </PointerParallax>
+          {/* Sem parallax de ponteiro: a foto seguindo o mouse nao funcionou —
+              no mobile nem existe ponteiro, e no desktop o movimento brigava com
+              a leitura. Ficou so a respiracao autonoma, lenta e quase
+              imperceptivel, que morre com prefers-reduced-motion. */}
+          <Image
+            src="/fundo.jpg"
+            alt="Salão da Leste Barbearia"
+            fill
+            priority
+            sizes="(max-width: 1024px) 100vw, 48vw"
+            className={`${styles.breathe} object-cover object-[55%_center]`}
+          />
           <div
             className="absolute inset-0 lg:hidden"
             style={{
@@ -276,14 +276,26 @@ export default async function LandingPage() {
               >
                 Agendar agora
               </Link>
-              <a href="#aplicativo" className={`${styles.underline} text-[13px]`} style={{ color: MUTED }}>
+              <a href="#aplicativo" className={`${styles.underline} text-[13px]`} style={{ color: "#C9C6C1" }}>
                 Como funciona o app
               </a>
             </div>
 
-            <p className="mt-6 text-[12px]" style={{ color: '#6F6E73' }}>
-              Confirmação na hora · Cancelamento pelo próprio app
-            </p>
+            {/* Eram duas frases num paragrafo de 12px em cinza quase apagado —
+                ilegivel sobre a foto. Viraram dois itens marcados, 13.5px, num
+                tom que passa contraste AA sobre o fundo do hero. */}
+            <ul className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2.5">
+              {['Confirmação na hora', 'Cancelamento pelo próprio app'].map((item) => (
+                <li key={item} className="flex items-center gap-2.5 text-[13.5px]" style={{ color: '#D2CFCA' }}>
+                  <span
+                    className="inline-block size-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: '#D9342B' }}
+                    aria-hidden
+                  />
+                  {item}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
@@ -326,7 +338,7 @@ export default async function LandingPage() {
                 >
                   {e.titulo}
                 </h3>
-                <p className="mt-2.5 text-sm leading-relaxed" style={{ color: DIM }}>
+                <p className="mt-2.5 text-[15px] leading-relaxed" style={{ color: DIM }}>
                   {e.texto}
                 </p>
               </div>
@@ -334,10 +346,10 @@ export default async function LandingPage() {
           ))}
         </div>
 
-        <p className="mt-8 text-sm sm:hidden" style={{ color: '#6F6E73' }}>
+        <p className="mt-8 text-sm sm:hidden" style={{ color: '#A9A7AC' }}>
           Arraste para o lado →
         </p>
-        <p className="mt-10 hidden text-sm sm:block" style={{ color: '#6F6E73' }}>
+        <p className="mt-10 hidden text-sm sm:block" style={{ color: '#A9A7AC' }}>
           A lista completa de serviços, com duração e valores, aparece na hora de agendar.
         </p>
       </section>
@@ -364,15 +376,19 @@ export default async function LandingPage() {
                   className="flex gap-5 py-5"
                   style={{ borderTop: i === 0 ? 'none' : '1px solid rgba(244,241,236,0.08)' }}
                 >
+                  {/* o azul #2A6CB8 sobre #141416 ficava escuro demais para um
+                      numeral de 14px; subiu para um azul claro legivel */}
                   <span
-                    className="pt-0.5 text-sm tabular-nums"
-                    style={{ fontFamily: 'var(--font-display)', color: BLUE, letterSpacing: '0.14em' }}
+                    className="pt-px text-[15px] tabular-nums"
+                    style={{ fontFamily: 'var(--font-display)', color: '#7FAEE6', letterSpacing: '0.14em' }}
                   >
                     {String(i + 1).padStart(2, '0')}
                   </span>
                   <div>
-                    <h3 className="text-[15px] font-semibold">{r.titulo}</h3>
-                    <p className="mt-1.5 text-sm leading-relaxed" style={{ color: DIM }}>
+                    <h3 className="text-[16px] font-semibold" style={{ color: PAPER }}>
+                      {r.titulo}
+                    </h3>
+                    <p className="mt-1.5 text-[15px] leading-relaxed" style={{ color: DIM }}>
                       {r.texto}
                     </p>
                   </div>
@@ -395,96 +411,130 @@ export default async function LandingPage() {
             </Link>
           </div>
 
-          {/* Mock do app — desenhado em CSS, sem nenhum dado real do banco */}
-          <div className={`${styles.deviceWrap} relative flex justify-center lg:justify-end`}>
+          {/* Mock do app — desenhado em CSS, sem nenhum dado real do banco.
+              aria-hidden de proposito: os chips PARECEM tocaveis (hover no
+              desktop, press no mobile) mas sao demonstrativos. Anunciar botoes
+              que nao fazem nada seria pior que nao anunciar nada — o conteudo
+              real desta secao esta na lista numerada ao lado. */}
+          <div className={`${styles.deviceWrap} ${styles.deviceIn} relative flex justify-center lg:justify-end`} aria-hidden>
             <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 m-auto h-72 w-72 rounded-full"
-              style={{ background: 'radial-gradient(circle, rgba(42,108,184,0.2) 0%, rgba(42,108,184,0) 70%)' }}
+              className="pointer-events-none absolute inset-0 m-auto h-80 w-80 rounded-full"
+              style={{ background: 'radial-gradient(circle, rgba(42,108,184,0.16) 0%, rgba(42,108,184,0) 70%)' }}
             />
             <div
-              className={`${styles.device} relative w-[268px] rounded-[2.2rem] p-2.5 sm:w-[300px]`}
+              className={`${styles.device} relative w-[272px] rounded-[2.4rem] p-2.5 sm:w-[302px]`}
               style={{
-                backgroundColor: '#1C1C1F',
-                border: '1px solid rgba(244,241,236,0.10)',
+                backgroundColor: '#1F1F22',
+                border: '1px solid rgba(244,241,236,0.12)',
                 boxShadow: '0 44px 90px rgba(0,0,0,0.62), 0 0 0 1px rgba(244,241,236,0.04)',
               }}
             >
-              <div className="rounded-[1.75rem] px-5 pb-6 pt-5" style={{ backgroundColor: INK }}>
-                <div
-                  className="mx-auto mb-5 h-1 w-10 rounded-full"
-                  style={{ backgroundColor: 'rgba(244,241,236,0.18)' }}
-                />
-
-                <div className={styles.deviceRow}>
-                  <p className="text-[10px] uppercase" style={{ letterSpacing: '0.24em', color: MUTED }}>
-                    Escolha o horário
-                  </p>
-                  <p className="mt-1 text-[15px] font-semibold">Sexta, 19 de setembro</p>
+              {/* Tela: usa os tokens do app de verdade (#161616 / #222 / azul
+                  #0b4196) para o mock ler como "este e o aplicativo". */}
+              <div className="overflow-hidden rounded-[1.9rem]" style={{ backgroundColor: '#161616' }}>
+                {/* barra de status estilizada */}
+                <div className="flex items-center justify-between px-5 pb-1 pt-3.5">
+                  <span className="text-[10px] font-medium" style={{ color: 'rgba(244,241,236,0.5)' }}>
+                    9:41
+                  </span>
+                  <span className="flex gap-1" aria-hidden>
+                    <span className="h-1 w-1 rounded-full" style={{ backgroundColor: 'rgba(244,241,236,0.35)' }} />
+                    <span className="h-1 w-1 rounded-full" style={{ backgroundColor: 'rgba(244,241,236,0.35)' }} />
+                    <span className="h-1 w-1 rounded-full" style={{ backgroundColor: 'rgba(244,241,236,0.35)' }} />
+                  </span>
                 </div>
 
-                <div className={`${styles.deviceRow} mt-4 flex gap-2`}>
-                  {['17', '18', '19', '20', '21'].map((d, i) => (
-                    <div
-                      key={d}
-                      className="flex h-12 flex-1 flex-col items-center justify-center rounded-xl text-[11px]"
-                      style={
-                        i === 2
-                          ? { backgroundColor: PAPER, color: INK, fontWeight: 600 }
-                          : { backgroundColor: 'rgba(244,241,236,0.06)', color: DIM }
-                      }
+                <div className="px-5 pb-6 pt-3">
+                  {/* cabecalho */}
+                  <div className="flex items-baseline justify-between">
+                    <p
+                      className="text-[13px] uppercase"
+                      style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.2em', color: PAPER }}
                     >
-                      <span className="text-[9px] opacity-70">{['Qua', 'Qui', 'Sex', 'Sáb', 'Dom'][i]}</span>
-                      <span>{d}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className={`${styles.deviceRow} mt-4 grid grid-cols-3 gap-2`}>
-                  {['09:30', '10:00', '10:30', '14:00', '14:30', '15:00'].map((h, i) => (
-                    <div
-                      key={h}
-                      className={`rounded-lg py-2 text-center text-[11px] ${i === 4 ? styles.slotOn : ''}`}
-                      style={
-                        i === 4
-                          ? { backgroundColor: BLUE, color: '#FFFFFF', fontWeight: 600 }
-                          : i === 1
-                          ? {
-                              backgroundColor: 'rgba(244,241,236,0.04)',
-                              color: '#55545A',
-                              textDecoration: 'line-through',
-                            }
-                          : { backgroundColor: 'rgba(244,241,236,0.07)', color: '#C9C6C1' }
-                      }
-                    >
-                      {h}
-                    </div>
-                  ))}
-                </div>
-
-                <div
-                  className={`${styles.deviceRow} mt-5 rounded-xl px-4 py-3`}
-                  style={{
-                    backgroundColor: 'rgba(244,241,236,0.05)',
-                    border: '1px solid rgba(244,241,236,0.08)',
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12px] font-semibold">Corte + Barba</span>
-                    <span
-                      className={`${styles.badgePulse} rounded-full px-2 py-0.5 text-[9px] uppercase`}
-                      style={{
-                        backgroundColor: 'rgba(42,108,184,0.22)',
-                        color: '#8FB6E4',
-                        letterSpacing: '0.1em',
-                      }}
-                    >
-                      Confirmado
-                    </span>
+                      Escolher horário
+                    </p>
+                    <span className={`${styles.pole} ${styles.poleV} h-3.5 w-1 rounded-full`} />
                   </div>
-                  <p className="mt-1 text-[11px]" style={{ color: MUTED }}>
-                    Sexta, 19/09 · 14:30
+
+                  <p className="mt-4 text-[11px] uppercase" style={{ letterSpacing: '0.16em', color: MUTED }}>
+                    Setembro
                   </p>
+
+                  {/* faixa de dias */}
+                  <div className="mt-2 flex gap-2">
+                    {[
+                      { d: '17', s: 'Qua' },
+                      { d: '18', s: 'Qui' },
+                      { d: '19', s: 'Sex' },
+                      { d: '20', s: 'Sáb' },
+                      { d: '21', s: 'Dom' },
+                    ].map((day, i) => (
+                      <div
+                        key={day.d}
+                        className={`${styles.slot} ${i === 2 ? '' : styles.slotFree} flex h-[52px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl`}
+                        style={
+                          i === 2
+                            ? { backgroundColor: PAPER, color: '#161616' }
+                            : { backgroundColor: '#222222', color: '#B9B7BC' }
+                        }
+                      >
+                        <span className="text-[9px] uppercase tracking-wide opacity-70">{day.s}</span>
+                        <span className="text-[13px] font-semibold">{day.d}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* horarios */}
+                  <p className="mt-5 text-[11px] uppercase" style={{ letterSpacing: '0.16em', color: MUTED }}>
+                    Horários livres
+                  </p>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {['09:30', '10:00', '10:30', '14:00', '14:30', '15:00'].map((h, i) => {
+                      const ocupado = i === 1
+                      const escolhido = i === 4
+                      return (
+                        <div
+                          key={h}
+                          className={`${styles.slot} ${escolhido ? styles.slotPicked : ocupado ? '' : styles.slotFree} rounded-xl py-2.5 text-center text-[12px] font-medium`}
+                          style={
+                            escolhido
+                              ? { backgroundColor: '#0b4196', color: '#FFFFFF' }
+                              : ocupado
+                              ? { backgroundColor: 'rgba(34,34,34,0.55)', color: '#5C5B61', textDecoration: 'line-through' }
+                              : { backgroundColor: '#222222', color: '#D6D3CE' }
+                          }
+                        >
+                          {h}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* confirmacao */}
+                  <div
+                    className="mt-5 rounded-2xl p-4"
+                    style={{ backgroundColor: '#222222', border: '1px solid rgba(244,241,236,0.07)' }}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[13px] font-semibold" style={{ color: PAPER }}>
+                        Corte + Barba
+                      </span>
+                      <span
+                        className="shrink-0 rounded-full px-2.5 py-1 text-[9px] uppercase"
+                        style={{
+                          backgroundColor: 'rgba(52,168,83,0.16)',
+                          color: '#7FD39A',
+                          letterSpacing: '0.12em',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Confirmado
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-[12px]" style={{ color: '#A9A7AC' }}>
+                      Sexta, 19/09 · 14:30
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -524,7 +574,7 @@ export default async function LandingPage() {
                 <li>Seu endereço de e-mail</li>
                 <li>Sua foto de perfil</li>
               </ul>
-              <p className="mt-3 text-sm leading-relaxed" style={{ color: DIM }}>
+              <p className="mt-3 text-[15px] leading-relaxed" style={{ color: DIM }}>
                 Usados apenas para identificar você no aplicativo e manter o seu histórico de
                 agendamentos ligado à sua conta, em qualquer aparelho.
               </p>
@@ -541,7 +591,7 @@ export default async function LandingPage() {
                 <li>Arquivos, fotos e documentos</li>
                 <li>Qualquer outro dado da sua conta Google</li>
               </ul>
-              <p className="mt-3 text-sm leading-relaxed" style={{ color: DIM }}>
+              <p className="mt-3 text-[15px] leading-relaxed" style={{ color: DIM }}>
                 Esses dados não são vendidos, não alimentam publicidade e não são compartilhados para
                 marketing. Você pode pedir a exclusão a qualquer momento.
               </p>
@@ -552,14 +602,14 @@ export default async function LandingPage() {
             className="mt-7 flex flex-col gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between"
             style={{ borderTop: '1px solid rgba(244,241,236,0.09)' }}
           >
-            <p className="text-sm" style={{ color: DIM }}>
+            <p className="text-[15px]" style={{ color: DIM }}>
               Dá para agendar sem conta, informando nome e WhatsApp.
             </p>
             <GoogleButton nextPath="/agendar" />
           </div>
         </div>
 
-        <p className="mt-6 text-center text-[13px]" style={{ color: '#6F6E73' }}>
+        <p className="mt-6 text-center text-[13px]" style={{ color: '#A9A7AC' }}>
           Detalhes na{' '}
           <Link href="/privacidade" className={styles.underline}>
             Política de Privacidade
@@ -635,7 +685,7 @@ export default async function LandingPage() {
                 hora marcada
               </span>
             </p>
-            <p className="mt-5 max-w-sm text-sm leading-relaxed" style={{ color: DIM }}>
+            <p className="mt-5 max-w-sm text-[15px] leading-relaxed" style={{ color: DIM }}>
               A disponibilidade é atualizada direto na agenda da barbearia. Abra o aplicativo para ver
               os horários livres de hoje e dos próximos dias — é sempre o que está valendo.
             </p>
@@ -700,7 +750,7 @@ export default async function LandingPage() {
               >
                 Leste Barbearia
               </p>
-              <p className="mt-0.5 text-[12px]" style={{ color: '#6F6E73' }}>
+              <p className="mt-0.5 text-[12px]" style={{ color: '#A9A7AC' }}>
                 Aplicativo oficial de agendamento
               </p>
             </div>
