@@ -1,0 +1,451 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Linguagem de movimento da landing /app.
+
+   CSS Module de proposito: nada aqui vaza para o resto do app. A rota `/` e o
+   painel nao enxergam uma linha deste arquivo.
+
+   Regras que valem para tudo abaixo:
+   · so `transform` e `opacity` animam (composita na GPU, nao gera layout);
+   · uma unica curva (--ease) e duas duracoes (--t-fast hover, --t-slow entrada);
+   · `prefers-reduced-motion: reduce` para TUDO. O conteudo continua no lugar,
+     so para de se mexer;
+   · a entrada por scroll usa `animation-timeline: view()` — sem JavaScript.
+     Isso importa: se a animacao dependesse de JS, um rastreador sem JS (o do
+     Google, por exemplo) poderia receber a pagina com tudo em opacity 0. Dentro
+     do @supports, quem nao suporta simplesmente ve a pagina estatica e inteira.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.root {
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-fast: 220ms;
+  --t-slow: 700ms;
+  --pole-red: #d9342b;
+  --pole-blue: #2a6cb8;
+  --pole-paper: #f4f1ec;
+}
+
+/* ── Barber pole ─────────────────────────────────────────────────────────
+   As listras sao um repeating-linear-gradient a 45deg com periodo de 32px.
+   Como cos(45) = sin(45) = 0.7071, deslocar o tile em 45.25px em X ou em Y
+   avanca exatamente um periodo — ou seja, o loop e invisivel. Anima-se o
+   TRANSFORM de um pseudo-elemento superdimensionado, nunca background-position
+   (que forca repaint). */
+
+.pole {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.pole::before {
+  content: '';
+  position: absolute;
+  inset: -48px;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--pole-red) 0 8px,
+    var(--pole-paper) 8px 16px,
+    var(--pole-blue) 16px 24px,
+    var(--pole-paper) 24px 32px
+  );
+  will-change: transform;
+}
+
+/* régua horizontal: listras correndo para a esquerda */
+.poleH::before {
+  animation: poleDriftX 2.8s linear infinite;
+}
+
+/* cilindro vertical: listras subindo, como um poste girando */
+.poleV::before {
+  animation: poleDriftY 3.4s linear infinite;
+}
+
+@keyframes poleDriftX {
+  to {
+    transform: translate3d(-45.25px, 0, 0);
+  }
+}
+
+@keyframes poleDriftY {
+  to {
+    transform: translate3d(0, -45.25px, 0);
+  }
+}
+
+/* Vidro do cilindro: sombra interna nas bordas + brilho percorrendo a
+   superficie. E o que faz parecer um tubo, e nao uma faixa listrada. */
+.poleGlass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.55) 0%,
+      rgba(0, 0, 0, 0.12) 22%,
+      rgba(255, 255, 255, 0.28) 42%,
+      rgba(0, 0, 0, 0.12) 72%,
+      rgba(0, 0, 0, 0.6) 100%
+    );
+  pointer-events: none;
+}
+
+.poleSheen {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.poleSheen::before {
+  content: '';
+  position: absolute;
+  top: -30%;
+  bottom: -30%;
+  width: 38%;
+  left: -45%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.5) 50%,
+    transparent 100%
+  );
+  filter: blur(2px);
+  animation: sheenSweep 7s var(--ease) infinite;
+}
+
+@keyframes sheenSweep {
+  0%,
+  62% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(380%);
+  }
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────────
+   Dois niveis de transform separados de proposito: o ponteiro move o wrapper,
+   a foto respira por dentro. Se fossem no mesmo elemento, um cancelaria o
+   outro. */
+
+.parallax {
+  --px: 0;
+  --py: 0;
+  transform: translate3d(calc(var(--px) * 10px), calc(var(--py) * 8px), 0);
+  transition: transform 900ms var(--ease);
+  will-change: transform;
+}
+
+.breathe {
+  animation: breathe 26s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1.06);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+/* ── Entrada por scroll (sem JS) ─────────────────────────────────────── */
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      animation: riseIn linear both;
+      animation-timeline: view();
+      animation-range: entry 2% cover 26%;
+    }
+    /* escalonamento: cada filho entra logo depois do anterior */
+    .revealStagger > * {
+      animation: riseIn linear both;
+      animation-timeline: view();
+      animation-range: entry 2% cover 34%;
+    }
+  }
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Microinteracoes ─────────────────────────────────────────────────── */
+
+/* CTA principal e botoes de contorno */
+.lift {
+  transition:
+    transform var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    background-color var(--t-fast) var(--ease),
+    opacity var(--t-fast) var(--ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lift:hover {
+    transform: translateY(-2px);
+  }
+}
+
+.lift:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.lift:focus-visible {
+  outline: 2px solid var(--pole-paper);
+  outline-offset: 3px;
+}
+
+/* Links de texto: sublinhado que cresce a partir da esquerda */
+.underline {
+  position: relative;
+  transition: color var(--t-fast) var(--ease);
+}
+
+.underline::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.underline:hover::after,
+.underline:focus-visible::after {
+  transform: scaleX(1);
+}
+
+.underline:focus-visible {
+  outline: 2px solid var(--pole-paper);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+/* Cards das especialidades */
+.card {
+  transition:
+    transform var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    background-color var(--t-fast) var(--ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(244, 241, 236, 0.28);
+    background-color: rgba(244, 241, 236, 0.05);
+  }
+}
+
+.card:active {
+  transform: scale(0.985);
+}
+
+/* O numeral grande acende junto com o card */
+.card .cardNum {
+  transition: color var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .card:hover .cardNum {
+    color: var(--pole-red);
+    opacity: 1;
+  }
+}
+
+/* Cartao de especialidade.
+   No CSS e nao em style inline de proposito: style inline ganha de qualquer
+   classe utilitaria, entao `sm:border-0` seria ignorado e o cartao manteria a
+   moldura inteira na grade do desktop. */
+.specCard {
+  border: 1px solid rgba(244, 241, 236, 0.12);
+  border-radius: 16px;
+  background-color: rgba(244, 241, 236, 0.02);
+}
+
+@media (min-width: 640px) {
+  .specCard {
+    /* na grade, o cartao vira coluna separada por uma hairline */
+    border: 0;
+    border-left: 1px solid rgba(244, 241, 236, 0.12);
+    border-radius: 0;
+    background-color: transparent;
+  }
+}
+
+/* Trilho horizontal com snap no mobile */
+.rail {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-inline: 20px;
+  margin-inline: -20px;
+  scroll-padding-left: 20px;
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+.rail > * {
+  scroll-snap-align: start;
+  flex: 0 0 78%;
+  max-width: 300px;
+}
+
+@media (min-width: 640px) {
+  .rail {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: visible;
+    padding-inline: 0;
+    margin-inline: 0;
+    gap: 0;
+  }
+  .rail > * {
+    flex: initial;
+    max-width: none;
+  }
+}
+
+/* ── Mock do aplicativo ──────────────────────────────────────────────── */
+
+.device {
+  transform: perspective(1200px) rotateY(-7deg) rotateX(2deg);
+  transition: transform 700ms var(--ease), box-shadow 700ms var(--ease);
+  will-change: transform;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .deviceWrap:hover .device {
+    transform: perspective(1200px) rotateY(-2deg) rotateX(0deg) translateY(-6px);
+  }
+}
+
+@media (max-width: 1023px) {
+  .device {
+    transform: none;
+  }
+}
+
+/* As linhas da agenda entram em cascata quando o telefone aparece na tela */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .deviceRow {
+      animation: rowIn linear both;
+      animation-timeline: view();
+      animation-range: entry 12% cover 34%;
+    }
+  }
+}
+
+@keyframes rowIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Badge "Confirmado": pulso lento, uma respiracao a cada 4s */
+.badgePulse {
+  animation: badgePulse 4.2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%,
+  72%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 0.82;
+    transform: scale(1.05);
+  }
+}
+
+/* Chip de horario selecionado */
+.slotOn {
+  position: relative;
+}
+
+.slotOn::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 10px;
+  border: 1px solid rgba(42, 108, 184, 0.55);
+  animation: slotRing 4.2s ease-in-out infinite;
+}
+
+@keyframes slotRing {
+  0%,
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  82% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── Acessibilidade: nada se mexe se o usuario pedir ─────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .pole::before,
+  .poleSheen::before,
+  .breathe,
+  .badgePulse,
+  .slotOn::after {
+    animation: none !important;
+  }
+  .parallax {
+    transform: none !important;
+    transition: none !important;
+  }
+  .breathe {
+    transform: scale(1.06);
+  }
+  .device,
+  .deviceWrap:hover .device {
+    transform: none !important;
+  }
+  .lift,
+  .card,
+  .underline::after {
+    transition: none !important;
+  }
+  .lift:hover,
+  .card:hover {
+    transform: none !important;
+  }
+}

@@ -21,8 +21,8 @@ export default function TermosPage() {
           Este aplicativo permite que clientes da <strong>Leste Barbearia</strong> agendem horários de forma online. O uso é gratuito e destinado exclusivamente a clientes.
         </Section>
 
-        <Section title="2. Cadastro">
-          Para agendar, é necessário autenticar-se com uma conta Google. Você deve fornecer informações verdadeiras e manter seus dados atualizados.
+        <Section title="2. Cadastro e identificação">
+          O agendamento pode ser feito de duas formas, conforme a configuração da barbearia: informando nome e WhatsApp, sem criar conta; ou entrando com uma conta Google, o que mantém seu histórico de reservas vinculado à sua conta em qualquer aparelho. Em ambos os casos você deve fornecer informações verdadeiras e mantê-las atualizadas.
         </Section>
 
         <Section title="3. Agendamentos">
