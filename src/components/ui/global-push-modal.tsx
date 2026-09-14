@@ -26,8 +26,11 @@ const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ''
 const DISMISSED_KEY = 'push_prompt_dismissed_v1'
 const DISMISS_DAYS = 3
 
-// Rotas que já pedem push do seu próprio jeito — evitar pedido duplicado
-const SKIP_PATHS = ['/agendar/sucesso']
+// Rotas que já pedem push do seu próprio jeito — evitar pedido duplicado.
+// `/app` entra aqui por outro motivo: é a landing pública (marketing, tráfego
+// pago e a homepage declarada na verificação do Google). Pedir permissão de
+// notificação para quem ainda nem decidiu agendar é o pior momento possível.
+const SKIP_PATHS = ['/agendar/sucesso', '/app']
 const SKIP_PREFIXES = ['/admin']
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {

@@ -32,6 +32,16 @@ export default function PwaPrompt() {
 
   useEffect(() => {
     const isDev = process.env.NODE_ENV !== 'production'
+
+    // A /app e a landing publica: peca de marketing, destino de trafego pago e
+    // a "Pagina inicial do aplicativo" declarada na verificacao do Google. Uma
+    // barra de "instale o app" cobrindo o conteudo ali atrapalha quem ainda nem
+    // decidiu agendar — e o revisor do Google. Nas demais rotas nada muda.
+    if (pathname === '/app') {
+      setVisible(false)
+      return
+    }
+
     const isAdminRoute = pathname.startsWith('/admin')
 
     if (isAdminRoute) {
